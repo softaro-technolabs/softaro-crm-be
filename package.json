@@ -4,6 +4,9 @@
   "description": "Multi-tenant SaaS CRM backend built with NestJS, Drizzle ORM, and MySQL.",
   "author": "",
   "license": "MIT",
+  "engines": {
+    "node": "20.x"
+  },
   "scripts": {
     "prebuild": "rm -rf dist",
     "build": "npx nest build",
@@ -57,4 +60,3 @@
     "typescript": "^5.4.2"
   }
 }
-
