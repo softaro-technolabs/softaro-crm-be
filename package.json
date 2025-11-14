@@ -9,7 +9,7 @@
   },
   "scripts": {
     "prebuild": "rm -rf dist",
-    "build": "npx nest build",
+   "build": "npx nest build && ls -l dist",
     "start": "npx nest start",
     "start:dev": "npx nest start --watch",
     "start:prod": "node dist/main.js",
