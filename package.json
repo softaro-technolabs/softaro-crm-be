@@ -12,7 +12,7 @@
    "build": "npx nest build && ls -l dist",
     "start": "npx nest start",
     "start:dev": "npx nest start --watch",
-    "start:prod": "node dist/main.js",
+    "start:prod": "node dist/src/main.js",
     "lint": "eslint \"src/**/*.{ts,js}\"",
     "format": "prettier --write \"src/**/*.{ts,js,json}\"",
     "migration:push": "drizzle-kit push:mysql"
