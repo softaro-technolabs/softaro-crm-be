@@ -10,6 +10,7 @@ import { TenantsModule } from './tenants/tenants.module';
 import { RolesModule } from './roles/roles.module';
 import { UsersModule } from './users/users.module';
 import { PermissionsModule } from './permissions/permissions.module';
+import { ModulesModule } from './modules/modules.module';
 
 @Module({
   imports: [
@@ -23,7 +24,8 @@ import { PermissionsModule } from './permissions/permissions.module';
     TenantsModule,
     RolesModule,
     UsersModule,
-    PermissionsModule
+    PermissionsModule,
+    ModulesModule
   ],
   providers: [MigrationService, TenantMiddleware]
 })

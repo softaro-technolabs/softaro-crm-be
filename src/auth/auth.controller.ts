@@ -28,13 +28,10 @@ export class AuthController {
     });
 
     return {
-      message: 'Super admin created successfully',
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        roleGlobal: user.roleGlobal
-      }
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      roleGlobal: user.roleGlobal
     };
   }
 

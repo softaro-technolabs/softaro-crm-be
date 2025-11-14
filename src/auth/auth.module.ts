@@ -10,10 +10,10 @@ import { JwtAuthGuard } from './jwt-auth.guard';
 import { SuperAdminGuard } from './super-admin.guard';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { DatabaseModule } from '../database/database.module';
-import { ModulesService } from '../modules/modules.service';
-import { PermissionsService } from '../permissions/permissions.service';
-import { RolesService } from '../roles/roles.service';
-import { TenantsService } from '../tenants/tenants.service';
+import { ModulesModule } from '../modules/modules.module';
+import { PermissionsModule } from '../permissions/permissions.module';
+import { RolesModule } from '../roles/roles.module';
+import { TenantsModule } from '../tenants/tenants.module';
 import { UsersModule } from '../users/users.module';
 
 @Module({
@@ -21,6 +21,10 @@ import { UsersModule } from '../users/users.module';
     ConfigModule,
     DatabaseModule,
     UsersModule,
+    TenantsModule,
+    RolesModule,
+    PermissionsModule,
+    ModulesModule,
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       imports: [ConfigModule],
@@ -39,11 +43,7 @@ import { UsersModule } from '../users/users.module';
     AuthTokenService,
     JwtStrategy,
     JwtAuthGuard,
-    SuperAdminGuard,
-    TenantsService,
-    RolesService,
-    PermissionsService,
-    ModulesService
+    SuperAdminGuard
   ],
   exports: [AuthService, JwtModule, SuperAdminGuard, JwtAuthGuard]
 })

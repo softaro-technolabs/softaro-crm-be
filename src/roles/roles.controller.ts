@@ -53,7 +53,7 @@ export class RolesController {
   async delete(@Param('tenantId') tenantId: string, @Param('roleId') roleId: string) {
     this.verifyTenantAccess(tenantId);
     await this.rolesService.delete(tenantId, roleId);
-    return { message: 'Role deleted successfully' };
+    return null;
   }
 
   private verifyTenantAccess(tenantId: string) {
