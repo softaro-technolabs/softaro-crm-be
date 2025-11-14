@@ -1,0 +1,219 @@
+import { BadRequestException, Inject, Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { and, eq, or } from 'drizzle-orm';
+import { randomUUID } from 'crypto';
+
+import { DRIZZLE } from '../database/database.constants';
+import type { DrizzleDatabase } from '../database/database.types';
+import { roles, tenants, userTenants, users } from '../database/schema';
+import { RegisterUserDto, UpdateUserTenantDto } from './users.dto';
+
+import * as bcrypt from 'bcrypt';
+
+export interface CreateUserInput {
+  email: string;
+  password: string;
+  name: string;
+  phone?: string;
+  roleGlobal?: 'super_admin' | 'normal';
+}
+
+@Injectable()
+export class UsersService {
+  constructor(
+    @Inject(DRIZZLE) private readonly db: DrizzleDatabase,
+    private readonly configService: ConfigService
+  ) {}
+
+  async createUser(input: CreateUserInput) {
+    const existingUser = await this.findByEmail(input.email);
+    if (existingUser) {
+      throw new BadRequestException('User with this email already exists');
+    }
+
+    const id = randomUUID();
+    const saltRounds = this.configService.get<number>('security.hashRounds', 12);
+    const passwordHash = await bcrypt.hash(input.password, saltRounds);
+
+    await this.db.insert(users).values({
+      id,
+      email: input.email,
+      passwordHash,
+      name: input.name,
+      phone: input.phone ?? null,
+      roleGlobal: input.roleGlobal ?? 'normal'
+    });
+
+    return this.findById(id);
+  }
+
+  async registerUserInTenant(tenantId: string, dto: RegisterUserDto) {
+    // Check if tenant exists
+    const tenant = await this.db.select().from(tenants).where(eq(tenants.id, tenantId)).limit(1);
+    if (!tenant.length) {
+      throw new BadRequestException('Tenant not found');
+    }
+
+    // Check if user already exists
+    let user = await this.findByEmail(dto.email);
+
+    if (!user) {
+      // Create new user
+      user = await this.createUser({
+        email: dto.email,
+        password: dto.password,
+        name: dto.name,
+        phone: dto.phone,
+        roleGlobal: 'normal'
+      });
+    } else {
+      // User exists, check if already in this tenant
+      const existingMembership = await this.db
+        .select()
+        .from(userTenants)
+        .where(and(eq(userTenants.userId, user.id), eq(userTenants.tenantId, tenantId)))
+        .limit(1);
+
+      if (existingMembership.length > 0) {
+        throw new BadRequestException('User is already registered in this tenant');
+      }
+    }
+
+    // Verify role if provided
+    if (dto.roleId) {
+      const role = await this.db
+        .select()
+        .from(roles)
+        .where(and(eq(roles.id, dto.roleId), eq(roles.tenantId, tenantId)))
+        .limit(1);
+
+      if (!role.length) {
+        throw new BadRequestException('Role not found in this tenant');
+      }
+    }
+
+    // Create user-tenant relationship
+    const membershipId = randomUUID();
+    await this.db.insert(userTenants).values({
+      id: membershipId,
+      userId: user.id,
+      tenantId,
+      roleId: dto.roleId ?? null,
+      status: dto.status ?? 'active'
+    });
+
+    return this.findUserWithTenant(user.id, tenantId);
+  }
+
+  async updateUserTenantMembership(
+    tenantId: string,
+    userId: string,
+    dto: UpdateUserTenantDto
+  ) {
+    const membership = await this.db
+      .select()
+      .from(userTenants)
+      .where(and(eq(userTenants.userId, userId), eq(userTenants.tenantId, tenantId)))
+      .limit(1);
+
+    if (!membership.length) {
+      throw new BadRequestException('User is not a member of this tenant');
+    }
+
+    // Verify role if provided
+    if (dto.roleId) {
+      const role = await this.db
+        .select()
+        .from(roles)
+        .where(and(eq(roles.id, dto.roleId), eq(roles.tenantId, tenantId)))
+        .limit(1);
+
+      if (!role.length) {
+        throw new BadRequestException('Role not found in this tenant');
+      }
+    }
+
+    const updateData: Partial<typeof userTenants.$inferInsert> = {};
+    if (dto.roleId !== undefined) updateData.roleId = dto.roleId;
+    if (dto.status !== undefined) updateData.status = dto.status;
+
+    await this.db
+      .update(userTenants)
+      .set(updateData)
+      .where(and(eq(userTenants.userId, userId), eq(userTenants.tenantId, tenantId)));
+
+    return this.findUserWithTenant(userId, tenantId);
+  }
+
+  async findById(id: string) {
+    const [row] = await this.db.select().from(users).where(eq(users.id, id)).limit(1);
+    return row ?? null;
+  }
+
+  async findByEmail(email: string) {
+    const [row] = await this.db.select().from(users).where(eq(users.email, email)).limit(1);
+    return row ?? null;
+  }
+
+  async updatePassword(userId: string, password: string) {
+    const saltRounds = this.configService.get<number>('security.hashRounds', 12);
+    const passwordHash = await bcrypt.hash(password, saltRounds);
+    await this.db.update(users).set({ passwordHash }).where(eq(users.id, userId));
+  }
+
+  async updateLastLogin(userId: string) {
+    await this.db.update(users).set({ updatedAt: new Date() }).where(eq(users.id, userId));
+  }
+
+  async findUserWithTenant(userIdOrEmail: string, tenantSlugOrId?: string) {
+    const baseCondition = or(eq(users.email, userIdOrEmail), eq(users.id, userIdOrEmail));
+
+    const whereClause =
+      tenantSlugOrId && tenantSlugOrId.length > 0
+        ? and(baseCondition, or(eq(tenants.slug, tenantSlugOrId), eq(tenants.id, tenantSlugOrId)))
+        : baseCondition;
+
+    const [row] = await this.db
+      .select({
+        user: users,
+        tenant: tenants,
+        membership: userTenants,
+        role: roles
+      })
+      .from(users)
+      .leftJoin(userTenants, eq(users.id, userTenants.userId))
+      .leftJoin(tenants, eq(userTenants.tenantId, tenants.id))
+      .leftJoin(roles, eq(userTenants.roleId, roles.id))
+      .where(whereClause)
+      .limit(1);
+
+    return row ?? null;
+  }
+
+  async getTenantsForUser(userId: string) {
+    return this.db
+      .select({
+        tenant: tenants,
+        membership: userTenants,
+        role: roles
+      })
+      .from(userTenants)
+      .leftJoin(tenants, eq(userTenants.tenantId, tenants.id))
+      .leftJoin(roles, eq(userTenants.roleId, roles.id))
+      .where(eq(userTenants.userId, userId));
+  }
+
+  async findUsersByTenant(tenantId: string) {
+    return this.db
+      .select({
+        user: users,
+        membership: userTenants,
+        role: roles
+      })
+      .from(userTenants)
+      .innerJoin(users, eq(userTenants.userId, users.id))
+      .leftJoin(roles, eq(userTenants.roleId, roles.id))
+      .where(eq(userTenants.tenantId, tenantId));
+  }
+}
+
