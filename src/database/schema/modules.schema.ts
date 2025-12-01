@@ -1,6 +1,6 @@
-import { mysqlTable, varchar, uniqueIndex } from 'drizzle-orm/mysql-core';
+import { pgTable, varchar, uniqueIndex } from 'drizzle-orm/pg-core';
 
-export const modules = mysqlTable(
+export const modules = pgTable(
   'modules',
   {
     id: varchar('id', { length: 36 }).primaryKey(),

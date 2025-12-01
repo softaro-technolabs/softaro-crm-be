@@ -1,24 +1,25 @@
 import {
-  mysqlTable,
+  pgTable,
   varchar,
   text,
   timestamp,
   uniqueIndex,
-  mysqlEnum
-} from 'drizzle-orm/mysql-core';
+  pgEnum
+} from 'drizzle-orm/pg-core';
 
-export const tenants = mysqlTable(
+export const tenantStatusEnum = pgEnum('tenant_status', ['active', 'suspended', 'cancelled']);
+
+export const tenants = pgTable(
   'tenants',
   {
     id: varchar('id', { length: 36 }).primaryKey(),
     name: varchar('name', { length: 255 }).notNull(),
     slug: varchar('slug', { length: 255 }).notNull(),
     plan: varchar('plan', { length: 100 }),
-    status: mysqlEnum('status', ['active', 'suspended', 'cancelled']).default('active').notNull(),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-    updatedAt: timestamp('updated_at')
+    status: tenantStatusEnum('status').default('active').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
       .defaultNow()
-      .onUpdateNow()
       .notNull()
   },
   (table) => ({

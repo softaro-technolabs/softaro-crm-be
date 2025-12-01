@@ -3,20 +3,25 @@ import {
   Catch,
   ArgumentsHost,
   HttpException,
-  HttpStatus
+  HttpStatus,
+  Logger
 } from '@nestjs/common';
-import { Response } from 'express';
+import { Response, Request } from 'express';
 import { ApiErrorResponse } from '../interfaces/api-response.interface';
 
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
+  private readonly logger = new Logger(HttpExceptionFilter.name);
+
   catch(exception: unknown, host: ArgumentsHost) {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
+    const request = ctx.getRequest<Request>();
     
     let statusCode: number;
     let message: string;
     let error: string | undefined;
+    let stack: string | undefined;
 
     if (exception instanceof HttpException) {
       statusCode = exception.getStatus();
@@ -33,8 +38,17 @@ export class HttpExceptionFilter implements ExceptionFilter {
       }
     } else {
       statusCode = HttpStatus.INTERNAL_SERVER_ERROR;
-      message = 'Internal server error';
+      message = exception instanceof Error ? exception.message : 'Internal server error';
       error = 'Internal Server Error';
+      stack = exception instanceof Error ? exception.stack : undefined;
+    }
+
+    // Log error to console
+    const logMessage = `${request.method} ${request.url} - ${statusCode} - ${message}`;
+    if (statusCode >= 500) {
+      this.logger.error(logMessage, stack || exception);
+    } else {
+      this.logger.warn(logMessage);
     }
 
     const errorResponse: ApiErrorResponse = {

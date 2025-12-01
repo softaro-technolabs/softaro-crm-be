@@ -6,6 +6,7 @@ export * from './permissions.schema';
 export * from './role-permissions.schema';
 export * from './modules.schema';
 export * from './tenant-modules.schema';
+export * from './leads.schema';
 
 
 

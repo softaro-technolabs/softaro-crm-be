@@ -1,23 +1,25 @@
 import {
-  mysqlTable,
+  pgTable,
   varchar,
-  mysqlEnum,
-  json,
+  pgEnum,
+  jsonb,
   uniqueIndex,
   index,
   timestamp
-} from 'drizzle-orm/mysql-core';
+} from 'drizzle-orm/pg-core';
 
-export const userTenants = mysqlTable(
+export const userTenantStatusEnum = pgEnum('user_tenant_status', ['active', 'pending', 'disabled']);
+
+export const userTenants = pgTable(
   'user_tenants',
   {
     id: varchar('id', { length: 36 }).primaryKey(),
     userId: varchar('user_id', { length: 36 }).notNull(),
     tenantId: varchar('tenant_id', { length: 36 }).notNull(),
     roleId: varchar('role_id', { length: 36 }),
-    status: mysqlEnum('status', ['active', 'pending', 'disabled']).default('pending').notNull(),
-    meta: json('meta'),
-    createdAt: timestamp('created_at').defaultNow().notNull()
+    status: userTenantStatusEnum('status').default('pending').notNull(),
+    meta: jsonb('meta'),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull()
   },
   (table) => ({
     userIdx: index('user_tenants_user_idx').on(table.userId),

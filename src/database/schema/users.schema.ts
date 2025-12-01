@@ -1,12 +1,14 @@
 import {
-  mysqlTable,
+  pgTable,
   varchar,
   timestamp,
   uniqueIndex,
-  mysqlEnum
-} from 'drizzle-orm/mysql-core';
+  pgEnum
+} from 'drizzle-orm/pg-core';
 
-export const users = mysqlTable(
+export const roleGlobalEnum = pgEnum('role_global', ['super_admin', 'normal']);
+
+export const users = pgTable(
   'users',
   {
     id: varchar('id', { length: 36 }).primaryKey(),
@@ -14,11 +16,10 @@ export const users = mysqlTable(
     passwordHash: varchar('password_hash', { length: 255 }).notNull(),
     name: varchar('name', { length: 255 }).notNull(),
     phone: varchar('phone', { length: 50 }),
-    roleGlobal: mysqlEnum('role_global', ['super_admin', 'normal']).default('normal').notNull(),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-    updatedAt: timestamp('updated_at')
+    roleGlobal: roleGlobalEnum('role_global').default('normal').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
       .defaultNow()
-      .onUpdateNow()
       .notNull()
   },
   (table) => ({

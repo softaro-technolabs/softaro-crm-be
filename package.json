@@ -1,7 +1,7 @@
 {
   "name": "softaro-crm-be",
   "version": "1.0.0",
-  "description": "Multi-tenant SaaS CRM backend built with NestJS, Drizzle ORM, and MySQL.",
+  "description": "Multi-tenant SaaS CRM backend built with NestJS, Drizzle ORM, and PostgreSQL.",
   "author": "",
   "license": "MIT",
   "engines": {
@@ -9,18 +9,17 @@
   },
   "scripts": {
     "prebuild": "rm -rf dist",
-   "build": "npx nest build && ls -l dist",
+    "build": "npx nest build && ls -l dist",
     "start": "npx nest start",
     "start:dev": "npx nest start --watch",
     "start:prod": "node dist/src/main.js",
     "lint": "eslint \"src/**/*.{ts,js}\"",
     "format": "prettier --write \"src/**/*.{ts,js,json}\"",
-    "migration:push": "drizzle-kit push:mysql"
+    "migration:push": "drizzle-kit push:pg"
   },
   "dependencies": {
     "@nestjs/common": "^10.0.0",
     "@nestjs/config": "^3.0.0",
-    "rimraf": "^5.0.5",
     "@nestjs/core": "^10.0.0",
     "@nestjs/jwt": "^10.0.0",
     "@nestjs/passport": "^10.0.0",
@@ -31,30 +30,33 @@
     "class-validator": "^0.14.1",
     "dotenv": "^16.4.5",
     "drizzle-orm": "^0.29.0",
-    "mysql2": "^3.11.3",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
+    "pg": "^8.11.3",
     "reflect-metadata": "^0.1.14",
+    "rimraf": "^5.0.5",
     "rxjs": "^7.8.1",
     "swagger-ui-express": "^5.0.0",
-    "uuid": "^9.0.1"
+    "uuid": "^9.0.1",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@nestjs/cli": "^10.3.2",
     "@nestjs/schematics": "^10.0.2",
     "@types/bcrypt": "^5.0.2",
     "@types/express": "^4.17.21",
-    "@types/swagger-ui-express": "^4.1.6",
+    "@types/multer": "^1.4.7",
     "@types/node": "^20.11.30",
     "@types/passport-jwt": "^3.0.9",
+    "@types/pg": "^8.10.9",
+    "@types/swagger-ui-express": "^4.1.6",
     "@typescript-eslint/eslint-plugin": "^6.18.1",
     "@typescript-eslint/parser": "^6.18.1",
-   "drizzle-kit": "^0.20.6",
+    "drizzle-kit": "^0.20.6",
     "eslint": "^8.57.0",
     "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-import": "^2.29.1",
     "prettier": "^3.2.5",
-    
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
     "typescript": "^5.4.2"

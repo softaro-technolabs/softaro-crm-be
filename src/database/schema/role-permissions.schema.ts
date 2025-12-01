@@ -1,6 +1,6 @@
-import { mysqlTable, varchar, uniqueIndex, index } from 'drizzle-orm/mysql-core';
+import { pgTable, varchar, uniqueIndex, index } from 'drizzle-orm/pg-core';
 
-export const rolePermissions = mysqlTable(
+export const rolePermissions = pgTable(
   'role_permissions',
   {
     id: varchar('id', { length: 36 }).primaryKey(),

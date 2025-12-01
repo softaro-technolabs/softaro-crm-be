@@ -13,7 +13,7 @@ let dbCredentials;
 
 if (databaseUrl) {
   dbCredentials = {
-    uri: databaseUrl
+    connectionString: databaseUrl
   };
 } else {
   if (!dbHost || !dbUser || !dbPassword || !dbName) {
@@ -21,7 +21,7 @@ if (databaseUrl) {
   }
   dbCredentials = {
     host: dbHost,
-    port: dbPort ? Number(dbPort) : 3306,
+    port: dbPort ? Number(dbPort) : 5432,
     user: dbUser,
     password: dbPassword,
     database: dbName
@@ -29,11 +29,14 @@ if (databaseUrl) {
 }
 
 export default defineConfig({
-  driver: 'mysql2',
+  driver: 'pg',
   schema: './src/database/schema/index.ts',
   out: './src/database/migrations',
   dbCredentials,
   verbose: true,
-  strict: true
+  strict: true,
+  // Only work with public schema, ignore system schemas (information_schema, pg_catalog, etc.)
+  // This prevents drizzle-kit from trying to drop system tables
+  schemaFilter: ['public'],
 });
 

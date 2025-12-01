@@ -6,8 +6,8 @@ export default () => ({
   database: {
     url: env.DATABASE_URL ?? '',
     host: env.DB_HOST ?? 'localhost',
-    port: Number(env.DB_PORT ?? 3306),
-    user: env.DB_USER ?? 'root',
+    port: Number(env.DB_PORT ?? 5432),
+    user: env.DB_USER ?? 'postgres',
     password: env.DB_PASSWORD ?? '',
     name: env.DB_NAME ?? 'softaro_crm'
   },

@@ -1,62 +1,50 @@
 import { Global, Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { createPool } from 'mysql2/promise';
-import { drizzle } from 'drizzle-orm/mysql2';
+import { Pool } from 'pg';
+import { drizzle } from 'drizzle-orm/node-postgres';
 
 import * as schema from './schema';
-import { DRIZZLE, MYSQL_POOL } from './database.constants';
+import { DRIZZLE, POSTGRES_POOL } from './database.constants';
 
 @Global()
 @Module({
   imports: [ConfigModule],
   providers: [
     {
-      provide: MYSQL_POOL,
+      provide: POSTGRES_POOL,
       inject: [ConfigService],
       useFactory: async (configService: ConfigService) => {
         const url = configService.get<string>('database.url');
         
-        // If DATABASE_URL is provided, parse it (backward compatibility)
+        // If DATABASE_URL is provided, use it directly (backward compatibility)
         if (url) {
-          const parsed = new URL(url);
-          return createPool({
-            host: parsed.hostname,
-            port: Number(parsed.port || '3306'),
-            user: decodeURIComponent(parsed.username),
-            password: decodeURIComponent(parsed.password),
-            database: parsed.pathname.replace(/^\//, ''),
-            waitForConnections: true,
-            connectionLimit: Number(parsed.searchParams.get('connectionLimit') ?? '10'),
-            namedPlaceholders: true,
-            decimalNumbers: true
+          return new Pool({
+            connectionString: url,
+            max: 10
           });
         }
 
         // Otherwise, use separate environment variables
-        return createPool({
+        return new Pool({
           host: configService.getOrThrow<string>('database.host'),
           port: configService.getOrThrow<number>('database.port'),
           user: configService.getOrThrow<string>('database.user'),
           password: configService.getOrThrow<string>('database.password'),
           database: configService.getOrThrow<string>('database.name'),
-          waitForConnections: true,
-          connectionLimit: 10,
-          namedPlaceholders: true,
-          decimalNumbers: true
+          max: 10
         });
       }
     },
     {
       provide: DRIZZLE,
-      inject: [MYSQL_POOL],
-      useFactory: (pool: ReturnType<typeof createPool>) =>
+      inject: [POSTGRES_POOL],
+      useFactory: (pool: Pool) =>
         drizzle(pool, {
-          schema,
-          mode: 'default'
+          schema
         })
     }
   ],
-  exports: [DRIZZLE, MYSQL_POOL]
+  exports: [DRIZZLE, POSTGRES_POOL]
 })
 export class DatabaseModule {}
 

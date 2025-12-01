@@ -1,12 +1,12 @@
 import {
-  mysqlTable,
+  pgTable,
   varchar,
   boolean,
   uniqueIndex,
   index
-} from 'drizzle-orm/mysql-core';
+} from 'drizzle-orm/pg-core';
 
-export const tenantModules = mysqlTable(
+export const tenantModules = pgTable(
   'tenant_modules',
   {
     id: varchar('id', { length: 36 }).primaryKey(),
