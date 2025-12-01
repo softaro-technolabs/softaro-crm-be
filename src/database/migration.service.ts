@@ -38,13 +38,16 @@ export class MigrationService {
 
     const isWindows = process.platform === 'win32';
     const command = isWindows ? 'npx' : 'npx';
-    const args = ['drizzle-kit', 'push:pg'];
+    // Use --force flag to skip interactive prompts (available in drizzle-kit 0.18.0+)
+    const args = ['drizzle-kit', 'push:pg', '--force'];
 
-    this.logger.log('Running drizzle-kit push:pg...');
+    this.logger.log('Checking for database schema changes...');
 
     // Prepare environment variables for drizzle-kit
     const envVars: NodeJS.ProcessEnv = {
-      ...process.env
+      ...process.env,
+      // Set CI=true to make tools non-interactive
+      CI: 'true'
     };
 
     // If DATABASE_URL is provided, use it (backward compatibility)
@@ -60,15 +63,79 @@ export class MigrationService {
     }
 
     await new Promise<void>((resolve, reject) => {
+      // Capture output to check if there are actual changes
+      let output = '';
+      let errorOutput = '';
+
       const child = spawn(command, args, {
-        stdio: 'inherit',
+        stdio: ['ignore', 'pipe', 'pipe'], // Don't need stdin with --force flag
         env: envVars,
         shell: isWindows
       });
 
+      // Track if we've seen system table warnings
+      let hasSystemTableWarning = false;
+
+      // Capture stdout
+      child.stdout?.on('data', (data) => {
+        const text = data.toString();
+        output += text;
+        
+        // Check for system table warnings - if detected, log warning
+        if (text.includes('spatial_ref_sys') || 
+            text.includes('geography_columns') || 
+            text.includes('geometry_columns') || 
+            text.includes('pg_stat_statements') ||
+            text.includes('raster_columns')) {
+          hasSystemTableWarning = true;
+          this.logger.warn('⚠️  System tables detected in migration plan. This should not happen.');
+          this.logger.warn('Please check drizzle.config.ts - system tables should be excluded.');
+        }
+        
+        // Log all output for visibility
+        const lines = text.split('\n').filter(line => line.trim());
+        lines.forEach(line => {
+          if (line.trim()) {
+            // Log warnings about system tables as warnings, others as info
+            if (hasSystemTableWarning && line.includes('DROP TABLE')) {
+              this.logger.warn(line.trim());
+            } else {
+              this.logger.log(line.trim());
+            }
+          }
+        });
+      });
+
+      // Capture stderr
+      child.stderr?.on('data', (data) => {
+        const text = data.toString();
+        errorOutput += text;
+        // Log warnings/errors
+        if (text.includes('Warning') || text.includes('Error')) {
+          this.logger.warn(text.trim());
+        } else {
+          this.logger.log(text.trim());
+        }
+      });
+
       child.on('exit', (code) => {
         if (code === 0) {
-          this.logger.log('Database schema is in sync');
+          // Check if there were actual changes or if schema was already in sync
+          if (output.includes('No schema changes') || 
+              output.includes('No changes detected') ||
+              output.includes('schema is up to date')) {
+            this.logger.log('✓ Database schema is already in sync, no changes needed');
+          } else if (output.includes('Pushing changes') || 
+                     output.includes('Applied') ||
+                     output.includes('successfully')) {
+            if (hasSystemTableWarning) {
+              this.logger.warn('⚠️  Migration completed but system tables were detected. Please review drizzle.config.ts');
+            } else {
+              this.logger.log('✓ Database schema updated successfully');
+            }
+          } else {
+            this.logger.log('✓ Database schema check completed');
+          }
           resolve();
         } else {
           // Log warning but don't fail server startup

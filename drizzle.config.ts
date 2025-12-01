@@ -38,5 +38,21 @@ export default defineConfig({
   // Only work with public schema, ignore system schemas (information_schema, pg_catalog, etc.)
   // This prevents drizzle-kit from trying to drop system tables
   schemaFilter: ['public'],
+  // Explicitly filter out system tables that might be in public schema
+  tablesFilter: [
+    'tenants',
+    'users',
+    'user_tenants',
+    'roles',
+    'permissions',
+    'role_permissions',
+    'modules',
+    'tenant_modules',
+    'lead_statuses',
+    'leads',
+    'lead_assignment_settings',
+    'lead_assignment_agents',
+    'lead_assignment_logs'
+  ],
 });
 
