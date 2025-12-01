@@ -20,7 +20,10 @@ import { DRIZZLE, POSTGRES_POOL } from './database.constants';
         if (url) {
           return new Pool({
             connectionString: url,
-            max: 10
+            max: 10,
+            ssl: process.env.NODE_ENV === 'production' || url.includes('clever-cloud.com') 
+              ? { rejectUnauthorized: false } 
+              : undefined
           });
         }
 
@@ -31,7 +34,10 @@ import { DRIZZLE, POSTGRES_POOL } from './database.constants';
           user: configService.getOrThrow<string>('database.user'),
           password: configService.getOrThrow<string>('database.password'),
           database: configService.getOrThrow<string>('database.name'),
-          max: 10
+          max: 10,
+          ssl: process.env.NODE_ENV === 'production' || configService.get<string>('database.host')?.includes('clever-cloud.com')
+            ? { rejectUnauthorized: false }
+            : undefined
         });
       }
     },
