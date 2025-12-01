@@ -93,8 +93,8 @@ export class MigrationService {
         }
         
         // Log all output for visibility
-        const lines = text.split('\n').filter(line => line.trim());
-        lines.forEach(line => {
+        const lines = text.split('\n').filter((line: string) => line.trim());
+        lines.forEach((line: string) => {
           if (line.trim()) {
             // Log warnings about system tables as warnings, others as info
             if (hasSystemTableWarning && line.includes('DROP TABLE')) {
