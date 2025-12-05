@@ -40,6 +40,22 @@ export class RegisterUserDto {
 }
 
 export class UpdateUserTenantDto {
+  @ApiPropertyOptional({ example: 'John Doe', description: 'User full name' })
+  @IsOptional()
+  @IsString()
+  @MinLength(2)
+  name?: string;
+
+  @ApiPropertyOptional({ example: 'user@example.com', description: 'User email address' })
+  @IsOptional()
+  @IsEmail()
+  email?: string;
+
+  @ApiPropertyOptional({ example: '+1234567890', description: 'User phone number' })
+  @IsOptional()
+  @IsString()
+  phone?: string;
+
   @ApiPropertyOptional({
     example: 'role-uuid-here',
     description: 'Role ID to assign to the user in this tenant'

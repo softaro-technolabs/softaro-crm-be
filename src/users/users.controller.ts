@@ -1,4 +1,4 @@
-import { Body, Controller, ForbiddenException, Get, NotFoundException, Param, Post, Put, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, ForbiddenException, Get, NotFoundException, Param, Post, Put, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { UsersService } from './users.service';
@@ -42,7 +42,7 @@ export class UsersController {
   }
 
   @Put(':userId')
-  @ApiOperation({ summary: 'Update user membership in a tenant' })
+  @ApiOperation({ summary: 'Update user details and tenant membership' })
   async update(
     @Param('tenantId') tenantId: string,
     @Param('userId') userId: string,
@@ -50,6 +50,17 @@ export class UsersController {
   ) {
     this.verifyTenantAccess(tenantId);
     return this.usersService.updateUserTenantMembership(tenantId, userId, dto);
+  }
+
+  @Delete(':userId')
+  @ApiOperation({ summary: 'Delete user and all associated data' })
+  async delete(
+    @Param('tenantId') tenantId: string,
+    @Param('userId') userId: string
+  ) {
+    this.verifyTenantAccess(tenantId);
+    await this.usersService.deleteUser(userId);
+    return { message: 'User deleted successfully' };
   }
 
   private verifyTenantAccess(tenantId: string) {

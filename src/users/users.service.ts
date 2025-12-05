@@ -5,7 +5,16 @@ import { randomUUID } from 'crypto';
 
 import { DRIZZLE } from '../database/database.constants';
 import type { DrizzleDatabase } from '../database/database.types';
-import { roles, tenants, userTenants, users } from '../database/schema';
+import {
+  leadAssignmentAgents,
+  leadAssignmentLogs,
+  leadAssignmentSettings,
+  leads,
+  roles,
+  tenants,
+  userTenants,
+  users
+} from '../database/schema';
 import { RegisterUserDto, UpdateUserTenantDto } from './users.dto';
 
 import * as bcrypt from 'bcrypt';
@@ -110,6 +119,13 @@ export class UsersService {
     userId: string,
     dto: UpdateUserTenantDto
   ) {
+    // Check if user exists
+    const user = await this.findById(userId);
+    if (!user) {
+      throw new BadRequestException('User not found');
+    }
+
+    // Check if user is a member of this tenant
     const membership = await this.db
       .select()
       .from(userTenants)
@@ -118,6 +134,14 @@ export class UsersService {
 
     if (!membership.length) {
       throw new BadRequestException('User is not a member of this tenant');
+    }
+
+    // Check email uniqueness if email is being updated
+    if (dto.email && dto.email !== user.email) {
+      const existingUser = await this.findByEmail(dto.email);
+      if (existingUser && existingUser.id !== userId) {
+        throw new BadRequestException('Email is already in use by another user');
+      }
     }
 
     // Verify role if provided
@@ -133,14 +157,28 @@ export class UsersService {
       }
     }
 
-    const updateData: Partial<typeof userTenants.$inferInsert> = {};
-    if (dto.roleId !== undefined) updateData.roleId = dto.roleId;
-    if (dto.status !== undefined) updateData.status = dto.status;
+    // Update user fields if provided
+    const userUpdateData: Partial<typeof users.$inferInsert> = {};
+    if (dto.name !== undefined) userUpdateData.name = dto.name;
+    if (dto.email !== undefined) userUpdateData.email = dto.email;
+    if (dto.phone !== undefined) userUpdateData.phone = dto.phone ?? null;
 
-    await this.db
-      .update(userTenants)
-      .set(updateData)
-      .where(and(eq(userTenants.userId, userId), eq(userTenants.tenantId, tenantId)));
+    if (Object.keys(userUpdateData).length > 0) {
+      userUpdateData.updatedAt = new Date();
+      await this.db.update(users).set(userUpdateData).where(eq(users.id, userId));
+    }
+
+    // Update tenant membership if provided
+    const membershipUpdateData: Partial<typeof userTenants.$inferInsert> = {};
+    if (dto.roleId !== undefined) membershipUpdateData.roleId = dto.roleId;
+    if (dto.status !== undefined) membershipUpdateData.status = dto.status;
+
+    if (Object.keys(membershipUpdateData).length > 0) {
+      await this.db
+        .update(userTenants)
+        .set(membershipUpdateData)
+        .where(and(eq(userTenants.userId, userId), eq(userTenants.tenantId, tenantId)));
+    }
 
     return this.findUserWithTenant(userId, tenantId);
   }
@@ -214,6 +252,54 @@ export class UsersService {
       .innerJoin(users, eq(userTenants.userId, users.id))
       .leftJoin(roles, eq(userTenants.roleId, roles.id))
       .where(eq(userTenants.tenantId, tenantId));
+  }
+
+  async deleteUser(userId: string) {
+    // Check if user exists
+    const user = await this.findById(userId);
+    if (!user) {
+      throw new BadRequestException('User not found');
+    }
+
+    // Prevent deletion of super admin users
+    if (user.roleGlobal === 'super_admin') {
+      throw new BadRequestException('Cannot delete super admin user');
+    }
+
+    // Delete user-tenant relationships
+    await this.db.delete(userTenants).where(eq(userTenants.userId, userId));
+
+    // Update leads: set assignedToUserId and createdByUserId to null
+    await this.db
+      .update(leads)
+      .set({
+        assignedToUserId: null,
+        createdByUserId: null
+      })
+      .where(or(eq(leads.assignedToUserId, userId), eq(leads.createdByUserId, userId)));
+
+    // Delete lead assignment agents
+    await this.db.delete(leadAssignmentAgents).where(eq(leadAssignmentAgents.userId, userId));
+
+    // Update lead assignment settings: set roundRobinPointerUserId to null if it matches
+    await this.db
+      .update(leadAssignmentSettings)
+      .set({
+        roundRobinPointerUserId: null
+      })
+      .where(eq(leadAssignmentSettings.roundRobinPointerUserId, userId));
+
+    // Update lead assignment logs: set fromUserId and toUserId to null
+    await this.db
+      .update(leadAssignmentLogs)
+      .set({
+        fromUserId: null,
+        toUserId: null
+      })
+      .where(or(eq(leadAssignmentLogs.fromUserId, userId), eq(leadAssignmentLogs.toUserId, userId)));
+
+    // Finally, delete the user
+    await this.db.delete(users).where(eq(users.id, userId));
   }
 }
 
