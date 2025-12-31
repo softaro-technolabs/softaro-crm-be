@@ -1,8 +1,8 @@
-import { Body, Controller, Delete, ForbiddenException, Get, NotFoundException, Param, Post, Put, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, ForbiddenException, Get, NotFoundException, Param, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { UsersService } from './users.service';
-import { RegisterUserDto, UpdateUserTenantDto } from './users.dto';
+import { RegisterUserDto, UpdateUserTenantDto, UserListQueryDto } from './users.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RequestContextService } from '../common/utils/request-context.service';
 
@@ -24,10 +24,10 @@ export class UsersController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'List all users in a tenant' })
-  async findAll(@Param('tenantId') tenantId: string) {
+  @ApiOperation({ summary: 'List all users in a tenant with pagination, sorting, and filters' })
+  async findAll(@Param('tenantId') tenantId: string, @Query() query: UserListQueryDto) {
     this.verifyTenantAccess(tenantId);
-    return this.usersService.findUsersByTenant(tenantId);
+    return this.usersService.findUsersByTenant(tenantId, query);
   }
 
   @Get(':userId')

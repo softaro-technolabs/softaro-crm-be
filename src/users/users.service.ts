@@ -1,6 +1,6 @@
 import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { and, eq, or } from 'drizzle-orm';
+import { and, eq, or, SQL, sql } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 
 import { DRIZZLE } from '../database/database.constants';
@@ -15,7 +15,8 @@ import {
   userTenants,
   users
 } from '../database/schema';
-import { RegisterUserDto, UpdateUserTenantDto } from './users.dto';
+import { RegisterUserDto, UpdateUserTenantDto, UserListQueryDto } from './users.dto';
+import { PaginationUtil } from '../common/utils/pagination.util';
 
 import * as bcrypt from 'bcrypt';
 
@@ -241,17 +242,92 @@ export class UsersService {
       .where(eq(userTenants.userId, userId));
   }
 
-  async findUsersByTenant(tenantId: string) {
-    return this.db
-      .select({
-        user: users,
-        membership: userTenants,
-        role: roles
-      })
-      .from(userTenants)
-      .innerJoin(users, eq(userTenants.userId, users.id))
-      .leftJoin(roles, eq(userTenants.roleId, roles.id))
-      .where(eq(userTenants.tenantId, tenantId));
+  async findUsersByTenant(tenantId: string, query: UserListQueryDto = {}) {
+    const limit = query.limit ?? 50;
+    const page = query.page ?? 1;
+    const offset = PaginationUtil.getOffset(page, limit);
+
+    // Base filter - always filter by tenant
+    const baseFilters: SQL[] = [eq(userTenants.tenantId, tenantId)];
+
+    // Additional filters
+    if (query.roleId) {
+      baseFilters.push(eq(userTenants.roleId, query.roleId));
+    }
+
+    if (query.status) {
+      baseFilters.push(eq(userTenants.status, query.status));
+    }
+
+    // Search filter
+    let searchFilter: SQL | null = null;
+    if (query.search) {
+      searchFilter = PaginationUtil.buildSearchFilter({
+        fields: [users.name, users.email, users.phone],
+        term: query.search
+      });
+    }
+
+    // Combine all filters
+    const allFilters = [...baseFilters];
+    if (searchFilter) {
+      allFilters.push(searchFilter);
+    }
+
+    // Build where clause from all filters
+    let whereClause: SQL | undefined = undefined;
+    if (allFilters.length > 0) {
+      if (allFilters.length === 1) {
+        whereClause = allFilters[0];
+      } else {
+        let combined = allFilters[0];
+        for (let i = 1; i < allFilters.length; i += 1) {
+          combined = and(combined, allFilters[i]) as SQL;
+        }
+        whereClause = combined;
+      }
+    }
+
+    // Build sort order
+    const allowedSortFields = {
+      name: users.name,
+      email: users.email,
+      createdAt: users.createdAt,
+      updatedAt: users.updatedAt
+    };
+
+    const orderBy = PaginationUtil.buildOrderBy(
+      query.sortBy,
+      query.sortOrder || 'desc',
+      users.createdAt,
+      allowedSortFields
+    );
+
+    // Execute queries
+    const [results, totalRows] = await Promise.all([
+      this.db
+        .select({
+          user: users,
+          membership: userTenants,
+          role: roles
+        })
+        .from(userTenants)
+        .innerJoin(users, eq(userTenants.userId, users.id))
+        .leftJoin(roles, eq(userTenants.roleId, roles.id))
+        .where(whereClause || undefined)
+        .orderBy(orderBy)
+        .limit(limit)
+        .offset(offset),
+      this.db
+        .select({ count: sql<number>`count(*)` })
+        .from(userTenants)
+        .innerJoin(users, eq(userTenants.userId, users.id))
+        .where(whereClause || undefined)
+    ]);
+
+    const total = totalRows.length ? Number(totalRows[0].count) : 0;
+
+    return PaginationUtil.buildPaginatedResult(results, total, page, limit);
   }
 
   async deleteUser(userId: string) {
