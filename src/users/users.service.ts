@@ -297,9 +297,9 @@ export class UsersService {
     };
 
     const orderBy = PaginationUtil.buildOrderBy(
+      users.createdAt,
       query.sortBy,
       query.sortOrder || 'desc',
-      users.createdAt,
       allowedSortFields
     );
 

@@ -58,9 +58,9 @@ export class PaginationUtil {
    * Build order by clause from sort options
    */
   static buildOrderBy(
+    defaultSortBy: PgColumn,
     sortBy?: string,
     sortOrder: 'asc' | 'desc' = 'desc',
-    defaultSortBy: PgColumn,
     allowedSortFields?: Record<string, PgColumn>
   ) {
     if (sortBy && allowedSortFields && allowedSortFields[sortBy]) {
