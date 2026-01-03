@@ -303,13 +303,16 @@ export class UsersService {
       allowedSortFields
     );
 
-    // Execute queries
+    // Execute queries - return simplified user object
     const [results, totalRows] = await Promise.all([
       this.db
         .select({
-          user: users,
-          membership: userTenants,
-          role: roles
+          name: users.name,
+          email: users.email,
+          phone: users.phone,
+          role: roles.name,
+          status: userTenants.status,
+          joinedDate: userTenants.createdAt
         })
         .from(userTenants)
         .innerJoin(users, eq(userTenants.userId, users.id))
