@@ -90,18 +90,13 @@ export class LeadsService {
     const [results, totalRows] = await Promise.all([
       this.db
         .select({
-          lead: leads,
-          status: {
-            id: leadStatuses.id,
-            name: leadStatuses.name,
-            slug: leadStatuses.slug,
-            color: leadStatuses.color
-          },
-          assignee: {
-            id: users.id,
-            name: users.name,
-            email: users.email
-          }
+          id: leads.id,
+          name: leads.name,
+          email: leads.email,
+          phone: leads.phone,
+          status: leadStatuses.name,
+          createdAt: leads.createdAt,
+          assignedTo: users.name
         })
         .from(leads)
         .leftJoin(leadStatuses, eq(leads.statusId, leadStatuses.id))
@@ -118,8 +113,19 @@ export class LeadsService {
 
     const total = totalRows.length ? Number(totalRows[0].count) : 0;
 
+    // Map results to ensure all fields are present and handle null values
+    const mappedResults = results.map((row) => ({
+      id: row.id,
+      name: row.name ?? '',
+      email: row.email ?? null,
+      phone: row.phone ?? null,
+      status: row.status ?? null,
+      created: row.createdAt,
+      assignedTo: row.assignedTo ?? null
+    }));
+
     return {
-      data: results,
+      data: mappedResults,
       meta: {
         total,
         page,
