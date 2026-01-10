@@ -307,12 +307,14 @@ export class UsersService {
     const [results, totalRows] = await Promise.all([
       this.db
         .select({
+          id: users.id,
           name: users.name,
           email: users.email,
           phone: users.phone,
           role: roles.name,
           status: userTenants.status,
-          joinedDate: userTenants.createdAt
+          joinedDate: userTenants.createdAt,
+          createdAt: userTenants.createdAt
         })
         .from(userTenants)
         .innerJoin(users, eq(userTenants.userId, users.id))
@@ -330,7 +332,19 @@ export class UsersService {
 
     const total = totalRows.length ? Number(totalRows[0].count) : 0;
 
-    return PaginationUtil.buildPaginatedResult(results, total, page, limit);
+    // Map results to ensure all fields are present and handle null values
+    const mappedResults = results.map((row) => ({
+      id: row.id,
+      name: row.name ?? '',
+      email: row.email ?? '',
+      phone: row.phone ?? null,
+      role: row.role ?? null,
+      status: row.status,
+      joinedDate: row.joinedDate,
+      createdAt: row.createdAt
+    }));
+
+    return PaginationUtil.buildPaginatedResult(mappedResults, total, page, limit);
   }
 
   async deleteUser(userId: string) {
