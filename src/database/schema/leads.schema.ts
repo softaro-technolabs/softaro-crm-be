@@ -75,7 +75,9 @@ export const leads = pgTable(
   (table) => ({
     tenantIdx: index('leads_tenant_idx').on(table.tenantId),
     statusIdx: index('leads_status_idx').on(table.statusId),
-    assignedIdx: index('leads_assigned_idx').on(table.assignedToUserId)
+    assignedIdx: index('leads_assigned_idx').on(table.assignedToUserId),
+    tenantNextFollowUpIdx: index('leads_tenant_next_follow_up_idx').on(table.tenantId, table.nextFollowUpAt),
+    tenantLastContactedIdx: index('leads_tenant_last_contacted_idx').on(table.tenantId, table.lastContactedAt)
   })
 );
 
