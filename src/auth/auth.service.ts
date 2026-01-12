@@ -183,7 +183,12 @@ export class AuthService {
 
       const enabledModules = normalizedModulesWithFlag
         .filter((item) => item.isEnabled)
-        .map(({ isEnabled, ...rest }) => rest);
+        .map((item) => ({
+          id: item.id,
+          slug: item.slug,
+          name: item.name,
+          route: item.route
+        }));
 
       const allPermissions = await this.permissionsService.getAllCodes();
       const routes = Array.from(new Set(enabledModules.map((item) => item.route)));
@@ -227,7 +232,12 @@ export class AuthService {
     }));
     const enabledModules = normalizedModulesWithFlag
       .filter((item) => item.isEnabled)
-      .map(({ isEnabled, ...rest }) => rest);
+      .map((item) => ({
+        id: item.id,
+        slug: item.slug,
+        name: item.name,
+        route: item.route
+      }));
 
     const permissionsList = membership.membership.roleId
       ? await this.permissionsService.getCodesForRole(

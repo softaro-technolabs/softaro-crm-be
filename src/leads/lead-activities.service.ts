@@ -1,5 +1,6 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { and, desc, eq, ilike, isNotNull, lte, lt, or, sql } from 'drizzle-orm';
+import type { SQL } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 
 import { DRIZZLE } from '../database/database.constants';
@@ -115,7 +116,7 @@ export class LeadActivitiesService {
     const due = query.due ?? true;
     const overdue = query.overdue ?? false;
 
-    const filters = [eq(leads.tenantId, tenantId), isNotNull(leads.nextFollowUpAt)];
+    const filters: SQL[] = [eq(leads.tenantId, tenantId), isNotNull(leads.nextFollowUpAt)];
 
     if (query.assignedToUserId) {
       filters.push(eq(leads.assignedToUserId, query.assignedToUserId));
@@ -140,9 +141,9 @@ export class LeadActivitiesService {
       }
     }
 
-    let whereClause = filters[0];
+    let whereClause: SQL = filters[0];
     for (let i = 1; i < filters.length; i += 1) {
-      whereClause = and(whereClause, filters[i]);
+      whereClause = and(whereClause, filters[i]) as SQL;
     }
 
     const [rows, totalRows] = await Promise.all([

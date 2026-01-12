@@ -239,7 +239,7 @@ export class LeadAssignmentService {
     for (const strategy of strategies) {
       const candidate = this.pickAgentByStrategy(strategy, agents, settings, payload);
       if (candidate) {
-        await this.onAgentAssigned(tenantId, candidate.userId, strategy);
+        await this.onAgentAssigned(tenantId, candidate.userId);
         return { userId: candidate.userId, strategy };
       }
     }
@@ -464,7 +464,7 @@ export class LeadAssignmentService {
     return sorted[(index + 1) % sorted.length];
   }
 
-  private async onAgentAssigned(tenantId: string, userId: string, strategy: LeadAssignmentStrategy) {
+  private async onAgentAssigned(tenantId: string, userId: string) {
     const now = new Date();
 
     await Promise.all([

@@ -1,11 +1,10 @@
-import { Body, Controller, Get, Param, Post, Put, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Put, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { TenantsService } from './tenants.service';
 import { CreateTenantDto, UpdateTenantDto } from './tenants.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { SuperAdminGuard } from '../auth/super-admin.guard';
-import { AuthJwtPayload } from '../auth/auth.utils';
 
 @ApiTags('Tenants')
 @Controller('tenants')

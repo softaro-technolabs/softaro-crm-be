@@ -6,7 +6,7 @@ import {
   InternalServerErrorException,
   NotFoundException
 } from '@nestjs/common';
-import { and, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm';
+import { and, desc, eq, ilike, or, sql } from 'drizzle-orm';
 import type { SQL } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 import type { Express } from 'express';
@@ -16,6 +16,7 @@ import { DRIZZLE } from '../database/database.constants';
 import type { DrizzleDatabase } from '../database/database.types';
 import {
   leadStatuses,
+  leadActivities,
   leads,
   tenants,
   userTenants,
@@ -278,15 +279,48 @@ export class LeadsService {
   async updateLeadStatus(tenantId: string, leadId: string, dto: UpdateLeadStatusDto) {
     await this.ensureLeadDefaults(tenantId);
     const statusId = await this.resolveStatusId(tenantId, dto.statusId);
+    const now = new Date();
+
+    const [existing] = await this.db
+      .select({ statusId: leads.statusId })
+      .from(leads)
+      .where(and(eq(leads.id, leadId), eq(leads.tenantId, tenantId)))
+      .limit(1);
+
+    if (!existing) {
+      throw new NotFoundException('Lead not found');
+    }
+
     const updateData: Partial<typeof leads.$inferInsert> = {
       statusId,
-      updatedAt: new Date()
+      updatedAt: now
     };
     if (dto.kanbanPosition !== undefined) {
       updateData.kanbanPosition = dto.kanbanPosition;
     }
 
-    await this.db.update(leads).set(updateData).where(and(eq(leads.id, leadId), eq(leads.tenantId, tenantId)));
+    await this.db.transaction(async (tx) => {
+      await tx.update(leads).set(updateData).where(and(eq(leads.id, leadId), eq(leads.tenantId, tenantId)));
+
+      if (existing.statusId !== statusId) {
+        await tx.insert(leadActivities).values({
+          id: randomUUID(),
+          tenantId,
+          leadId,
+          type: 'status_change',
+          title: 'Pipeline stage changed',
+          note: null,
+          metadata: {
+            fromStatusId: existing.statusId,
+            toStatusId: statusId
+          },
+          happenedAt: now,
+          nextFollowUpAt: null,
+          createdByUserId: null,
+          createdAt: now
+        });
+      }
+    });
 
     return this.getLead(tenantId, leadId);
   }

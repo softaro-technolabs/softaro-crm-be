@@ -140,6 +140,9 @@ export class MigrationService {
         } else {
           // Log warning but don't fail server startup
           // User can run migrations manually if needed
+          if (errorOutput.trim().length > 0) {
+            this.logger.warn(errorOutput.trim());
+          }
           this.logger.warn(
             `drizzle-kit push:pg exited with code ${code}. ` +
             'Schema changes may not have been applied. Check logs above for details. ' +
