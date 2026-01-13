@@ -192,6 +192,60 @@ export class MigrationService {
         } else {
           this.logger.debug('leads table or kanban_position column does not exist yet, will be created by drizzle-kit');
         }
+
+        // Ensure lead_activities table exists (production-safe even if drizzle-kit isn't available)
+        const leadActivitiesCheck = await client.query(`
+          SELECT to_regclass('public.lead_activities') as regclass
+        `);
+        const leadActivitiesExists = leadActivitiesCheck.rows?.[0]?.regclass !== null;
+        if (!leadActivitiesExists) {
+          this.logger.log('Creating lead_activities table...');
+
+          // Create enum type if it doesn't exist
+          await client.query(`
+            DO $$
+            BEGIN
+              IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'lead_activity_type') THEN
+                CREATE TYPE "lead_activity_type" AS ENUM ('call','whatsapp','email','meeting','note','status_change');
+              END IF;
+            END $$;
+          `);
+
+          // Create table
+          await client.query(`
+            CREATE TABLE IF NOT EXISTS "lead_activities" (
+              "id" varchar(36) PRIMARY KEY,
+              "tenant_id" varchar(36) NOT NULL,
+              "lead_id" varchar(36) NOT NULL,
+              "type" "lead_activity_type" NOT NULL,
+              "title" varchar(255),
+              "note" varchar(2000),
+              "metadata" jsonb,
+              "happened_at" timestamptz NOT NULL DEFAULT now(),
+              "next_follow_up_at" timestamptz,
+              "created_by_user_id" varchar(36),
+              "created_at" timestamptz NOT NULL DEFAULT now()
+            );
+          `);
+
+          // Indexes
+          await client.query(`
+            CREATE INDEX IF NOT EXISTS "lead_activities_tenant_lead_time_idx"
+            ON "lead_activities" ("tenant_id","lead_id","happened_at");
+          `);
+          await client.query(`
+            CREATE INDEX IF NOT EXISTS "lead_activities_lead_idx"
+            ON "lead_activities" ("lead_id");
+          `);
+          await client.query(`
+            CREATE INDEX IF NOT EXISTS "lead_activities_tenant_next_follow_up_idx"
+            ON "lead_activities" ("tenant_id","next_follow_up_at");
+          `);
+
+          this.logger.log('✓ lead_activities table created');
+        } else {
+          this.logger.debug('lead_activities table already exists');
+        }
       } finally {
         client.release();
       }
