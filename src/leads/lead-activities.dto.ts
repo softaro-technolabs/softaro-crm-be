@@ -2,7 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { IsBoolean, IsIn, IsInt, IsOptional, IsPositive, IsString, IsUUID, Max, MaxLength } from 'class-validator';
 
-export const LEAD_ACTIVITY_TYPES = ['call', 'whatsapp', 'email', 'meeting', 'note', 'status_change'] as const;
+export const LEAD_ACTIVITY_TYPES = ['call', 'whatsapp', 'email', 'meeting', 'task', 'note', 'status_change'] as const;
 export type LeadActivityType = (typeof LEAD_ACTIVITY_TYPES)[number];
 
 const CONTACT_TYPES: LeadActivityType[] = ['call', 'whatsapp', 'email', 'meeting'];
@@ -125,6 +125,7 @@ export class LeadFollowUpsQueryDto {
   @Max(24 * 365)
   withinHours?: number;
 }
+
 
 
 

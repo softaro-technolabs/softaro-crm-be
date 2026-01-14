@@ -206,7 +206,7 @@ export class MigrationService {
             DO $$
             BEGIN
               IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'lead_activity_type') THEN
-                CREATE TYPE "lead_activity_type" AS ENUM ('call','whatsapp','email','meeting','note','status_change');
+                CREATE TYPE "lead_activity_type" AS ENUM ('call','whatsapp','email','meeting','task','note','status_change');
               END IF;
             END $$;
           `);
@@ -245,6 +245,89 @@ export class MigrationService {
           this.logger.log('✓ lead_activities table created');
         } else {
           this.logger.debug('lead_activities table already exists');
+        }
+
+        // Ensure enum has 'task' value (safe for existing databases)
+        await client.query(`
+          DO $$
+          BEGIN
+            IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'lead_activity_type') THEN
+              IF NOT EXISTS (
+                SELECT 1
+                FROM pg_enum e
+                JOIN pg_type t ON t.oid = e.enumtypid
+                WHERE t.typname = 'lead_activity_type' AND e.enumlabel = 'task'
+              ) THEN
+                ALTER TYPE "lead_activity_type" ADD VALUE 'task';
+              END IF;
+            END IF;
+          END $$;
+        `);
+
+        // Ensure lead_tasks table exists
+        const leadTasksCheck = await client.query(`
+          SELECT to_regclass('public.lead_tasks') as regclass
+        `);
+        const leadTasksExists = leadTasksCheck.rows?.[0]?.regclass !== null;
+        if (!leadTasksExists) {
+          this.logger.log('Creating lead_tasks table...');
+
+          // Enums
+          await client.query(`
+            DO $$
+            BEGIN
+              IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'lead_task_status') THEN
+                CREATE TYPE "lead_task_status" AS ENUM ('open','in_progress','done','cancelled');
+              END IF;
+              IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'lead_task_priority') THEN
+                CREATE TYPE "lead_task_priority" AS ENUM ('low','medium','high','urgent');
+              END IF;
+            END $$;
+          `);
+
+          // Table
+          await client.query(`
+            CREATE TABLE IF NOT EXISTS "lead_tasks" (
+              "id" varchar(36) PRIMARY KEY,
+              "tenant_id" varchar(36) NOT NULL,
+              "lead_id" varchar(36) NOT NULL,
+              "title" varchar(255) NOT NULL,
+              "description" varchar(2000),
+              "status" "lead_task_status" NOT NULL DEFAULT 'open',
+              "priority" "lead_task_priority" NOT NULL DEFAULT 'medium',
+              "due_at" timestamptz,
+              "reminder_at" timestamptz,
+              "is_archived" boolean NOT NULL DEFAULT false,
+              "metadata" jsonb,
+              "assigned_to_user_id" varchar(36),
+              "created_by_user_id" varchar(36),
+              "completed_at" timestamptz,
+              "created_at" timestamptz NOT NULL DEFAULT now(),
+              "updated_at" timestamptz NOT NULL DEFAULT now()
+            );
+          `);
+
+          // Indexes
+          await client.query(`
+            CREATE INDEX IF NOT EXISTS "lead_tasks_tenant_lead_idx"
+            ON "lead_tasks" ("tenant_id","lead_id");
+          `);
+          await client.query(`
+            CREATE INDEX IF NOT EXISTS "lead_tasks_tenant_assigned_idx"
+            ON "lead_tasks" ("tenant_id","assigned_to_user_id","status");
+          `);
+          await client.query(`
+            CREATE INDEX IF NOT EXISTS "lead_tasks_tenant_due_idx"
+            ON "lead_tasks" ("tenant_id","status","due_at");
+          `);
+          await client.query(`
+            CREATE INDEX IF NOT EXISTS "lead_tasks_lead_idx"
+            ON "lead_tasks" ("lead_id");
+          `);
+
+          this.logger.log('✓ lead_tasks table created');
+        } else {
+          this.logger.debug('lead_tasks table already exists');
         }
       } finally {
         client.release();

@@ -2,18 +2,18 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsEmail, IsOptional, IsString, MinLength } from 'class-validator';
 
 export class LoginDto {
-  @ApiProperty({ example: 'jane.doe@example.com' })
+  @ApiProperty({ example: 'admin@aksharrealty.com' })
   @IsEmail()
   email!: string;
 
-  @ApiProperty({ minLength: 8, example: 'StrongPass!123' })
+  @ApiProperty({ minLength: 8, example: 'Akshar@123' })
   @IsString()
   @MinLength(8)
   password!: string;
 
   @ApiPropertyOptional({
     description: 'Tenant slug or UUID. Optional for super admin (can login without it). Required for normal users.',
-    example: 'acme'
+    example: 'akshar-realty'
   })
   @IsOptional()
   @IsString()

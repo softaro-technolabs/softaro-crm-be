@@ -53,7 +53,8 @@ export default defineConfig({
     'lead_assignment_settings',
     'lead_assignment_agents',
     'lead_assignment_logs',
-    'lead_activities'
+    'lead_activities',
+    'lead_tasks'
   ],
 });
 

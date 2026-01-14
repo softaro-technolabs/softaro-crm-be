@@ -11,6 +11,9 @@ import { LeadPublicController } from './lead-public.controller';
 import { LeadFollowUpsController } from './lead-followups.controller';
 import { LeadsController } from './leads.controller';
 import { LeadsService } from './leads.service';
+import { LeadTasksController } from './lead-tasks.controller';
+import { LeadTasksService } from './lead-tasks.service';
+import { TenantTasksController } from './tenant-tasks.controller';
 
 @Module({
   imports: [DatabaseModule, CommonModule, UsersModule],
@@ -19,10 +22,12 @@ import { LeadsService } from './leads.service';
     LeadAssignmentController,
     LeadPublicController,
     LeadActivitiesController,
-    LeadFollowUpsController
+    LeadFollowUpsController,
+    LeadTasksController,
+    TenantTasksController
   ],
-  providers: [LeadsService, LeadAssignmentService, LeadActivitiesService],
-  exports: [LeadsService, LeadAssignmentService, LeadActivitiesService]
+  providers: [LeadsService, LeadAssignmentService, LeadActivitiesService, LeadTasksService],
+  exports: [LeadsService, LeadAssignmentService, LeadActivitiesService, LeadTasksService]
 })
 export class LeadsModule {}
 

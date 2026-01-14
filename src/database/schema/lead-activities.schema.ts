@@ -5,6 +5,7 @@ export const leadActivityTypeEnum = pgEnum('lead_activity_type', [
   'whatsapp',
   'email',
   'meeting',
+  'task',
   'note',
   'status_change'
 ]);
@@ -30,6 +31,7 @@ export const leadActivities = pgTable(
     tenantNextFollowUpIdx: index('lead_activities_tenant_next_follow_up_idx').on(table.tenantId, table.nextFollowUpAt)
   })
 );
+
 
 
 

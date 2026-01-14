@@ -8,6 +8,7 @@ export * from './modules.schema';
 export * from './tenant-modules.schema';
 export * from './leads.schema';
 export * from './lead-activities.schema';
+export * from './lead-tasks.schema';
 
 
 
