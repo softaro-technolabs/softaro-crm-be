@@ -1,19 +1,22 @@
-import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
+import { Module } from '@nestjs/common';
+import type { MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 
-import configuration from './config/configuration';
 import { AuthModule } from './auth/auth.module';
 import { CommonModule } from './common/common.module';
 import { TenantMiddleware } from './common/middleware/tenant.middleware';
+import configuration from './config/configuration';
+import { DatabaseSyncService } from './database/database-sync.service';
 import { DatabaseModule } from './database/database.module';
 import { MigrationService } from './database/migration.service';
-import { DatabaseSyncService } from './database/database-sync.service';
-import { TenantsModule } from './tenants/tenants.module';
-import { RolesModule } from './roles/roles.module';
-import { UsersModule } from './users/users.module';
-import { PermissionsModule } from './permissions/permissions.module';
-import { ModulesModule } from './modules/modules.module';
 import { LeadsModule } from './leads/leads.module';
+import { KeepAliveModule } from './keep-alive/keep-alive.module';
+import { ModulesModule } from './modules/modules.module';
+import { PermissionsModule } from './permissions/permissions.module';
+import { PropertiesModule } from './properties/properties.module';
+import { RolesModule } from './roles/roles.module';
+import { TenantsModule } from './tenants/tenants.module';
+import { UsersModule } from './users/users.module';
 
 @Module({
   imports: [
@@ -30,7 +33,9 @@ import { LeadsModule } from './leads/leads.module';
     UsersModule,
     PermissionsModule,
     ModulesModule,
-    LeadsModule
+    LeadsModule,
+    PropertiesModule,
+    KeepAliveModule
   ],
   providers: [MigrationService, DatabaseSyncService, TenantMiddleware]
 })

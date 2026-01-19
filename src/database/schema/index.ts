@@ -9,6 +9,7 @@ export * from './tenant-modules.schema';
 export * from './leads.schema';
 export * from './lead-activities.schema';
 export * from './lead-tasks.schema';
+export * from './properties.schema';
 
 
 

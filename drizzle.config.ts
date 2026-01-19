@@ -54,7 +54,16 @@ export default defineConfig({
     'lead_assignment_agents',
     'lead_assignment_logs',
     'lead_activities',
-    'lead_tasks'
+    'lead_tasks',
+    'property_entities',
+    'property_units',
+    'property_locations',
+    'property_attributes',
+    'property_attribute_values',
+    'property_media',
+    'property_status_logs',
+    'lead_property_interests',
+    'property_pricing_breakups'
   ],
 });
 

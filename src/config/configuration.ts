@@ -21,7 +21,12 @@ export default () => ({
     hashRounds: Number(env.HASH_ROUNDS ?? 12)
   },
   features: {
-    autoMigrate: (env.AUTO_MIGRATE ?? '1') !== '0'
+    autoMigrate: (env.AUTO_MIGRATE ?? '1') !== '0',
+    keepAlive: {
+      enabled: (env.KEEP_ALIVE_ENABLED ?? '1') !== '0',
+      intervalMinutes: Number(env.KEEP_ALIVE_INTERVAL_MINUTES ?? 10),
+      pingUrl: env.KEEP_ALIVE_PING_URL ?? ''
+    }
   }
 });
 
