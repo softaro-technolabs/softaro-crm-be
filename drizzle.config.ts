@@ -34,7 +34,15 @@ export default defineConfig({
   out: './src/database/migrations',
   dbCredentials,
   verbose: true,
-  strict: true,
+  /**
+   * IMPORTANT:
+   * - drizzle-kit v0.20.x prompts for confirmation when `strict: true`
+   * - Render (and other CI/PaaS) are non-interactive and will hang before the app binds to PORT
+   *
+   * Default to non-interactive. You can enable prompts locally by setting:
+   * DRIZZLE_STRICT=1
+   */
+  strict: process.env.DRIZZLE_STRICT === '1',
   // Only work with public schema, ignore system schemas (information_schema, pg_catalog, etc.)
   // This prevents drizzle-kit from trying to drop system tables
   schemaFilter: ['public'],
