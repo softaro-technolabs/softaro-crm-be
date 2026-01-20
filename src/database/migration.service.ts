@@ -1,5 +1,8 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { mkdirSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import { Pool } from 'pg';
 import { spawn } from 'child_process';
 
@@ -49,6 +52,28 @@ export class MigrationService {
       // Set CI=true to make tools non-interactive
       CI: 'true'
     };
+
+    /**
+     * drizzle-kit tries to create a "drizzle-studio" folder under the user's home
+     * directory (e.g. ~/Library/Application Support/drizzle-studio on macOS).
+     *
+     * In restricted environments (some PaaS / sandboxes), that path can be non-writable
+     * which makes drizzle-kit fail and then tables don't get created.
+     *
+     * Fix: point HOME/XDG dirs to a writable temp location for the drizzle-kit child process.
+     */
+    const drizzleHome = join(tmpdir(), 'softaro-crm', 'drizzle-home');
+    try {
+      mkdirSync(drizzleHome, { recursive: true });
+    } catch {
+      // ignore - drizzle-kit will fail with a clear error if still not writable
+    }
+    envVars.HOME = drizzleHome;
+    envVars.USERPROFILE = drizzleHome;
+    envVars.XDG_DATA_HOME = drizzleHome;
+    envVars.XDG_CONFIG_HOME = drizzleHome;
+    envVars.XDG_CACHE_HOME = drizzleHome;
+    envVars.XDG_STATE_HOME = drizzleHome;
 
     // If DATABASE_URL is provided, use it (backward compatibility)
     if (databaseUrl) {
