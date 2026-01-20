@@ -41,8 +41,15 @@ export class MigrationService {
 
     const isWindows = process.platform === 'win32';
     const command = isWindows ? 'npx' : 'npx';
-    // Use --force flag to skip interactive prompts (available in drizzle-kit 0.18.0+)
-    const args = ['drizzle-kit', 'push:pg', '--force'];
+    /**
+     * NOTE: drizzle-kit v0.20.x (used in this repo) does not support `--force` on `push:pg`.
+     * It will exit with "unknown option '--force'" and no schema changes will be applied.
+     *
+     * We intentionally keep this non-interactive (`stdin: ignore`, `CI=true`).
+     * For non-destructive changes (like creating new tables), drizzle-kit applies changes without prompts.
+     * For destructive changes, drizzle-kit will prompt; in that case, prefer running migrations manually.
+     */
+    const args = ['drizzle-kit', 'push:pg'];
 
     this.logger.log('Checking for database schema changes...');
 
@@ -93,7 +100,7 @@ export class MigrationService {
       let errorOutput = '';
 
       const child = spawn(command, args, {
-        stdio: ['ignore', 'pipe', 'pipe'], // Don't need stdin with --force flag
+        stdio: ['ignore', 'pipe', 'pipe'],
         env: envVars,
         shell: isWindows
       });
