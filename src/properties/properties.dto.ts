@@ -41,6 +41,60 @@ export type PropertyMediaType = (typeof PROPERTY_MEDIA_TYPES)[number];
 export const LEAD_INTEREST_LEVELS = ['hot', 'warm', 'cold'] as const;
 export type LeadInterestLevel = (typeof LEAD_INTEREST_LEVELS)[number];
 
+export class UpsertPropertyLocationDto {
+  @ApiPropertyOptional({ maxLength: 500 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  addressLine?: string;
+
+  @ApiPropertyOptional({ maxLength: 255 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  area?: string;
+
+  @ApiPropertyOptional({ maxLength: 120 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  city?: string;
+
+  @ApiPropertyOptional({ maxLength: 120 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  state?: string;
+
+  @ApiPropertyOptional({ maxLength: 120 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  country?: string;
+
+  @ApiPropertyOptional({ maxLength: 20 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  pincode?: string;
+
+  @ApiPropertyOptional({ type: Number, example: 12.9716 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(-90)
+  @Max(90)
+  latitude?: number;
+
+  @ApiPropertyOptional({ type: Number, example: 77.5946 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(-180)
+  @Max(180)
+  longitude?: number;
+}
+
 export class PropertyEntityListQueryDto {
   @ApiPropertyOptional({ enum: PROPERTY_ENTITY_TYPES, example: 'project' })
   @IsOptional()
@@ -246,60 +300,6 @@ export class UpdatePropertyUnitStatusDto {
   @IsString()
   @MaxLength(2000)
   remarks?: string;
-}
-
-export class UpsertPropertyLocationDto {
-  @ApiPropertyOptional({ maxLength: 500 })
-  @IsOptional()
-  @IsString()
-  @MaxLength(500)
-  addressLine?: string;
-
-  @ApiPropertyOptional({ maxLength: 255 })
-  @IsOptional()
-  @IsString()
-  @MaxLength(255)
-  area?: string;
-
-  @ApiPropertyOptional({ maxLength: 120 })
-  @IsOptional()
-  @IsString()
-  @MaxLength(120)
-  city?: string;
-
-  @ApiPropertyOptional({ maxLength: 120 })
-  @IsOptional()
-  @IsString()
-  @MaxLength(120)
-  state?: string;
-
-  @ApiPropertyOptional({ maxLength: 120 })
-  @IsOptional()
-  @IsString()
-  @MaxLength(120)
-  country?: string;
-
-  @ApiPropertyOptional({ maxLength: 20 })
-  @IsOptional()
-  @IsString()
-  @MaxLength(20)
-  pincode?: string;
-
-  @ApiPropertyOptional({ type: Number, example: 12.9716 })
-  @IsOptional()
-  @Type(() => Number)
-  @IsNumber()
-  @Min(-90)
-  @Max(90)
-  latitude?: number;
-
-  @ApiPropertyOptional({ type: Number, example: 77.5946 })
-  @IsOptional()
-  @Type(() => Number)
-  @IsNumber()
-  @Min(-180)
-  @Max(180)
-  longitude?: number;
 }
 
 export class CreatePropertyAttributeDto {
