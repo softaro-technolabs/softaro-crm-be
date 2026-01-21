@@ -109,6 +109,12 @@ export class CreatePropertyEntityDto {
   @IsString()
   @MaxLength(2000)
   description?: string;
+
+  @ApiPropertyOptional({ description: 'Optional location info to create with entity', type: () => UpsertPropertyLocationDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => UpsertPropertyLocationDto)
+  location?: UpsertPropertyLocationDto;
 }
 
 export class UpdatePropertyEntityDto {
@@ -133,6 +139,12 @@ export class UpdatePropertyEntityDto {
   @IsOptional()
   @IsUUID(4)
   parentId?: string;
+
+  @ApiPropertyOptional({ description: 'Optional location info to upsert with entity', type: () => UpsertPropertyLocationDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => UpsertPropertyLocationDto)
+  location?: UpsertPropertyLocationDto;
 }
 
 export class CreatePropertyUnitDto {

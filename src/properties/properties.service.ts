@@ -105,17 +105,35 @@ export class PropertiesService {
 
     const id = randomUUID();
     const now = new Date();
-    await this.db.insert(propertyEntities).values({
-      id,
-      tenantId,
-      parentId: dto.parentId ?? null,
-      entityType: dto.entityType,
-      name: dto.name,
-      status: dto.status ?? 'active',
-      description: dto.description ?? null,
-      createdByUserId: options?.createdByUserId ?? null,
-      createdAt: now,
-      updatedAt: now
+    await this.db.transaction(async (tx) => {
+      await tx.insert(propertyEntities).values({
+        id,
+        tenantId,
+        parentId: dto.parentId ?? null,
+        entityType: dto.entityType,
+        name: dto.name,
+        status: dto.status ?? 'active',
+        description: dto.description ?? null,
+        createdByUserId: options?.createdByUserId ?? null,
+        createdAt: now,
+        updatedAt: now
+      });
+
+      if (dto.location) {
+        await tx.insert(propertyLocations).values({
+          id: randomUUID(),
+          tenantId,
+          entityId: id,
+          addressLine: dto.location.addressLine ?? null,
+          area: dto.location.area ?? null,
+          city: dto.location.city ?? null,
+          state: dto.location.state ?? null,
+          country: dto.location.country ?? null,
+          pincode: dto.location.pincode ?? null,
+          latitude: dto.location.latitude !== undefined ? dto.location.latitude.toString() : null,
+          longitude: dto.location.longitude !== undefined ? dto.location.longitude.toString() : null
+        });
+      }
     });
     return this.getEntity(tenantId, id);
   }
@@ -139,11 +157,17 @@ export class PropertiesService {
     if (dto.parentId !== undefined) updateData.parentId = dto.parentId ?? null;
 
     if (Object.keys(updateData).length === 0) {
+      if (dto.location) {
+        await this.upsertEntityLocation(tenantId, entityId, dto.location);
+      }
       return this.getEntity(tenantId, entityId);
     }
 
     updateData.updatedAt = new Date();
     await this.db.update(propertyEntities).set(updateData).where(and(eq(propertyEntities.tenantId, tenantId), eq(propertyEntities.id, entityId)));
+    if (dto.location) {
+      await this.upsertEntityLocation(tenantId, entityId, dto.location);
+    }
     return this.getEntity(tenantId, entityId);
   }
 
