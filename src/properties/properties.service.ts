@@ -95,7 +95,13 @@ export class PropertiesService {
       .limit(1);
 
     if (!row) throw new NotFoundException('Property entity not found');
-    return row;
+
+    const [attributes, media] = await Promise.all([
+      this.listEntityAttributeValues(tenantId, entityId),
+      this.listMedia(tenantId, { entityId })
+    ]);
+
+    return { ...row, attributes, media };
   }
 
   async createEntity(tenantId: string, dto: CreatePropertyEntityDto, options?: { createdByUserId?: string | null }) {
