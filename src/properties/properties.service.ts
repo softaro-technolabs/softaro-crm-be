@@ -83,7 +83,6 @@ export class PropertiesService {
       meta: { total, page, limit, pages: Math.ceil(total / limit) || 1 }
     };
   }
-
   async getEntity(tenantId: string, entityId: string) {
     const [row] = await this.db
       .select({
@@ -102,12 +101,20 @@ export class PropertiesService {
 
     if (!row) throw new NotFoundException('Property entity not found');
 
-    const [attributes, media] = await Promise.all([
+    const [attributes, media, parentRow] = await Promise.all([
       this.listEntityAttributeValues(tenantId, entityId),
-      this.listMedia(tenantId, { entityId })
+      this.listMedia(tenantId, { entityId }),
+      row.entity.parentId
+        ? this.db
+          .select({ id: propertyEntities.id, name: propertyEntities.name })
+          .from(propertyEntities)
+          .where(and(eq(propertyEntities.tenantId, tenantId), eq(propertyEntities.id, row.entity.parentId)))
+          .limit(1)
+          .then((res) => res[0] || null)
+        : Promise.resolve(null)
     ]);
 
-    return { ...row, attributes, media };
+    return { ...row, attributes, media, parent: parentRow };
   }
 
   async createEntity(tenantId: string, dto: CreatePropertyEntityDto, options?: { createdByUserId?: string | null }) {
