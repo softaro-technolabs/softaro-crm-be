@@ -14,7 +14,7 @@ export class AppwriteStorageService {
     constructor() {
         this.endpoint = process.env.APPWRITE_ENDPOINT || 'https://fra.cloud.appwrite.io/v1';
         this.projectId = process.env.APPWRITE_PROJECT_ID || '6982eb06003acf15de7d';
-        this.apiKey = process.env.APPWRITE_API_KEY || '4a07df67cf37a01916b7d798be8d913f0e0adf022b6c61487230d914c1690038ca1294ef83a012d8f7414d56b9b047bb98a339de70ff641b583220edb2c258be6b09a004320f9d59a5dc5439c96accc72564d905e892b5aedc7a923f600aecd3be6bb82d817d753bd657ae1b87425b23202eab03e6e3e9492eb7e53b4b5f4d99';
+        this.apiKey = process.env.APPWRITE_API_KEY || 'standard_9d74e720772ce6eac44da4a3de3d81ee0145e8f2b3b441754c99d8fa796516cbb6c2de9baf6f23f6e81c99a18386e665fab2c0da206f63ec0dd2050259e6fcef6111663796c7874daa0a35c2696799d5e061dcbd6bc74ada221166f604bd1e04c2db9ab8fcfb531994eddcff89915f3370179c7c78549676f1d694c0eef15566';
         this.bucketId = process.env.APPWRITE_BUCKET_ID || '6982eb24001968dc38d4';
 
         if (!this.endpoint || !this.projectId || !this.apiKey || !this.bucketId) {
