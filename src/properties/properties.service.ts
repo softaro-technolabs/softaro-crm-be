@@ -16,7 +16,8 @@ import {
   propertyMedia,
   propertyPricingBreakups,
   propertyStatusLogs,
-  propertyUnits
+  propertyUnits,
+  users
 } from '../database/schema';
 
 import type {
@@ -87,10 +88,15 @@ export class PropertiesService {
     const [row] = await this.db
       .select({
         entity: propertyEntities,
-        location: propertyLocations
+        location: propertyLocations,
+        createdBy: {
+          id: users.id,
+          name: users.name
+        }
       })
       .from(propertyEntities)
       .leftJoin(propertyLocations, and(eq(propertyLocations.entityId, propertyEntities.id), eq(propertyLocations.tenantId, tenantId)))
+      .leftJoin(users, eq(propertyEntities.createdByUserId, users.id))
       .where(and(eq(propertyEntities.tenantId, tenantId), eq(propertyEntities.id, entityId)))
       .limit(1);
 
