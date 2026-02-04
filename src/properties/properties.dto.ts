@@ -213,6 +213,20 @@ export class UpdatePropertyEntityDto {
   @ValidateNested()
   @Type(() => UpsertPropertyLocationDto)
   location?: UpsertPropertyLocationDto;
+
+  @ApiPropertyOptional({ description: 'Optional attribute values', type: () => [UpsertAttributeValueItemDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => UpsertAttributeValueItemDto)
+  attributes?: UpsertAttributeValueItemDto[];
+
+  @ApiPropertyOptional({ description: 'Optional media items (Upsert specific)', type: () => [UpdatePropertyMediaNestedDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => UpdatePropertyMediaNestedDto)
+  media?: UpdatePropertyMediaNestedDto[];
 }
 
 export class CreatePropertyUnitDto {
@@ -435,6 +449,35 @@ export class CreatePropertyMediaNestedDto {
   isPublic?: boolean;
 
   @ApiPropertyOptional({ default: 0 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  sortOrder?: number;
+}
+
+export class UpdatePropertyMediaNestedDto {
+  @ApiPropertyOptional({ format: 'uuid', description: 'If provided, existing media updated. If missing, new media created.' })
+  @IsOptional()
+  @IsUUID(4)
+  id?: string;
+
+  @ApiPropertyOptional({ enum: PROPERTY_MEDIA_TYPES })
+  @IsOptional()
+  @IsIn(PROPERTY_MEDIA_TYPES)
+  mediaType?: PropertyMediaType;
+
+  @ApiPropertyOptional({ maxLength: 2000 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  fileUrl?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  isPublic?: boolean;
+
+  @ApiPropertyOptional()
   @IsOptional()
   @Type(() => Number)
   @IsInt()

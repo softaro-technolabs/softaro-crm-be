@@ -206,18 +206,52 @@ export class PropertiesService {
     if (dto.description !== undefined) updateData.description = dto.description ?? null;
     if (dto.parentId !== undefined) updateData.parentId = dto.parentId ?? null;
 
-    if (Object.keys(updateData).length === 0) {
-      if (dto.location) {
-        await this.upsertEntityLocation(tenantId, entityId, dto.location);
-      }
-      return this.getEntity(tenantId, entityId);
+    if (Object.keys(updateData).length > 0) {
+      updateData.updatedAt = new Date();
+      await this.db.update(propertyEntities).set(updateData).where(and(eq(propertyEntities.tenantId, tenantId), eq(propertyEntities.id, entityId)));
     }
 
-    updateData.updatedAt = new Date();
-    await this.db.update(propertyEntities).set(updateData).where(and(eq(propertyEntities.tenantId, tenantId), eq(propertyEntities.id, entityId)));
     if (dto.location) {
       await this.upsertEntityLocation(tenantId, entityId, dto.location);
     }
+
+    if (dto.attributes && dto.attributes.length > 0) {
+      await this.upsertEntityAttributeValues(tenantId, entityId, { values: dto.attributes });
+    }
+
+    if (dto.media && dto.media.length > 0) {
+      for (const item of dto.media) {
+        if (item.id) {
+          // Update existing media (Only metadata, not fileUrl usually, but allowing fileUrl for flexibility)
+          const mediaUpdate: any = {};
+          if (item.mediaType) mediaUpdate.mediaType = item.mediaType;
+          if (item.fileUrl) mediaUpdate.fileUrl = item.fileUrl;
+          if (item.isPublic !== undefined) mediaUpdate.isPublic = item.isPublic;
+          if (item.sortOrder !== undefined) mediaUpdate.sortOrder = item.sortOrder;
+
+          if (Object.keys(mediaUpdate).length > 0) {
+            await this.db.update(propertyMedia)
+              .set(mediaUpdate)
+              .where(and(eq(propertyMedia.tenantId, tenantId), eq(propertyMedia.id, item.id), eq(propertyMedia.entityId, entityId)));
+          }
+        } else {
+          // Create new media
+          if (!item.mediaType || !item.fileUrl) continue; // Skip invalid new items
+          await this.db.insert(propertyMedia).values({
+            id: randomUUID(),
+            tenantId,
+            entityId,
+            unitId: null,
+            mediaType: item.mediaType,
+            fileUrl: item.fileUrl,
+            isPublic: item.isPublic ?? false,
+            sortOrder: item.sortOrder ?? 0,
+            createdAt: new Date()
+          });
+        }
+      }
+    }
+
     return this.getEntity(tenantId, entityId);
   }
 
