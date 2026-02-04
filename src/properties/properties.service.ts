@@ -42,7 +42,7 @@ import type {
 
 @Injectable()
 export class PropertiesService {
-  constructor(@Inject(DRIZZLE) private readonly db: DrizzleDatabase) {}
+  constructor(@Inject(DRIZZLE) private readonly db: DrizzleDatabase) { }
 
   async listEntities(tenantId: string, query: PropertyEntityListQueryDto) {
     const limit = query.limit ?? 50;
@@ -103,6 +103,19 @@ export class PropertiesService {
       await this.ensureEntityExists(tenantId, dto.parentId);
     }
 
+    // Validate attributes if present
+    if (dto.attributes && dto.attributes.length > 0) {
+      const attributeIds = Array.from(new Set(dto.attributes.map((v) => v.attributeId)));
+      const attrs = await this.db
+        .select()
+        .from(propertyAttributes)
+        .where(and(eq(propertyAttributes.tenantId, tenantId), eq(propertyAttributes.scope, 'entity')));
+      const allowed = new Map(attrs.map((a) => [a.id, a]));
+      for (const id of attributeIds) {
+        if (!allowed.has(id)) throw new BadRequestException('One or more attributes are invalid for entity scope');
+      }
+    }
+
     const id = randomUUID();
     const now = new Date();
     await this.db.transaction(async (tx) => {
@@ -133,6 +146,37 @@ export class PropertiesService {
           latitude: dto.location.latitude !== undefined ? dto.location.latitude.toString() : null,
           longitude: dto.location.longitude !== undefined ? dto.location.longitude.toString() : null
         });
+      }
+
+      if (dto.attributes && dto.attributes.length > 0) {
+        for (const item of dto.attributes) {
+          if (item.value !== null && item.value !== undefined) {
+            await tx.insert(propertyAttributeValues).values({
+              id: randomUUID(),
+              tenantId,
+              attributeId: item.attributeId,
+              entityId: id,
+              unitId: null,
+              value: item.value
+            });
+          }
+        }
+      }
+
+      if (dto.media && dto.media.length > 0) {
+        for (const item of dto.media) {
+          await tx.insert(propertyMedia).values({
+            id: randomUUID(),
+            tenantId,
+            entityId: id,
+            unitId: null, // Media on creation is always for the entity
+            mediaType: item.mediaType,
+            fileUrl: item.fileUrl,
+            isPublic: item.isPublic ?? false,
+            sortOrder: item.sortOrder ?? 0,
+            createdAt: now
+          });
+        }
       }
     });
     return this.getEntity(tenantId, id);

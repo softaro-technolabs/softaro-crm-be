@@ -169,6 +169,20 @@ export class CreatePropertyEntityDto {
   @ValidateNested()
   @Type(() => UpsertPropertyLocationDto)
   location?: UpsertPropertyLocationDto;
+
+  @ApiPropertyOptional({ description: 'Optional attribute values', type: () => [UpsertAttributeValueItemDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => UpsertAttributeValueItemDto)
+  attributes?: UpsertAttributeValueItemDto[];
+
+  @ApiPropertyOptional({ description: 'Optional media items', type: () => [CreatePropertyMediaNestedDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreatePropertyMediaNestedDto)
+  media?: CreatePropertyMediaNestedDto[];
 }
 
 export class UpdatePropertyEntityDto {
@@ -344,11 +358,11 @@ export class PropertyAttributeListQueryDto {
 }
 
 export class UpsertAttributeValueItemDto {
-  @ApiProperty({ format: 'uuid' })
+  @ApiProperty({ format: 'uuid', example: 'd3b07384-d9a3-41bb-9467-93c41123f99f' })
   @IsUUID(4)
   attributeId!: string;
 
-  @ApiPropertyOptional({ description: 'If null/undefined, value will be deleted', example: '3' })
+  @ApiPropertyOptional({ description: 'If null/undefined, value will be deleted', example: 'East Facing' })
   @IsOptional()
   @IsString()
   @MaxLength(2000)
@@ -356,7 +370,14 @@ export class UpsertAttributeValueItemDto {
 }
 
 export class UpsertAttributeValuesDto {
-  @ApiProperty({ type: 'array', items: { $ref: '#/components/schemas/UpsertAttributeValueItemDto' } })
+  @ApiProperty({
+    type: 'array',
+    items: { $ref: '#/components/schemas/UpsertAttributeValueItemDto' },
+    example: [
+      { attributeId: 'd3b07384-d9a3-41bb-9467-93c41123f99f', value: 'East Facing' },
+      { attributeId: 'a1b2c3d4-e5f6-7890-1234-567890abcdef', value: '3 BHK' }
+    ]
+  })
   @IsArray()
   @ArrayNotEmpty()
   @ArrayMaxSize(200)
@@ -375,6 +396,29 @@ export class CreatePropertyMediaDto {
   @IsUUID(4)
   unitId?: string;
 
+  @ApiProperty({ enum: PROPERTY_MEDIA_TYPES, example: 'image' })
+  @IsIn(PROPERTY_MEDIA_TYPES)
+  mediaType!: PropertyMediaType;
+
+  @ApiProperty({ maxLength: 2000, example: 'https://cdn.example.com/file.jpg' })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(2000)
+  fileUrl!: string;
+
+  @ApiPropertyOptional({ default: false })
+  @IsOptional()
+  @IsBoolean()
+  isPublic?: boolean;
+
+  @ApiPropertyOptional({ default: 0 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  sortOrder?: number;
+}
+
+export class CreatePropertyMediaNestedDto {
   @ApiProperty({ enum: PROPERTY_MEDIA_TYPES, example: 'image' })
   @IsIn(PROPERTY_MEDIA_TYPES)
   mediaType!: PropertyMediaType;
