@@ -15,7 +15,7 @@ export class MigrationService {
   constructor(
     private readonly configService: ConfigService,
     @Inject(POSTGRES_POOL) private readonly pool: Pool
-  ) {}
+  ) { }
 
   async push() {
     const autoMigrate = this.configService.get<boolean>('features.autoMigrate', true);
@@ -112,18 +112,18 @@ export class MigrationService {
       child.stdout?.on('data', (data) => {
         const text = data.toString();
         output += text;
-        
+
         // Check for system table warnings - if detected, log warning
-        if (text.includes('spatial_ref_sys') || 
-            text.includes('geography_columns') || 
-            text.includes('geometry_columns') || 
-            text.includes('pg_stat_statements') ||
-            text.includes('raster_columns')) {
+        if (text.includes('spatial_ref_sys') ||
+          text.includes('geography_columns') ||
+          text.includes('geometry_columns') ||
+          text.includes('pg_stat_statements') ||
+          text.includes('raster_columns')) {
           hasSystemTableWarning = true;
           this.logger.warn('⚠️  System tables detected in migration plan. This should not happen.');
           this.logger.warn('Please check drizzle.config.ts - system tables should be excluded.');
         }
-        
+
         // Log all output for visibility
         const lines = text.split('\n').filter((line: string) => line.trim());
         lines.forEach((line: string) => {
@@ -153,13 +153,13 @@ export class MigrationService {
       child.on('exit', (code) => {
         if (code === 0) {
           // Check if there were actual changes or if schema was already in sync
-          if (output.includes('No schema changes') || 
-              output.includes('No changes detected') ||
-              output.includes('schema is up to date')) {
+          if (output.includes('No schema changes') ||
+            output.includes('No changes detected') ||
+            output.includes('schema is up to date')) {
             this.logger.log('✓ Database schema is already in sync, no changes needed');
-          } else if (output.includes('Pushing changes') || 
-                     output.includes('Applied') ||
-                     output.includes('successfully')) {
+          } else if (output.includes('Pushing changes') ||
+            output.includes('Applied') ||
+            output.includes('successfully')) {
             if (hasSystemTableWarning) {
               this.logger.warn('⚠️  Migration completed but system tables were detected. Please review drizzle.config.ts');
             } else {
@@ -199,6 +199,40 @@ export class MigrationService {
 
       const client = await this.pool.connect();
       try {
+        // --- Permissions Refactor Cleanup (Automatic Handling) ---
+        // Check if old 'permissions' table exists but 'master_permissions' does not (implies rename/refactor)
+        const permissionsCheck = await client.query(`
+          SELECT to_regclass('public.permissions') as old_table,
+                 to_regclass('public.master_permissions') as new_table
+        `);
+
+        const oldPermissionsExists = permissionsCheck.rows[0]?.old_table !== null;
+        const newPermissionsExists = permissionsCheck.rows[0]?.new_table !== null;
+
+        if (oldPermissionsExists && !newPermissionsExists) {
+          this.logger.log('Detected old "permissions" table during refactor. Dropping it to allow clean creation of "master_permissions".');
+          // Drop old tables to avoid rename prompts and incompatible schema states
+          await client.query(`DROP TABLE IF EXISTS "permissions" CASCADE`);
+          // Also drop role_permissions to avoid inconsistencies as it depends on permissions
+          await client.query(`DROP TABLE IF EXISTS "role_permissions" CASCADE`);
+        } else {
+          // If role_permissions exists, check if it has the new 'module_slug' column
+          const rolePermsCheck = await client.query(`
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = 'role_permissions' 
+                AND column_name = 'module_slug'
+             `);
+
+          // If table exists but column is missing, drop it to allow recreation with not-null column
+          const rolePermsTableCheck = await client.query(`SELECT to_regclass('public.role_permissions') as table_exists`);
+          if (rolePermsTableCheck.rows[0]?.table_exists !== null && rolePermsCheck.rows.length === 0) {
+            this.logger.log('Detected outdated "role_permissions" table (missing module_slug). Dropping to allow clean recreation.');
+            await client.query(`DROP TABLE IF EXISTS "role_permissions" CASCADE`);
+          }
+        }
+        // ---------------------------------------------------------
+
         // Check if leads table exists and if kanban_position is integer
         const tableCheck = await client.query(`
           SELECT column_name, data_type 
