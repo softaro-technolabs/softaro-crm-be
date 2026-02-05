@@ -4,42 +4,36 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { PermissionsService } from './permissions.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { SuperAdminGuard } from '../auth/super-admin.guard';
-import { CreatePermissionDto, UpdatePermissionDto, GenerateModulePermissionsDto } from './permissions.dto';
+import { CreatePermissionDto, UpdatePermissionDto } from './permissions.dto';
 
 @ApiTags('Permissions')
 @Controller('permissions')
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class PermissionsController {
-  constructor(private readonly permissionsService: PermissionsService) {}
+  constructor(private readonly permissionsService: PermissionsService) { }
 
   @Post()
   @UseGuards(SuperAdminGuard)
-  @ApiOperation({ summary: 'Create a new permission (Super Admin only)' })
+  @ApiOperation({ summary: 'Create a new master permission (Super Admin only)' })
   async create(@Body() dto: CreatePermissionDto) {
     return await this.permissionsService.create(dto);
   }
 
   @Get()
-  @ApiOperation({ summary: 'List all available permissions with IDs' })
+  @ApiOperation({ summary: 'List all available master permissions' })
   async findAll() {
     return await this.permissionsService.getAll();
   }
 
-  @Get('codes')
-  @ApiOperation({ summary: 'List all available permission codes' })
-  async findAllCodes() {
-    return await this.permissionsService.getAllCodes();
-  }
-
-  @Get('module/:moduleSlug')
-  @ApiOperation({ summary: 'Get all permissions for a specific module' })
-  async findByModule(@Param('moduleSlug') moduleSlug: string) {
-    return await this.permissionsService.findByModuleSlug(moduleSlug);
+  @Get('actions')
+  @ApiOperation({ summary: 'List all available permission actions' })
+  async findAllActions() {
+    return await this.permissionsService.getAllActions();
   }
 
   @Get('role/:tenantId/:roleId')
-  @ApiOperation({ summary: 'Get permissions for a specific role' })
+  @ApiOperation({ summary: 'Get permissions for a specific role (returns module.action codes)' })
   async getRolePermissions(@Param('tenantId') tenantId: string, @Param('roleId') roleId: string) {
     return await this.permissionsService.getCodesForRole(tenantId, roleId);
   }
@@ -65,11 +59,12 @@ export class PermissionsController {
     return null;
   }
 
-  @Post('generate')
+  @Post('seed')
   @UseGuards(SuperAdminGuard)
-  @ApiOperation({ summary: 'Generate standard permissions for a module (Super Admin only)' })
-  async generateModulePermissions(@Body() dto: GenerateModulePermissionsDto) {
-    return await this.permissionsService.generateModulePermissions(dto.moduleSlug);
+  @ApiOperation({ summary: 'Seed standard permissions' })
+  async seed() {
+    await this.permissionsService.seedStandardPermissions();
+    return { success: true, message: 'Seeding initiated' };
   }
 }
 

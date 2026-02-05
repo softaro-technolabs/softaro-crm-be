@@ -9,7 +9,7 @@ import { CreateRoleDto, UpdateRoleDto } from './roles.dto';
 
 @Injectable()
 export class RolesService {
-  constructor(@Inject(DRIZZLE) private readonly db: DrizzleDatabase) {}
+  constructor(@Inject(DRIZZLE) private readonly db: DrizzleDatabase) { }
 
   async create(tenantId: string, dto: CreateRoleDto) {
     // Check if role with same name already exists in this tenant
@@ -27,8 +27,8 @@ export class RolesService {
     });
 
     // Assign permissions if provided
-    if (dto.permissionIds && dto.permissionIds.length > 0) {
-      await this.assignPermissions(tenantId, id, dto.permissionIds);
+    if (dto.permissions && dto.permissions.length > 0) {
+      await this.assignPermissions(tenantId, id, dto.permissions);
     }
 
     return this.findById(id);
@@ -58,38 +58,46 @@ export class RolesService {
     await this.db.update(roles).set(updateData).where(eq(roles.id, roleId));
 
     // Update permissions if provided
-    if (dto.permissionIds !== undefined) {
+    if (dto.permissions !== undefined) {
       // Remove all existing permissions
       await this.db
         .delete(rolePermissions)
         .where(and(eq(rolePermissions.tenantId, tenantId), eq(rolePermissions.roleId, roleId)));
 
       // Add new permissions
-      if (dto.permissionIds.length > 0) {
-        await this.assignPermissions(tenantId, roleId, dto.permissionIds);
+      if (dto.permissions.length > 0) {
+        await this.assignPermissions(tenantId, roleId, dto.permissions);
       }
     }
 
     return this.findById(roleId);
   }
 
-  async assignPermissions(tenantId: string, roleId: string, permissionIds: string[]) {
+  async assignPermissions(
+    tenantId: string,
+    roleId: string,
+    assignments: { permissionId: string; moduleSlug: string }[]
+  ) {
     // Validate that all permission IDs exist
-    if (permissionIds.length > 0) {
+    if (assignments.length > 0) {
+      const permissionIds = assignments.map((a) => a.permissionId);
+      const uniquePermissionIds = [...new Set(permissionIds)];
+
       const existingPermissions = await this.db
         .select()
         .from(permissions)
-        .where(inArray(permissions.id, permissionIds));
+        .where(inArray(permissions.id, uniquePermissionIds));
 
-      if (existingPermissions.length !== permissionIds.length) {
+      if (existingPermissions.length !== uniquePermissionIds.length) {
         throw new BadRequestException('One or more permission IDs are invalid');
       }
 
-      const values = permissionIds.map((permissionId) => ({
+      const values = assignments.map((assignment) => ({
         id: randomUUID(),
         tenantId,
         roleId,
-        permissionId
+        permissionId: assignment.permissionId,
+        moduleSlug: assignment.moduleSlug
       }));
 
       await this.db.insert(rolePermissions).values(values);

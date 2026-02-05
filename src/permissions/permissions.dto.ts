@@ -2,36 +2,28 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsString, MinLength, IsOptional } from 'class-validator';
 
 export class CreatePermissionDto {
-  @ApiProperty({ example: 'users.read', description: 'Permission code (format: module.action)' })
-  @IsString()
-  @MinLength(3)
-  code!: string;
-
-  @ApiProperty({ example: 'users', description: 'Module slug this permission belongs to' })
+  @ApiProperty({ example: 'read', description: 'Permission data action (e.g. read, write, create)' })
   @IsString()
   @MinLength(2)
-  moduleSlug!: string;
+  action!: string;
+
+  @ApiPropertyOptional({ example: 'Read access', description: 'Description of the permission' })
+  @IsOptional()
+  @IsString()
+  description?: string;
 }
 
 export class UpdatePermissionDto {
-  @ApiPropertyOptional({ example: 'users.read', description: 'Permission code' })
-  @IsOptional()
-  @IsString()
-  @MinLength(3)
-  code?: string;
-
-  @ApiPropertyOptional({ example: 'users', description: 'Module slug' })
+  @ApiPropertyOptional({ example: 'read', description: 'Permission action' })
   @IsOptional()
   @IsString()
   @MinLength(2)
-  moduleSlug?: string;
-}
+  action?: string;
 
-export class GenerateModulePermissionsDto {
-  @ApiProperty({ example: 'users', description: 'Module slug to generate permissions for' })
+  @ApiPropertyOptional({ example: 'Read access', description: 'Description' })
+  @IsOptional()
   @IsString()
-  @MinLength(2)
-  moduleSlug!: string;
+  description?: string;
 }
 
 

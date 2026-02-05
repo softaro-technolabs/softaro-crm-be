@@ -1,5 +1,17 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsArray, IsBoolean, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsArray, IsBoolean, IsOptional, IsString, MinLength, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
+
+export class RolePermissionAssignmentDto {
+  @ApiProperty({ example: 'uuid-of-permission', description: 'ID of the master permission' })
+  @IsString()
+  permissionId!: string;
+
+  @ApiProperty({ example: 'leads', description: 'Module slug to apply this permission to' })
+  @IsString()
+  @MinLength(2)
+  moduleSlug!: string;
+}
 
 export class CreateRoleDto {
   @ApiProperty({ example: 'Manager' })
@@ -13,13 +25,14 @@ export class CreateRoleDto {
   isAdmin?: boolean;
 
   @ApiPropertyOptional({
-    example: ['user.create', 'user.read', 'user.update'],
-    description: 'Array of permission IDs to assign to this role'
+    type: [RolePermissionAssignmentDto],
+    description: 'Array of permissions with module assignments'
   })
   @IsOptional()
   @IsArray()
-  @IsString({ each: true })
-  permissionIds?: string[];
+  @ValidateNested({ each: true })
+  @Type(() => RolePermissionAssignmentDto)
+  permissions?: RolePermissionAssignmentDto[];
 }
 
 export class UpdateRoleDto {
@@ -35,13 +48,14 @@ export class UpdateRoleDto {
   isAdmin?: boolean;
 
   @ApiPropertyOptional({
-    example: ['user.create', 'user.read', 'user.update', 'user.delete'],
-    description: 'Array of permission IDs to assign to this role'
+    type: [RolePermissionAssignmentDto],
+    description: 'Array of permissions with module assignments'
   })
   @IsOptional()
   @IsArray()
-  @IsString({ each: true })
-  permissionIds?: string[];
+  @ValidateNested({ each: true })
+  @Type(() => RolePermissionAssignmentDto)
+  permissions?: RolePermissionAssignmentDto[];
 }
 
 

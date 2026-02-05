@@ -15,7 +15,7 @@ export class TenantsService {
     @Inject(DRIZZLE) private readonly db: DrizzleDatabase,
     private readonly usersService: UsersService,
     private readonly rolesService: RolesService
-  ) {}
+  ) { }
 
   async create(dto: CreateTenantDto) {
     const existingTenant = await this.findBySlug(dto.slug);
@@ -42,7 +42,7 @@ export class TenantsService {
     const adminRole = await this.rolesService.create(id, {
       name: 'Admin',
       isAdmin: true,
-      permissionIds: []
+      permissions: []
     });
 
     // Create the default admin user

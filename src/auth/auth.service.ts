@@ -23,7 +23,7 @@ export class AuthService {
     private readonly permissionsService: PermissionsService,
     private readonly modulesService: ModulesService,
     private readonly tokenService: AuthTokenService
-  ) {}
+  ) { }
 
   async login(dto: LoginDto) {
     const user = await this.usersService.findByEmail(dto.email);
@@ -51,7 +51,7 @@ export class AuthService {
       tenant_id: context.tenant?.id ?? null,
       role_id: context.role?.id ?? null,
       role_global: user.roleGlobal,
-      permissions: context.permissions
+      permissions: context.permissions as string[]
     };
 
     const [accessToken, refreshToken] = await Promise.all([
@@ -104,7 +104,7 @@ export class AuthService {
       tenant_id: context.tenant?.id ?? null,
       role_id: context.role?.id ?? null,
       role_global: user.roleGlobal,
-      permissions: context.permissions
+      permissions: context.permissions as string[]
     };
 
     const [accessToken, refreshToken] = await Promise.all([
@@ -190,7 +190,10 @@ export class AuthService {
           route: item.route
         }));
 
-      const allPermissions = await this.permissionsService.getAllCodes();
+      const allMasterPermissions = await this.permissionsService.getAllActions();
+      const allPermissions = enabledModules.flatMap((module) =>
+        allMasterPermissions.map((perm) => `${module.slug}.${perm.action}`)
+      );
       const routes = Array.from(new Set(enabledModules.map((item) => item.route)));
 
       return {
@@ -241,9 +244,9 @@ export class AuthService {
 
     const permissionsList = membership.membership.roleId
       ? await this.permissionsService.getCodesForRole(
-          membership.tenant.id,
-          membership.membership.roleId
-        )
+        membership.tenant.id,
+        membership.membership.roleId
+      )
       : [];
     const permissions = Array.from(new Set(permissionsList));
 
