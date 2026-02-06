@@ -16,6 +16,11 @@ export class CreateModuleDto {
   @IsString()
   @MinLength(1)
   defaultRoute!: string;
+
+  @ApiPropertyOptional({ example: 'uuid', description: 'ID of the parent module' })
+  @IsOptional()
+  @IsString()
+  parentId?: string;
 }
 
 export class UpdateModuleDto {
@@ -30,6 +35,11 @@ export class UpdateModuleDto {
   @IsString()
   @MinLength(1)
   defaultRoute?: string;
+
+  @ApiPropertyOptional({ example: 'uuid', description: 'ID of the parent module' })
+  @IsOptional()
+  @IsString()
+  parentId?: string;
 }
 
 

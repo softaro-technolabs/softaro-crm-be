@@ -1,10 +1,10 @@
 import { BadRequestException, Inject, Injectable } from '@nestjs/common';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 
 import { DRIZZLE } from '../database/database.constants';
 import type { DrizzleDatabase } from '../database/database.types';
-import { modules, tenantModules } from '../database/schema';
+import { modules, tenantModules, permissions, rolePermissions } from '../database/schema';
 import { CreateModuleDto, UpdateModuleDto } from './modules.dto';
 
 @Injectable()
@@ -56,7 +56,8 @@ export class ModulesService {
       id,
       slug: dto.slug,
       name: dto.name,
-      defaultRoute: dto.defaultRoute
+      defaultRoute: dto.defaultRoute,
+      parentId: dto.parentId ?? null
     });
 
     return this.findById(id);
@@ -71,6 +72,7 @@ export class ModulesService {
     const updateData: Partial<typeof modules.$inferInsert> = {};
     if (dto.name !== undefined) updateData.name = dto.name;
     if (dto.defaultRoute !== undefined) updateData.defaultRoute = dto.defaultRoute;
+    if (dto.parentId !== undefined) updateData.parentId = dto.parentId;
 
     await this.db.update(modules).set(updateData).where(eq(modules.id, id));
 
@@ -96,7 +98,7 @@ export class ModulesService {
 
     await this.db.delete(modules).where(eq(modules.id, id));
   }
-  async getAccessibleModules(tenantId: string, roleGlobal: string, userPermissions: string[]) {
+  async getAccessibleModules(tenantId: string, roleGlobal: string, roleId: string | null) {
     // 1. Get all modules enabled for this tenant
     const tenantModulesList = await this.getTenantModules(tenantId);
 
@@ -105,22 +107,56 @@ export class ModulesService {
       ({ tenantModule }) => tenantModule ? tenantModule.isEnabled : true
     );
 
-    // 2. If Super Admin, return all enabled modules
+    // 2. Get all master permissions (needed for super admin or to map details)
+    const allActions = await this.db.select().from(permissions);
+
+    // 3. If Super Admin, return all enabled modules with ALL permissions
+    // Super admins conceptually have all permissions on all modules
     if (roleGlobal === 'super_admin') {
-      return enabledModules.map(({ module }) => module);
+      return enabledModules.map(({ module }) => ({
+        ...module,
+        permissions: allActions
+      }));
     }
 
-    // 3. Filter based on permissions
-    // A user has access to a module if they have AT LEAST ONE permission for it
-    // The permission format is "moduleSlug.action"
-    const accessibleModules = enabledModules.filter(({ module }) => {
-      return userPermissions.some((perm) => perm.startsWith(`${module.slug}.`));
-    });
+    // 4. If Normal User
+    if (!roleId) {
+      return []; // No role, no permissions
+    }
 
-    return accessibleModules.map(({ module }) => module);
+    // Fetch assigned permissions for this role from DB to get ID + Action + Module
+    const assignedPerms = await this.db
+      .select({
+        permissionId: permissions.id,
+        action: permissions.action,
+        description: permissions.description,
+        moduleSlug: rolePermissions.moduleSlug
+      })
+      .from(rolePermissions)
+      .innerJoin(permissions, eq(rolePermissions.permissionId, permissions.id))
+      .where(and(eq(rolePermissions.tenantId, tenantId), eq(rolePermissions.roleId, roleId)));
+
+    // Group permissions by module slug
+    const permsByModule = new Map<string, typeof allActions>();
+    for (const p of assignedPerms) {
+      if (!permsByModule.has(p.moduleSlug)) {
+        permsByModule.set(p.moduleSlug, []);
+      }
+      permsByModule.get(p.moduleSlug)?.push({
+        id: p.permissionId,
+        action: p.action,
+        description: p.description
+      });
+    }
+
+    // Filter enabled modules where user has at least one permission
+    const accessibleModules = enabledModules
+      .filter(({ module }) => permsByModule.has(module.slug))
+      .map(({ module }) => ({
+        ...module,
+        permissions: permsByModule.get(module.slug) || []
+      }));
+
+    return accessibleModules;
   }
 }
-
-
-
-

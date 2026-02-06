@@ -49,7 +49,7 @@ export class ModulesController {
     return await this.modulesService.getAccessibleModules(
       user.tenant_id as string,
       user.role_global as string,
-      user.permissions
+      user.role_id
     );
   }
 
