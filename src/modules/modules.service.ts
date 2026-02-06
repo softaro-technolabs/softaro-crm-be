@@ -9,7 +9,7 @@ import { CreateModuleDto, UpdateModuleDto } from './modules.dto';
 
 @Injectable()
 export class ModulesService {
-  constructor(@Inject(DRIZZLE) private readonly db: DrizzleDatabase) {}
+  constructor(@Inject(DRIZZLE) private readonly db: DrizzleDatabase) { }
 
   async getTenantModules(tenantId: string) {
     return this.db
@@ -95,6 +95,29 @@ export class ModulesService {
     }
 
     await this.db.delete(modules).where(eq(modules.id, id));
+  }
+  async getAccessibleModules(tenantId: string, roleGlobal: string, userPermissions: string[]) {
+    // 1. Get all modules enabled for this tenant
+    const tenantModulesList = await this.getTenantModules(tenantId);
+
+    // Filter out disabled modules
+    const enabledModules = tenantModulesList.filter(
+      ({ tenantModule }) => tenantModule ? tenantModule.isEnabled : true
+    );
+
+    // 2. If Super Admin, return all enabled modules
+    if (roleGlobal === 'super_admin') {
+      return enabledModules.map(({ module }) => module);
+    }
+
+    // 3. Filter based on permissions
+    // A user has access to a module if they have AT LEAST ONE permission for it
+    // The permission format is "moduleSlug.action"
+    const accessibleModules = enabledModules.filter(({ module }) => {
+      return userPermissions.some((perm) => perm.startsWith(`${module.slug}.`));
+    });
+
+    return accessibleModules.map(({ module }) => module);
   }
 }
 
