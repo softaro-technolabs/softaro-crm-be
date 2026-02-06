@@ -17,9 +17,8 @@ export class ModulesService {
         module: modules,
         tenantModule: tenantModules
       })
-      .from(tenantModules)
-      .innerJoin(modules, eq(modules.id, tenantModules.moduleId))
-      .where(eq(tenantModules.tenantId, tenantId));
+      .from(modules)
+      .leftJoin(tenantModules, and(eq(modules.id, tenantModules.moduleId), eq(tenantModules.tenantId, tenantId)));
   }
 
   async getAllModules() {
