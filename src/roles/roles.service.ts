@@ -106,7 +106,26 @@ export class RolesService {
 
   async findById(id: string) {
     const [role] = await this.db.select().from(roles).where(eq(roles.id, id)).limit(1);
-    return role ?? null;
+
+    if (!role) {
+      return null;
+    }
+
+    const rolePerms = await this.db
+      .select({
+        permissionId: rolePermissions.permissionId,
+        moduleSlug: rolePermissions.moduleSlug,
+        action: permissions.action,
+        description: permissions.description
+      })
+      .from(rolePermissions)
+      .innerJoin(permissions, eq(rolePermissions.permissionId, permissions.id))
+      .where(eq(rolePermissions.roleId, id));
+
+    return {
+      ...role,
+      permissions: rolePerms
+    };
   }
 
   async findByName(tenantId: string, name: string) {

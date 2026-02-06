@@ -45,6 +45,10 @@ export class TenantsService {
       permissions: []
     });
 
+    if (!adminRole) {
+      throw new Error('Failed to create admin role');
+    }
+
     // Create the default admin user
     const adminUser = await this.usersService.createUser({
       email: dto.email,
