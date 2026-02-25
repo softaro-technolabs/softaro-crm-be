@@ -178,6 +178,7 @@ export class AuthService {
         slug: module.slug,
         name: module.name,
         route: module.defaultRoute,
+        parentId: module.parentId,
         isEnabled: tenantModule ? tenantModule.isEnabled : true
       }));
 
@@ -187,7 +188,8 @@ export class AuthService {
           id: item.id,
           slug: item.slug,
           name: item.name,
-          route: item.route
+          route: item.route,
+          parentId: item.parentId
         }));
 
       const allMasterPermissions = await this.permissionsService.getAllActions();
@@ -231,6 +233,7 @@ export class AuthService {
       slug: module.slug,
       name: module.name,
       route: module.defaultRoute,
+      parentId: module.parentId,
       isEnabled: tenantModule?.isEnabled ?? true
     }));
     const enabledModules = normalizedModulesWithFlag
@@ -239,7 +242,8 @@ export class AuthService {
         id: item.id,
         slug: item.slug,
         name: item.name,
-        route: item.route
+        route: item.route,
+        parentId: item.parentId
       }));
 
     const permissionsList = membership.membership.roleId
