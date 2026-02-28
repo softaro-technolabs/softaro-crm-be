@@ -10,8 +10,7 @@ export * from './leads.schema';
 export * from './lead-activities.schema';
 export * from './lead-tasks.schema';
 export * from './properties.schema';
-
-
-
-
-
+export * from './chat.schema';
+export * from './notifications.schema';
+export * from './whatsapp.schema';
+export * from './calendar-sync.schema';

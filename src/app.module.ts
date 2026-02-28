@@ -9,14 +9,18 @@ import configuration from './config/configuration';
 import { DatabaseSyncService } from './database/database-sync.service';
 import { DatabaseModule } from './database/database.module';
 import { MigrationService } from './database/migration.service';
+import { ChatModule } from './chat/chat.module';
 import { LeadsModule } from './leads/leads.module';
 import { KeepAliveModule } from './keep-alive/keep-alive.module';
 import { ModulesModule } from './modules/modules.module';
+import { NotificationsModule } from './notifications/notifications.module';
 import { PermissionsModule } from './permissions/permissions.module';
 import { PropertiesModule } from './properties/properties.module';
 import { RolesModule } from './roles/roles.module';
 import { TenantsModule } from './tenants/tenants.module';
 import { UsersModule } from './users/users.module';
+import { WhatsappModule } from './whatsapp/whatsapp.module';
+import { CalendarSyncModule } from './calendar-sync/calendar-sync.module';
 
 @Module({
   imports: [
@@ -35,7 +39,11 @@ import { UsersModule } from './users/users.module';
     ModulesModule,
     LeadsModule,
     PropertiesModule,
-    KeepAliveModule
+    KeepAliveModule,
+    ChatModule,
+    NotificationsModule,
+    WhatsappModule,
+    CalendarSyncModule
   ],
   providers: [MigrationService, DatabaseSyncService, TenantMiddleware]
 })

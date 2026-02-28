@@ -1,4 +1,5 @@
 import { boolean, index, pgEnum, pgTable, timestamp, varchar, jsonb } from 'drizzle-orm/pg-core';
+import { calendarProviderEnum } from './calendar-sync.schema';
 
 export const leadTaskStatusEnum = pgEnum('lead_task_status', ['open', 'in_progress', 'done', 'cancelled']);
 export const leadTaskPriorityEnum = pgEnum('lead_task_priority', ['low', 'medium', 'high', 'urgent']);
@@ -20,6 +21,8 @@ export const leadTasks = pgTable(
     assignedToUserId: varchar('assigned_to_user_id', { length: 36 }),
     createdByUserId: varchar('created_by_user_id', { length: 36 }),
     completedAt: timestamp('completed_at', { withTimezone: true }),
+    calendarProvider: calendarProviderEnum('calendar_provider'),
+    externalEventId: varchar('external_event_id', { length: 500 }),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull()
   },

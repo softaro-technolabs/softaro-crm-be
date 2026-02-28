@@ -10,7 +10,7 @@ import { CreateLeadActivityDto, LeadActivityListQueryDto, LeadFollowUpsQueryDto 
 
 @Injectable()
 export class LeadActivitiesService {
-  constructor(@Inject(DRIZZLE) private readonly db: DrizzleDatabase) {}
+  constructor(@Inject(DRIZZLE) private readonly db: DrizzleDatabase) { }
 
   async listLeadActivities(tenantId: string, leadId: string, query: LeadActivityListQueryDto) {
     const limit = query.limit ?? 50;
@@ -113,7 +113,7 @@ export class LeadActivitiesService {
     const offset = (page - 1) * limit;
 
     const now = new Date();
-    const due = query.due ?? true;
+    const due = query.due ?? false;
     const overdue = query.overdue ?? false;
 
     const filters: SQL[] = [eq(leads.tenantId, tenantId), isNotNull(leads.nextFollowUpAt)];

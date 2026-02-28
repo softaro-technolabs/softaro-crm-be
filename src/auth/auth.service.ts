@@ -48,6 +48,7 @@ export class AuthService {
 
     const payload: AuthJwtPayload = {
       sub: user.id,
+      name: user.name,
       tenant_id: context.tenant?.id ?? null,
       role_id: context.role?.id ?? null,
       role_global: user.roleGlobal,
@@ -64,7 +65,10 @@ export class AuthService {
       })
     ]);
 
-    await this.usersService.updateLastLogin(user.id);
+    // Fire and forget updating last login to avoid blocking the response
+    this.usersService.updateLastLogin(user.id).catch(err => {
+      console.error('Failed to update last login:', err);
+    });
 
     return {
       token: accessToken,
@@ -101,6 +105,7 @@ export class AuthService {
 
     const payload: AuthJwtPayload = {
       sub: user.id,
+      name: user.name,
       tenant_id: context.tenant?.id ?? null,
       role_id: context.role?.id ?? null,
       role_global: user.roleGlobal,
@@ -173,6 +178,9 @@ export class AuthService {
         ? await this.modulesService.getTenantModules(tenant.id)
         : await this.modulesService.getAllModules();
 
+      const allMasterPermissions = await this.permissionsService.getAllActions();
+      const tenantsList = await this.tenantsService.findAll();
+
       const normalizedModulesWithFlag = modules.map(({ module, tenantModule }) => ({
         id: module.id,
         slug: module.slug,
@@ -192,7 +200,6 @@ export class AuthService {
           parentId: item.parentId
         }));
 
-      const allMasterPermissions = await this.permissionsService.getAllActions();
       const allPermissions = enabledModules.flatMap((module) =>
         allMasterPermissions.map((perm) => `${module.slug}.${perm.action}`)
       );
@@ -204,7 +211,7 @@ export class AuthService {
         permissions: Array.from(new Set(allPermissions)),
         modules: enabledModules,
         routes,
-        tenants: await this.tenantsService.findAll()
+        tenants: tenantsList
       };
     }
 
@@ -228,6 +235,16 @@ export class AuthService {
     }
 
     const modules = await this.modulesService.getTenantModules(membership.tenant.id);
+
+    const permissionsList = membership.membership.roleId
+      ? await this.permissionsService.getCodesForRole(
+        membership.tenant.id,
+        membership.membership.roleId
+      )
+      : [];
+
+    const accessibleTenants = await this.usersService.getTenantsForUser(userId);
+
     const normalizedModulesWithFlag = modules.map(({ module, tenantModule }) => ({
       id: module.id,
       slug: module.slug,
@@ -246,12 +263,6 @@ export class AuthService {
         parentId: item.parentId
       }));
 
-    const permissionsList = membership.membership.roleId
-      ? await this.permissionsService.getCodesForRole(
-        membership.tenant.id,
-        membership.membership.roleId
-      )
-      : [];
     const permissions = Array.from(new Set(permissionsList));
 
     const role =
@@ -259,7 +270,6 @@ export class AuthService {
         ? membership.role
         : null;
 
-    const accessibleTenants = await this.usersService.getTenantsForUser(userId);
     const tenantMap = new Map<string, (typeof accessibleTenants)[number]['tenant']>();
     for (const entry of accessibleTenants) {
       if (entry.tenant && !tenantMap.has(entry.tenant.id)) {

@@ -395,6 +395,14 @@ export class MigrationService {
         } else {
           this.logger.debug('lead_tasks table already exists');
         }
+
+        // ─── Chat Tables ────────────────────────────────────────────
+        await this.runChatMigrations(client);
+        // ─────────────────────────────────────────────────────────────
+
+        // ─── Notifications Table ─────────────────────────────────────
+        await this.runNotificationsMigrations(client);
+        // ─────────────────────────────────────────────────────────────
       } finally {
         client.release();
       }
@@ -405,5 +413,146 @@ export class MigrationService {
       );
     }
   }
-}
 
+  /**
+   * Create notifications tables if they don't exist (idempotent).
+   */
+  private async runNotificationsMigrations(client: any) {
+    const notificationsCheck = await client.query(`SELECT to_regclass('public.notifications') as t`);
+    if (notificationsCheck.rows[0]?.t === null) {
+      this.logger.log('Creating notifications table...');
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS "notifications" (
+          "id"          varchar(36) PRIMARY KEY,
+          "tenant_id"   varchar(36) NOT NULL,
+          "user_id"     varchar(36) NOT NULL,
+          "type"        varchar(255) NOT NULL,
+          "title"       varchar(255) NOT NULL,
+          "message"     text,
+          "is_read"     boolean NOT NULL DEFAULT false,
+          "metadata"    jsonb,
+          "created_at"  timestamptz NOT NULL DEFAULT now()
+        );
+      `);
+      await client.query(`CREATE INDEX IF NOT EXISTS "notifications_user_idx" ON "notifications" ("user_id","tenant_id");`);
+      await client.query(`CREATE INDEX IF NOT EXISTS "notifications_unread_idx" ON "notifications" ("user_id","is_read");`);
+      this.logger.log('✓ notifications table created');
+    } else {
+      this.logger.debug('notifications table already exists');
+    }
+  }
+
+  /**
+   * Create chat tables if they don't exist (idempotent).
+   */
+  private async runChatMigrations(client: any) {
+    // Enum
+    await client.query(`
+      DO \$\$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'conversation_type') THEN
+          CREATE TYPE "conversation_type" AS ENUM ('direct','group');
+        END IF;
+      END \$\$;
+    `);
+
+    // chat_conversations
+    const convCheck = await client.query(
+      `SELECT to_regclass('public.chat_conversations') as t`
+    );
+    if (convCheck.rows[0]?.t === null) {
+      this.logger.log('Creating chat_conversations table...');
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS "chat_conversations" (
+          "id"                    varchar(36) PRIMARY KEY,
+          "tenant_id"             varchar(36) NOT NULL,
+          "type"                  "conversation_type" NOT NULL DEFAULT 'direct',
+          "name"                  varchar(255),
+          "description"           varchar(1000),
+          "avatar_url"            varchar(500),
+          "created_by_user_id"    varchar(36) NOT NULL,
+          "last_message_at"       timestamptz,
+          "last_message_preview"  varchar(255),
+          "is_archived"           boolean NOT NULL DEFAULT false,
+          "created_at"            timestamptz NOT NULL DEFAULT now(),
+          "updated_at"            timestamptz NOT NULL DEFAULT now()
+        );
+      `);
+      await client.query(`CREATE INDEX IF NOT EXISTS "chat_conversations_tenant_idx" ON "chat_conversations" ("tenant_id");`);
+      await client.query(`CREATE INDEX IF NOT EXISTS "chat_conversations_tenant_last_msg_idx" ON "chat_conversations" ("tenant_id","last_message_at");`);
+      this.logger.log('✓ chat_conversations table created');
+    } else {
+      this.logger.debug('chat_conversations table already exists');
+    }
+
+    // chat_members
+    const membersCheck = await client.query(`SELECT to_regclass('public.chat_members') as t`);
+    if (membersCheck.rows[0]?.t === null) {
+      this.logger.log('Creating chat_members table...');
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS "chat_members" (
+          "id"                varchar(36) PRIMARY KEY,
+          "conversation_id"   varchar(36) NOT NULL,
+          "user_id"           varchar(36) NOT NULL,
+          "tenant_id"         varchar(36) NOT NULL,
+          "is_admin"          boolean NOT NULL DEFAULT false,
+          "joined_at"         timestamptz NOT NULL DEFAULT now(),
+          "left_at"           timestamptz,
+          "added_by_user_id"  varchar(36)
+        );
+      `);
+      await client.query(`CREATE INDEX IF NOT EXISTS "chat_members_conv_user_idx" ON "chat_members" ("conversation_id","user_id");`);
+      await client.query(`CREATE INDEX IF NOT EXISTS "chat_members_user_idx" ON "chat_members" ("user_id","tenant_id");`);
+      this.logger.log('✓ chat_members table created');
+    } else {
+      this.logger.debug('chat_members table already exists');
+    }
+
+    // chat_messages
+    const msgsCheck = await client.query(`SELECT to_regclass('public.chat_messages') as t`);
+    if (msgsCheck.rows[0]?.t === null) {
+      this.logger.log('Creating chat_messages table...');
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS "chat_messages" (
+          "id"                    varchar(36) PRIMARY KEY,
+          "conversation_id"       varchar(36) NOT NULL,
+          "tenant_id"             varchar(36) NOT NULL,
+          "sender_user_id"        varchar(36) NOT NULL,
+          "content"               text NOT NULL,
+          "reply_to_message_id"   varchar(36),
+          "edited_at"             timestamptz,
+          "deleted_at"            timestamptz,
+          "created_at"            timestamptz NOT NULL DEFAULT now()
+        );
+      `);
+      await client.query(`CREATE INDEX IF NOT EXISTS "chat_messages_conv_created_idx" ON "chat_messages" ("conversation_id","created_at");`);
+      await client.query(`CREATE INDEX IF NOT EXISTS "chat_messages_tenant_conv_idx" ON "chat_messages" ("tenant_id","conversation_id");`);
+      await client.query(`CREATE INDEX IF NOT EXISTS "chat_messages_sender_idx" ON "chat_messages" ("sender_user_id");`);
+      this.logger.log('✓ chat_messages table created');
+    } else {
+      this.logger.debug('chat_messages table already exists');
+    }
+
+    // chat_message_reads
+    const readsCheck = await client.query(`SELECT to_regclass('public.chat_message_reads') as t`);
+    if (readsCheck.rows[0]?.t === null) {
+      this.logger.log('Creating chat_message_reads table...');
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS "chat_message_reads" (
+          "id"                    varchar(36) PRIMARY KEY,
+          "conversation_id"       varchar(36) NOT NULL,
+          "user_id"               varchar(36) NOT NULL,
+          "tenant_id"             varchar(36) NOT NULL,
+          "last_read_message_id"  varchar(36) NOT NULL,
+          "read_at"               timestamptz NOT NULL DEFAULT now()
+        );
+      `);
+      await client.query(`CREATE INDEX IF NOT EXISTS "chat_message_reads_conv_user_idx" ON "chat_message_reads" ("conversation_id","user_id");`);
+      await client.query(`CREATE INDEX IF NOT EXISTS "chat_message_reads_user_tenant_idx" ON "chat_message_reads" ("user_id","tenant_id");`);
+      this.logger.log('✓ chat_message_reads table created');
+    } else {
+      this.logger.debug('chat_message_reads table already exists');
+    }
+  }
+
+}

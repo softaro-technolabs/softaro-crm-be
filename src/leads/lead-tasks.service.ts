@@ -8,9 +8,16 @@ import type { DrizzleDatabase } from '../database/database.types';
 import { leadActivities, leadTasks, leads, userTenants, users } from '../database/schema';
 import { CreateLeadTaskDto, LeadTaskListQueryDto, TenantTaskListQueryDto, UpdateLeadTaskDto } from './lead-tasks.dto';
 
+import { NotificationsService } from '../notifications/notifications.service';
+import { CalendarSyncService } from '../calendar-sync/calendar-sync.service';
+
 @Injectable()
 export class LeadTasksService {
-  constructor(@Inject(DRIZZLE) private readonly db: DrizzleDatabase) {}
+  constructor(
+    @Inject(DRIZZLE) private readonly db: DrizzleDatabase,
+    private readonly notificationsService: NotificationsService,
+    private readonly calendarSyncService: CalendarSyncService
+  ) { }
 
   async listLeadTasks(tenantId: string, leadId: string, query: LeadTaskListQueryDto) {
     const limit = query.limit ?? 50;
@@ -129,6 +136,22 @@ export class LeadTasksService {
       }
     });
 
+    if (assignedToUserId && assignedToUserId !== createdByUserId) {
+      await this.notificationsService.createNotification(
+        tenantId,
+        assignedToUserId,
+        'task_assigned',
+        'New Task Assigned',
+        `You have been assigned the task: ${dto.title}`,
+        { leadId, taskId }
+      );
+    }
+
+    if (assignedToUserId) {
+      const taskObj = await this.getTask(tenantId, leadId, taskId);
+      await this.calendarSyncService.queueSync(tenantId, assignedToUserId, taskId, 'create', taskObj.task);
+    }
+
     return this.getTask(tenantId, leadId, taskId);
   }
 
@@ -199,7 +222,33 @@ export class LeadTasksService {
       });
     });
 
-    return this.getTask(tenantId, leadId, taskId);
+    if (
+      update.assignedToUserId &&
+      update.assignedToUserId !== existing.task.assignedToUserId &&
+      update.assignedToUserId !== actorUserId
+    ) {
+      await this.notificationsService.createNotification(
+        tenantId,
+        update.assignedToUserId,
+        'task_assigned',
+        'Task Assigned to You',
+        `You have been reassigned the task: ${update.title ?? existing.task.title}`,
+        { leadId, taskId }
+      );
+    }
+
+    const updatedTaskObj = await this.getTask(tenantId, leadId, taskId);
+    if (updatedTaskObj.task.assignedToUserId) {
+      await this.calendarSyncService.queueSync(
+        tenantId,
+        updatedTaskObj.task.assignedToUserId,
+        taskId,
+        updatedTaskObj.task.status === 'done' || updatedTaskObj.task.status === 'cancelled' ? 'delete' : 'update',
+        updatedTaskObj.task
+      );
+    }
+
+    return updatedTaskObj;
   }
 
   async archiveLeadTask(tenantId: string, leadId: string, taskId: string, actorUserId?: string | null) {
@@ -229,6 +278,10 @@ export class LeadTasksService {
         createdAt: now
       });
     });
+
+    if (existing.task.assignedToUserId) {
+      await this.calendarSyncService.queueSync(tenantId, existing.task.assignedToUserId, taskId, 'delete', existing.task);
+    }
 
     return this.getTask(tenantId, leadId, taskId);
   }

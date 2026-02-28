@@ -24,7 +24,9 @@
     "@nestjs/jwt": "^10.0.0",
     "@nestjs/passport": "^10.0.0",
     "@nestjs/platform-express": "^10.0.0",
+    "@nestjs/platform-socket.io": "^10.4.22",
     "@nestjs/swagger": "^7.1.1",
+    "@nestjs/websockets": "^10.4.22",
     "axios": "^1.13.4",
     "bcrypt": "^5.1.1",
     "class-transformer": "^0.5.1",
@@ -38,6 +40,7 @@
     "reflect-metadata": "^0.1.14",
     "rimraf": "^5.0.5",
     "rxjs": "^7.8.1",
+    "socket.io": "^4.8.3",
     "swagger-ui-express": "^5.0.0",
     "uuid": "^9.0.1",
     "xlsx": "^0.18.5"

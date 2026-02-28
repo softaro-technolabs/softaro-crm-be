@@ -4,6 +4,7 @@ import { JwtService } from '@nestjs/jwt';
 
 export type AuthJwtPayload = {
   sub: string;
+  name: string;
   tenant_id: string | null;
   role_id: string | null;
   role_global: 'super_admin' | 'normal';
@@ -15,7 +16,7 @@ export class AuthTokenService {
   constructor(
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService
-  ) {}
+  ) { }
 
   signAccessToken(payload: AuthJwtPayload) {
     return this.jwtService.signAsync(payload, {

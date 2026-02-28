@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 
+import { NotificationsModule } from '../notifications/notifications.module';
 import { CommonModule } from '../common/common.module';
 import { DatabaseModule } from '../database/database.module';
 import { UsersModule } from '../users/users.module';
@@ -14,21 +15,22 @@ import { LeadsService } from './leads.service';
 import { LeadTasksController } from './lead-tasks.controller';
 import { LeadTasksService } from './lead-tasks.service';
 import { TenantTasksController } from './tenant-tasks.controller';
+import { CalendarSyncModule } from '../calendar-sync/calendar-sync.module';
 
 @Module({
-  imports: [DatabaseModule, CommonModule, UsersModule],
+  imports: [DatabaseModule, CommonModule, UsersModule, NotificationsModule, CalendarSyncModule],
   controllers: [
-    LeadsController,
     LeadAssignmentController,
     LeadPublicController,
     LeadActivitiesController,
     LeadFollowUpsController,
     LeadTasksController,
-    TenantTasksController
+    TenantTasksController,
+    LeadsController
   ],
   providers: [LeadsService, LeadAssignmentService, LeadActivitiesService, LeadTasksService],
   exports: [LeadsService, LeadAssignmentService, LeadActivitiesService, LeadTasksService]
 })
-export class LeadsModule {}
+export class LeadsModule { }
 
 

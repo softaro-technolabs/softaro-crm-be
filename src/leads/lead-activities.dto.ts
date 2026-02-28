@@ -98,7 +98,7 @@ export class LeadFollowUpsQueryDto {
 
   @ApiPropertyOptional({
     description: 'Only return follow-ups due on/before now (nextFollowUpAt <= now).',
-    default: true,
+    default: false,
     example: true
   })
   @IsOptional()
