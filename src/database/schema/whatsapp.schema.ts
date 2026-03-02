@@ -12,6 +12,7 @@ import {
 
 export const whatsappMessageDirectionEnum = pgEnum('whatsapp_message_direction', ['inbound', 'outbound']);
 export const whatsappMessageStatusEnum = pgEnum('whatsapp_message_status', ['sent', 'delivered', 'read', 'failed', 'received']);
+export const whatsappScheduledMessageStatusEnum = pgEnum('whatsapp_scheduled_message_status', ['pending', 'sent', 'cancelled', 'failed']);
 
 export const whatsappAccounts = pgTable(
     'whatsapp_accounts',
@@ -89,5 +90,27 @@ export const whatsappMessageQueue = pgTable(
     },
     (table) => ({
         queuePollingIdx: index('whatsapp_message_queue_polling_idx').on(table.nextAttemptAt, table.isProcessing)
+    })
+);
+
+export const whatsappScheduledMessages = pgTable(
+    'whatsapp_scheduled_messages',
+    {
+        id: varchar('id', { length: 36 }).primaryKey(),
+        tenantId: varchar('tenant_id', { length: 36 }).notNull(),
+        leadId: varchar('lead_id', { length: 36 }),
+        contactPhone: varchar('contact_phone', { length: 50 }).notNull(),
+        payload: jsonb('payload').notNull(),
+        scheduledAt: timestamp('scheduled_at', { withTimezone: true }).notNull(),
+        status: whatsappScheduledMessageStatusEnum('status').default('pending').notNull(),
+        isAutomated: boolean('is_automated').default(false).notNull(),
+        createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+        updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull()
+    },
+    (table) => ({
+        tenantIdx: index('whatsapp_scheduled_messages_tenant_idx').on(table.tenantId),
+        leadIdx: index('whatsapp_scheduled_messages_lead_idx').on(table.leadId),
+        scheduledAtIdx: index('whatsapp_scheduled_messages_scheduled_at_idx').on(table.scheduledAt),
+        statusIdx: index('whatsapp_scheduled_messages_status_idx').on(table.status)
     })
 );

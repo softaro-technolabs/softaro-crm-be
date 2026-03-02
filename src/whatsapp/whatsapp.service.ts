@@ -1,6 +1,6 @@
 import { randomUUID } from 'crypto';
 
-import { Injectable, Inject, NotFoundException, BadRequestException, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, Inject, NotFoundException, BadRequestException, Logger, OnApplicationBootstrap, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import { eq, and, lte } from 'drizzle-orm';
@@ -8,14 +8,15 @@ import { eq, and, lte } from 'drizzle-orm';
 import { EncryptionService } from '../common/services/encryption.service';
 import { DRIZZLE } from '../database/database.constants';
 import { DrizzleDatabase } from '../database/database.types';
-import { whatsappAccounts, whatsappMessages, whatsappSessions, whatsappMessageQueue, leads } from '../database/schema';
+import { whatsappAccounts, whatsappMessages, whatsappSessions, whatsappMessageQueue, leads, whatsappScheduledMessages } from '../database/schema';
 
 @Injectable()
-export class WhatsappService implements OnModuleInit, OnModuleDestroy {
+export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy {
     private readonly logger = new Logger(WhatsappService.name);
     private readonly graphApiVersion = 'v18.0';
     private readonly baseUrl = `https://graph.facebook.com/${this.graphApiVersion}`;
     private pollInterval!: NodeJS.Timeout;
+    private scheduleInterval!: NodeJS.Timeout;
 
     constructor(
         @Inject(DRIZZLE) private readonly db: DrizzleDatabase,
@@ -23,14 +24,32 @@ export class WhatsappService implements OnModuleInit, OnModuleDestroy {
         private readonly encryptionService: EncryptionService
     ) { }
 
-    onModuleInit() {
-        this.pollInterval = setInterval(async () => {
-            await this.processMessageQueue();
-        }, 5000); // 5 seconds
+    onApplicationBootstrap() {
+        // Wait a slight bit to ensure MigrationService has finished (which also runs onApplicationBootstrap)
+        // A better way would be an Event, but this is a quick fix for the lifecycle race.
+        setTimeout(() => {
+            this.logger.log('Starting WhatsApp polling intervals...');
+            this.pollInterval = setInterval(async () => {
+                try {
+                    await this.processMessageQueue();
+                } catch (e) {
+                    this.logger.error('Error in message queue polling', e);
+                }
+            }, 5000); // 5 seconds
+
+            this.scheduleInterval = setInterval(async () => {
+                try {
+                    await this.processScheduledMessages();
+                } catch (e) {
+                    this.logger.error('Error in scheduled message polling', e);
+                }
+            }, 30000); // 30 seconds
+        }, 5000);
     }
 
     onModuleDestroy() {
         if (this.pollInterval) clearInterval(this.pollInterval);
+        if (this.scheduleInterval) clearInterval(this.scheduleInterval);
     }
 
     private async processMessageQueue() {
@@ -337,5 +356,118 @@ export class WhatsappService implements OnModuleInit, OnModuleDestroy {
         });
 
         return { success: true, queueId, status: 'queued' };
+    }
+
+    private async processScheduledMessages() {
+        const now = new Date();
+        const pendingScheduled = await this.db
+            .select()
+            .from(whatsappScheduledMessages)
+            .where(
+                and(
+                    eq(whatsappScheduledMessages.status, 'pending'),
+                    lte(whatsappScheduledMessages.scheduledAt, now)
+                )
+            )
+            .limit(20);
+
+        if (pendingScheduled.length === 0) return;
+
+        for (const scheduled of pendingScheduled) {
+            try {
+                // Move to message queue
+                const queueId = randomUUID();
+
+                // Get account for token/phoneId
+                const [account] = await this.db
+                    .select()
+                    .from(whatsappAccounts)
+                    .where(and(eq(whatsappAccounts.tenantId, scheduled.tenantId), eq(whatsappAccounts.isActive, true)))
+                    .limit(1);
+
+                if (!account) {
+                    throw new Error('WhatsApp account not active or not found');
+                }
+
+                const decryptedToken = this.encryptionService.decrypt(account.encryptedPermanentToken);
+                const payload = scheduled.payload as any;
+
+                await this.db.insert(whatsappMessageQueue).values({
+                    id: queueId,
+                    tenantId: scheduled.tenantId,
+                    leadId: scheduled.leadId,
+                    contactPhone: scheduled.contactPhone,
+                    payload: { ...payload, phone_number_id: account.phoneNumberId, token: decryptedToken },
+                    isProcessing: false
+                });
+
+                // Update scheduled message status
+                await this.db
+                    .update(whatsappScheduledMessages)
+                    .set({ status: 'sent', updatedAt: new Date() })
+                    .where(eq(whatsappScheduledMessages.id, scheduled.id));
+
+            } catch (error: any) {
+                this.logger.error(`Error processing scheduled message ${scheduled.id}`, error.message);
+                await this.db
+                    .update(whatsappScheduledMessages)
+                    .set({ status: 'failed', updatedAt: new Date() })
+                    .where(eq(whatsappScheduledMessages.id, scheduled.id));
+            }
+        }
+    }
+
+    async scheduleMessage(tenantId: string, leadId: string | null, contactPhone: string, payload: any, scheduledAt: Date, isAutomated = false) {
+        const id = randomUUID();
+        await this.db.insert(whatsappScheduledMessages).values({
+            id,
+            tenantId,
+            leadId,
+            contactPhone,
+            payload,
+            scheduledAt,
+            status: 'pending',
+            isAutomated
+        });
+        return { id, status: 'scheduled' };
+    }
+
+    async getLeadMessageHistory(tenantId: string, leadId: string) {
+        return this.db
+            .select()
+            .from(whatsappMessages)
+            .where(and(eq(whatsappMessages.tenantId, tenantId), eq(whatsappMessages.leadId, leadId)))
+            .orderBy(whatsappMessages.createdAt);
+    }
+
+    async getScheduledMessages(tenantId: string, leadId: string) {
+        return this.db
+            .select()
+            .from(whatsappScheduledMessages)
+            .where(
+                and(
+                    eq(whatsappScheduledMessages.tenantId, tenantId),
+                    eq(whatsappScheduledMessages.leadId, leadId),
+                    eq(whatsappScheduledMessages.status, 'pending')
+                )
+            )
+            .orderBy(whatsappScheduledMessages.scheduledAt);
+    }
+
+    async cancelScheduledMessage(tenantId: string, id: string) {
+        const [msg] = await this.db
+            .select()
+            .from(whatsappScheduledMessages)
+            .where(and(eq(whatsappScheduledMessages.tenantId, tenantId), eq(whatsappScheduledMessages.id, id)))
+            .limit(1);
+
+        if (!msg) throw new NotFoundException('Scheduled message not found');
+
+        await this.db
+            .update(whatsappScheduledMessages)
+            .set({ status: 'cancelled', updatedAt: new Date() })
+            .where(eq(whatsappScheduledMessages.id, id));
+
+        return { success: true };
     }
 }

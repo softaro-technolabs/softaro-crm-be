@@ -403,6 +403,10 @@ export class MigrationService {
         // ─── Notifications Table ─────────────────────────────────────
         await this.runNotificationsMigrations(client);
         // ─────────────────────────────────────────────────────────────
+
+        // ─── WhatsApp Tables ─────────────────────────────────────────
+        await this.runWhatsappMigrations(client);
+        // ─────────────────────────────────────────────────────────────
       } finally {
         client.release();
       }
@@ -552,6 +556,143 @@ export class MigrationService {
       this.logger.log('✓ chat_message_reads table created');
     } else {
       this.logger.debug('chat_message_reads table already exists');
+    }
+  }
+
+  /**
+   * Create WhatsApp tables if they don't exist (idempotent).
+   */
+  private async runWhatsappMigrations(client: any) {
+    // Enums
+    await client.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'whatsapp_message_direction') THEN
+          CREATE TYPE "whatsapp_message_direction" AS ENUM ('inbound', 'outbound');
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'whatsapp_message_status') THEN
+          CREATE TYPE "whatsapp_message_status" AS ENUM ('sent', 'delivered', 'read', 'failed', 'received');
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'whatsapp_scheduled_message_status') THEN
+          CREATE TYPE "whatsapp_scheduled_message_status" AS ENUM ('pending', 'sent', 'cancelled', 'failed');
+        END IF;
+      END $$;
+    `);
+
+    // whatsapp_accounts
+    const accountsCheck = await client.query('SELECT to_regclass(\'public.whatsapp_accounts\') as t');
+    if (accountsCheck.rows[0]?.t === null) {
+      this.logger.log('Creating whatsapp_accounts table...');
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS "whatsapp_accounts" (
+          "id" varchar(36) PRIMARY KEY,
+          "tenant_id" varchar(36) NOT NULL,
+          "business_account_id" varchar(100) NOT NULL,
+          "phone_number_id" varchar(100) NOT NULL,
+          "phone_number" varchar(50) NOT NULL,
+          "waba_id" varchar(100),
+          "encrypted_permanent_token" text NOT NULL,
+          "is_active" boolean DEFAULT true NOT NULL,
+          "created_at" timestamptz DEFAULT now() NOT NULL,
+          "updated_at" timestamptz DEFAULT now() NOT NULL
+        );
+      `);
+      await client.query('CREATE INDEX IF NOT EXISTS "whatsapp_accounts_tenant_idx" ON "whatsapp_accounts" ("tenant_id");');
+      await client.query('CREATE INDEX IF NOT EXISTS "whatsapp_accounts_phone_id_idx" ON "whatsapp_accounts" ("phone_number_id");');
+      await client.query('CREATE UNIQUE INDEX IF NOT EXISTS "whatsapp_accounts_tenant_uq" ON "whatsapp_accounts" ("tenant_id");');
+      this.logger.log('✓ whatsapp_accounts table created');
+    }
+
+    // whatsapp_messages
+    const messagesCheck = await client.query('SELECT to_regclass(\'public.whatsapp_messages\') as t');
+    if (messagesCheck.rows[0]?.t === null) {
+      this.logger.log('Creating whatsapp_messages table...');
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS "whatsapp_messages" (
+          "id" varchar(36) PRIMARY KEY,
+          "tenant_id" varchar(36) NOT NULL,
+          "lead_id" varchar(36),
+          "contact_phone" varchar(50) NOT NULL,
+          "direction" "whatsapp_message_direction" NOT NULL,
+          "message_id" varchar(100) NOT NULL,
+          "status" "whatsapp_message_status" NOT NULL,
+          "content" jsonb NOT NULL,
+          "is_template" boolean DEFAULT false NOT NULL,
+          "created_at" timestamptz DEFAULT now() NOT NULL,
+          "updated_at" timestamptz DEFAULT now() NOT NULL
+        );
+      `);
+      await client.query('CREATE INDEX IF NOT EXISTS "whatsapp_messages_tenant_idx" ON "whatsapp_messages" ("tenant_id");');
+      await client.query('CREATE INDEX IF NOT EXISTS "whatsapp_messages_lead_idx" ON "whatsapp_messages" ("lead_id");');
+      await client.query('CREATE UNIQUE INDEX IF NOT EXISTS "whatsapp_messages_message_id_uq" ON "whatsapp_messages" ("message_id");');
+      this.logger.log('✓ whatsapp_messages table created');
+    }
+
+    // whatsapp_sessions
+    const sessionsCheck = await client.query('SELECT to_regclass(\'public.whatsapp_sessions\') as t');
+    if (sessionsCheck.rows[0]?.t === null) {
+      this.logger.log('Creating whatsapp_sessions table...');
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS "whatsapp_sessions" (
+          "id" varchar(36) PRIMARY KEY,
+          "tenant_id" varchar(36) NOT NULL,
+          "contact_phone" varchar(50) NOT NULL,
+          "last_customer_message_at" timestamptz NOT NULL,
+          "created_at" timestamptz DEFAULT now() NOT NULL,
+          "updated_at" timestamptz DEFAULT now() NOT NULL
+        );
+      `);
+      await client.query('CREATE UNIQUE INDEX IF NOT EXISTS "whatsapp_sessions_tenant_contact_uq" ON "whatsapp_sessions" ("tenant_id", "contact_phone");');
+      this.logger.log('✓ whatsapp_sessions table created');
+    }
+
+    // whatsapp_message_queue
+    const queueCheck = await client.query('SELECT to_regclass(\'public.whatsapp_message_queue\') as t');
+    if (queueCheck.rows[0]?.t === null) {
+      this.logger.log('Creating whatsapp_message_queue table...');
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS "whatsapp_message_queue" (
+          "id" varchar(36) PRIMARY KEY,
+          "tenant_id" varchar(36) NOT NULL,
+          "lead_id" varchar(36),
+          "contact_phone" varchar(50) NOT NULL,
+          "payload" jsonb NOT NULL,
+          "attempts" varchar(10) DEFAULT '0' NOT NULL,
+          "is_processing" boolean DEFAULT false NOT NULL,
+          "last_attempt_at" timestamptz,
+          "next_attempt_at" timestamptz DEFAULT now() NOT NULL,
+          "error_log" text,
+          "created_at" timestamptz DEFAULT now() NOT NULL,
+          "updated_at" timestamptz DEFAULT now() NOT NULL
+        );
+      `);
+      await client.query('CREATE INDEX IF NOT EXISTS "whatsapp_message_queue_polling_idx" ON "whatsapp_message_queue" ("next_attempt_at", "is_processing");');
+      this.logger.log('✓ whatsapp_message_queue table created');
+    }
+
+    // whatsapp_scheduled_messages
+    const scheduledCheck = await client.query('SELECT to_regclass(\'public.whatsapp_scheduled_messages\') as t');
+    if (scheduledCheck.rows[0]?.t === null) {
+      this.logger.log('Creating whatsapp_scheduled_messages table...');
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS "whatsapp_scheduled_messages" (
+          "id" varchar(36) PRIMARY KEY,
+          "tenant_id" varchar(36) NOT NULL,
+          "lead_id" varchar(36),
+          "contact_phone" varchar(50) NOT NULL,
+          "payload" jsonb NOT NULL,
+          "scheduled_at" timestamptz NOT NULL,
+          "status" "whatsapp_scheduled_message_status" DEFAULT 'pending' NOT NULL,
+          "is_automated" boolean DEFAULT false NOT NULL,
+          "created_at" timestamptz DEFAULT now() NOT NULL,
+          "updated_at" timestamptz DEFAULT now() NOT NULL
+        );
+      `);
+      await client.query('CREATE INDEX IF NOT EXISTS "whatsapp_scheduled_messages_tenant_idx" ON "whatsapp_scheduled_messages" ("tenant_id");');
+      await client.query('CREATE INDEX IF NOT EXISTS "whatsapp_scheduled_messages_lead_idx" ON "whatsapp_scheduled_messages" ("lead_id");');
+      await client.query('CREATE INDEX IF NOT EXISTS "whatsapp_scheduled_messages_scheduled_at_idx" ON "whatsapp_scheduled_messages" ("scheduled_at");');
+      await client.query('CREATE INDEX IF NOT EXISTS "whatsapp_scheduled_messages_status_idx" ON "whatsapp_scheduled_messages" ("status");');
+      this.logger.log('✓ whatsapp_scheduled_messages table created');
     }
   }
 

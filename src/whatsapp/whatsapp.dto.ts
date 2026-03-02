@@ -34,3 +34,47 @@ export class ConnectAccountDto {
     @IsNotEmpty()
     permanentToken!: string;
 }
+
+export class SendMessageDto {
+    @ApiProperty({ description: 'Lead ID', required: false })
+    @IsString()
+    @IsOptional()
+    leadId?: string;
+
+    @ApiProperty({ description: 'Contact Phone Number' })
+    @IsString()
+    @IsNotEmpty()
+    contactPhone!: string;
+
+    @ApiProperty({ description: 'Message Payload' })
+    @IsNotEmpty()
+    payload!: any;
+
+    @ApiProperty({ description: 'Is message a template', required: false })
+    @IsOptional()
+    isTemplate?: boolean;
+}
+
+export class ScheduleMessageDto {
+    @ApiProperty({ description: 'Lead ID', required: false })
+    @IsString()
+    @IsOptional()
+    leadId?: string;
+
+    @ApiProperty({ description: 'Contact Phone Number' })
+    @IsString()
+    @IsNotEmpty()
+    contactPhone!: string;
+
+    @ApiProperty({ description: 'Message Payload' })
+    @IsNotEmpty()
+    payload!: any;
+
+    @ApiProperty({ description: 'Scheduled Time' })
+    @IsNotEmpty()
+    scheduledAt!: Date;
+
+    @ApiProperty({ description: 'Is automated message', required: false })
+    @IsOptional()
+    isAutomated?: boolean;
+}
