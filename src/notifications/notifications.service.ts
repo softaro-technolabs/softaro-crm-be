@@ -5,15 +5,17 @@ import { randomUUID } from 'crypto';
 
 import { DRIZZLE } from '../database/database.constants';
 import type { DrizzleDatabase } from '../database/database.types';
-import { notifications } from '../database/schema';
-import { NotificationListQueryDto } from './notifications.dto';
+import { notifications, pushSubscriptions } from '../database/schema';
+import { NotificationListQueryDto, CreatePushSubscriptionDto } from './notifications.dto';
 import { ChatGateway } from '../chat/chat.gateway';
+import { WebPushService } from './web-push.service';
 
 @Injectable()
 export class NotificationsService {
     constructor(
         @Inject(DRIZZLE) private readonly db: DrizzleDatabase,
-        private readonly chatGateway: ChatGateway
+        private readonly chatGateway: ChatGateway,
+        private readonly webPushService: WebPushService
     ) { }
 
     async listNotifications(tenantId: string, userId: string, query: NotificationListQueryDto) {
@@ -115,13 +117,80 @@ export class NotificationsService {
 
         // Push via WebSocket if user is online
         if (this.chatGateway.isUserOnline(userId)) {
-            this.chatGateway.server.to(userId).emit('notification_received', created);
-            // Wait, ChatGateway currently joins the tenant and conversation rooms but not individual personal ones.
-            // We will need to update ChatGateway slightly to join a personal room `user:${userId}`.
-            // E.g. this.chatGateway.server.to(`user:${userId}`).emit('notification_received', created);
             this.chatGateway.server.to(`user:${userId}`).emit('notification_received', created);
         }
 
+        // Push via WebPush
+        this.sendWebPush(tenantId, userId, created).catch((err) => {
+            console.error('Failed to send web push notification', err);
+        });
+
         return created;
+    }
+
+    async addPushSubscription(tenantId: string, userId: string, dto: CreatePushSubscriptionDto) {
+        const id = randomUUID();
+        const now = new Date();
+
+        // Check if subscription already exists for this endpoint to avoid duplicates
+        const [existing] = await this.db
+            .select()
+            .from(pushSubscriptions)
+            .where(
+                and(
+                    eq(pushSubscriptions.userId, userId),
+                    sql`${pushSubscriptions.subscription}->>'endpoint' = ${dto.endpoint}`
+                )
+            )
+            .limit(1);
+
+        if (existing) {
+            await this.db
+                .update(pushSubscriptions)
+                .set({
+                    subscription: dto,
+                    updatedAt: now
+                })
+                .where(eq(pushSubscriptions.id, existing.id));
+            return { success: true, status: 'updated' };
+        }
+
+        await this.db.insert(pushSubscriptions).values({
+            id,
+            tenantId,
+            userId,
+            subscription: dto,
+            createdAt: now,
+            updatedAt: now
+        });
+
+        return { success: true, status: 'created' };
+    }
+
+    private async sendWebPush(tenantId: string, userId: string, notification: typeof notifications.$inferSelect) {
+        const subscriptions = await this.db
+            .select()
+            .from(pushSubscriptions)
+            .where(and(eq(pushSubscriptions.tenantId, tenantId), eq(pushSubscriptions.userId, userId)));
+
+        if (subscriptions.length === 0) return;
+
+        const payload = JSON.stringify({
+            title: notification.title,
+            body: notification.message,
+            icon: '/logo192.png', // Default icon path
+            data: {
+                url: '/notifications',
+                id: notification.id
+            }
+        });
+
+        for (const sub of subscriptions) {
+            const success = await this.webPushService.sendNotification(sub.subscription, payload);
+            if (!success) {
+                // Remove expired subscription
+                await this.db.delete(pushSubscriptions).where(eq(pushSubscriptions.id, sub.id));
+            }
+        }
     }
 }

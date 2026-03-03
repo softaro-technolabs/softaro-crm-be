@@ -14,3 +14,4 @@ export * from './chat.schema';
 export * from './notifications.schema';
 export * from './whatsapp.schema';
 export * from './calendar-sync.schema';
+export * from './push-subscriptions.schema';

@@ -444,6 +444,26 @@ export class MigrationService {
     } else {
       this.logger.debug('notifications table already exists');
     }
+
+    // push_subscriptions
+    const pushCheck = await client.query(`SELECT to_regclass('public.push_subscriptions') as t`);
+    if (pushCheck.rows[0]?.t === null) {
+      this.logger.log('Creating push_subscriptions table...');
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS "push_subscriptions" (
+          "id"            varchar(36) PRIMARY KEY,
+          "tenant_id"     varchar(36) NOT NULL,
+          "user_id"       varchar(36) NOT NULL,
+          "subscription"  jsonb NOT NULL,
+          "created_at"    timestamptz NOT NULL DEFAULT now(),
+          "updated_at"    timestamptz NOT NULL DEFAULT now()
+        );
+      `);
+      await client.query(`CREATE INDEX IF NOT EXISTS "push_subscriptions_user_idx" ON "push_subscriptions" ("user_id","tenant_id");`);
+      this.logger.log('✓ push_subscriptions table created');
+    } else {
+      this.logger.debug('push_subscriptions table already exists');
+    }
   }
 
   /**
