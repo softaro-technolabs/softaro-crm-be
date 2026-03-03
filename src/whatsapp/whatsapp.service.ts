@@ -3,12 +3,13 @@ import { randomUUID } from 'crypto';
 import { Injectable, Inject, NotFoundException, BadRequestException, Logger, OnApplicationBootstrap, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
-import { eq, and, lte } from 'drizzle-orm';
+import { eq, and, lte, sql } from 'drizzle-orm';
 
 import { EncryptionService } from '../common/services/encryption.service';
 import { DRIZZLE } from '../database/database.constants';
 import { DrizzleDatabase } from '../database/database.types';
 import { whatsappAccounts, whatsappMessages, whatsappSessions, whatsappMessageQueue, leads, whatsappScheduledMessages } from '../database/schema';
+import { PhoneUtil } from '../common/utils/phone.util';
 
 @Injectable()
 export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy {
@@ -264,11 +265,18 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
     }
 
     private async handleIncomingMessage(tenantId: string, contactPhone: string, messageId: string, rawMessage: any) {
+        const normalizedPhone = PhoneUtil.normalize(contactPhone);
+
         // Attempt to map to a lead
         const [lead] = await this.db
             .select({ id: leads.id })
             .from(leads)
-            .where(and(eq(leads.tenantId, tenantId), eq(leads.phone, contactPhone)))
+            .where(
+                and(
+                    eq(leads.tenantId, tenantId),
+                    sql`regexp_replace(${leads.phone}, '\D', '', 'g') = ${normalizedPhone}`
+                )
+            )
             .limit(1);
 
         const leadId = lead ? lead.id : null;

@@ -35,6 +35,7 @@ import {
   UpdateLeadStatusDto
 } from './leads.dto';
 import { LeadAssignmentService } from './lead-assignment.service';
+import { PhoneUtil } from '../common/utils/phone.util';
 
 type CreateLeadOptions = {
   createdByUserId?: string | null;
@@ -56,7 +57,7 @@ export class LeadsService {
   constructor(
     @Inject(DRIZZLE) private readonly db: DrizzleDatabase,
     private readonly assignmentService: LeadAssignmentService
-  ) {}
+  ) { }
 
   async listLeads(tenantId: string, query: LeadListQueryDto) {
     await this.ensureLeadDefaults(tenantId);
@@ -189,7 +190,7 @@ export class LeadsService {
       tenantId,
       statusId,
       name: dto.name,
-      phone: dto.phone ?? null,
+      phone: PhoneUtil.normalize(dto.phone) ?? null,
       email: dto.email ?? null,
       budget: this.serializeBudget(dto.budget),
       requirementType: dto.requirementType,
@@ -232,7 +233,7 @@ export class LeadsService {
     const updateData: Partial<typeof leads.$inferInsert> = {};
 
     if (dto.name !== undefined) updateData.name = dto.name;
-    if (dto.phone !== undefined) updateData.phone = dto.phone;
+    if (dto.phone !== undefined) updateData.phone = PhoneUtil.normalize(dto.phone);
     if (dto.email !== undefined) updateData.email = dto.email;
     if (dto.budget !== undefined) updateData.budget = this.serializeBudget(dto.budget);
     if (dto.requirementType !== undefined) updateData.requirementType = dto.requirementType;
@@ -499,7 +500,7 @@ export class LeadsService {
 
       // Get or create settings (this will auto-generate API key if it doesn't exist)
       const settings = await this.assignmentService.ensureSettings(tenant.id);
-      
+
       // Validate API key
       if (!apiKey) {
         throw new ForbiddenException(
@@ -536,7 +537,7 @@ export class LeadsService {
       if (error instanceof NotFoundException || error instanceof ForbiddenException || error instanceof BadRequestException) {
         throw error;
       }
-      
+
       // Log unexpected errors
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       const errorStack = error instanceof Error ? error.stack : undefined;
@@ -546,7 +547,7 @@ export class LeadsService {
         error: errorMessage,
         stack: errorStack
       });
-      
+
       throw new InternalServerErrorException(
         `Failed to capture lead: ${errorMessage}. Please check server logs for details.`
       );
@@ -658,13 +659,13 @@ export class LeadsService {
       typeof propertyMatchScore === 'number'
         ? propertyMatchScore
         : propertyMatchScore
-        ? Number(propertyMatchScore)
-        : undefined;
+          ? Number(propertyMatchScore)
+          : undefined;
 
     const result: Pick<CreateLeadDto, 'name' | 'requirementType'> & Partial<CreateLeadDto> = {
       name,
       requirementType: requirement,
-      phone: this.cleanString(normalized['phone'] ?? normalized['mobile']),
+      phone: PhoneUtil.normalize(this.cleanString(normalized['phone'] ?? normalized['mobile'])) ?? undefined,
       email: this.cleanString(normalized['email']),
       budget: this.parseNumber(normalized['budget']),
       propertyType: this.cleanString(normalized['property_type'] ?? normalized['bhk']),
