@@ -10,6 +10,7 @@ import { DRIZZLE } from '../database/database.constants';
 import { DrizzleDatabase } from '../database/database.types';
 import { whatsappAccounts, whatsappMessages, whatsappSessions, whatsappMessageQueue, leads, whatsappScheduledMessages } from '../database/schema';
 import { PhoneUtil } from '../common/utils/phone.util';
+import { WhatsappGateway } from './whatsapp.gateway';
 
 @Injectable()
 export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy {
@@ -22,7 +23,8 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
     constructor(
         @Inject(DRIZZLE) private readonly db: DrizzleDatabase,
         private readonly configService: ConfigService,
-        private readonly encryptionService: EncryptionService
+        private readonly encryptionService: EncryptionService,
+        private readonly whatsappGateway: WhatsappGateway
     ) { }
 
     onApplicationBootstrap() {
@@ -96,19 +98,27 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
                 );
 
                 const metaMessageId = response.data?.messages?.[0]?.id;
+                const messageId = randomUUID();
 
-                // Log as sent
-                await this.db.insert(whatsappMessages).values({
-                    id: randomUUID(),
+                const newMessage = {
+                    id: messageId,
                     tenantId: msg.tenantId,
                     leadId: msg.leadId,
                     contactPhone: msg.contactPhone,
-                    direction: 'outbound',
+                    direction: 'outbound' as const,
                     messageId: metaMessageId || `mock-id-${Date.now()}`,
-                    status: 'sent',
+                    status: 'sent' as const,
                     content: cleanPayload,
-                    isTemplate: cleanPayload.type === 'template'
-                });
+                    isTemplate: cleanPayload.type === 'template',
+                    createdAt: new Date(),
+                    updatedAt: new Date()
+                };
+
+                // Log as sent
+                await this.db.insert(whatsappMessages).values(newMessage);
+
+                // Broadcast real-time update
+                this.whatsappGateway.broadcastNewMessage(msg.tenantId, msg.leadId, newMessage);
 
                 // Remove from queue
                 await this.db.delete(whatsappMessageQueue).where(eq(whatsappMessageQueue.id, msg.id));
@@ -303,18 +313,25 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
             });
         }
 
-        // Save message
-        await this.db.insert(whatsappMessages).values({
+        const newMessage = {
             id: randomUUID(),
             tenantId,
             leadId,
             contactPhone,
-            direction: 'inbound',
+            direction: 'inbound' as const,
             messageId,
-            status: 'received',
+            status: 'received' as const,
             content: rawMessage,
-            isTemplate: false
-        });
+            isTemplate: false,
+            createdAt: now,
+            updatedAt: now
+        };
+
+        // Save message
+        await this.db.insert(whatsappMessages).values(newMessage);
+
+        // Broadcast real-time update
+        this.whatsappGateway.broadcastNewMessage(tenantId, leadId, newMessage);
 
         // Trigger Automation Engine (Conceptual)
         this.logger.log(`Received incoming meta message ${messageId} mapped to lead: ${leadId}`);
