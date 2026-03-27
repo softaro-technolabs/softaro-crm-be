@@ -1,8 +1,8 @@
-import { Body, Controller, Get, Param, Post, Put, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { TenantsService } from './tenants.service';
-import { CreateTenantDto, UpdateTenantDto } from './tenants.dto';
+import { CreateTenantDto, UpdateTenantDto, TenantListQueryDto } from './tenants.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { SuperAdminGuard } from '../auth/super-admin.guard';
 
@@ -23,8 +23,8 @@ export class TenantsController {
   @Get()
   @UseGuards(SuperAdminGuard)
   @ApiOperation({ summary: 'List all tenants (Super Admin only)' })
-  async findAll() {
-    return this.tenantsService.findAll();
+  async findAll(@Query() query: TenantListQueryDto) {
+    return this.tenantsService.findAll(query);
   }
 
   @Get(':id')

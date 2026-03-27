@@ -19,6 +19,7 @@ import {
   propertyUnits,
   users
 } from '../database/schema';
+import { PaginationUtil } from '../common/utils/pagination.util';
 
 import type {
   CreateLeadPropertyInterestDto,
@@ -48,40 +49,55 @@ export class PropertiesService {
   async listEntities(tenantId: string, query: PropertyEntityListQueryDto) {
     const limit = query.limit ?? 50;
     const page = query.page ?? 1;
-    const offset = (page - 1) * limit;
+    const offset = PaginationUtil.getOffset(page, limit);
 
-    const filters: SQL[] = [eq(propertyEntities.tenantId, tenantId)];
-    if (query.entityType) filters.push(eq(propertyEntities.entityType, query.entityType));
-    if (query.status) filters.push(eq(propertyEntities.status, query.status));
-    if (query.parentId) filters.push(eq(propertyEntities.parentId, query.parentId));
-    if (query.rootOnly) filters.push(isNull(propertyEntities.parentId));
+    const baseFilters: SQL[] = [eq(propertyEntities.tenantId, tenantId)];
+    if (query.entityType) baseFilters.push(eq(propertyEntities.entityType, query.entityType));
+    if (query.status) baseFilters.push(eq(propertyEntities.status, query.status));
+    if (query.parentId) baseFilters.push(eq(propertyEntities.parentId, query.parentId));
+    if (query.rootOnly) baseFilters.push(isNull(propertyEntities.parentId));
+
+    let searchFilter: SQL | null = null;
     if (query.search) {
-      const term = `%${query.search}%`;
-      const cond = or(ilike(propertyEntities.name, term));
-      if (cond) filters.push(cond);
+      searchFilter = PaginationUtil.buildSearchFilter({
+        fields: [propertyEntities.name],
+        term: query.search
+      });
     }
 
-    let whereClause = filters[0];
-    for (let i = 1; i < filters.length; i += 1) {
-      whereClause = and(whereClause, filters[i]) as SQL;
+    const allFilters = [...baseFilters];
+    if (searchFilter) {
+      allFilters.push(searchFilter);
     }
+
+    const whereClause = PaginationUtil.buildFilters(allFilters);
+
+    const allowedSortFields = {
+      name: propertyEntities.name,
+      createdAt: propertyEntities.createdAt,
+      updatedAt: propertyEntities.updatedAt
+    };
+
+    const orderBy = PaginationUtil.buildOrderBy(
+      propertyEntities.createdAt,
+      query.sortBy,
+      query.sortOrder || 'desc',
+      allowedSortFields
+    );
 
     const [rows, totalRows] = await Promise.all([
       this.db
         .select()
         .from(propertyEntities)
-        .where(whereClause)
-        .orderBy(desc(propertyEntities.createdAt))
+        .where(whereClause || undefined)
+        .orderBy(orderBy)
         .limit(limit)
         .offset(offset),
-      this.db.select({ count: sql<number>`count(*)` }).from(propertyEntities).where(whereClause)
+      this.db.select({ count: sql<number>`count(*)` }).from(propertyEntities).where(whereClause || undefined)
     ]);
 
     const total = totalRows.length ? Number(totalRows[0].count) : 0;
-    return {
-      data: rows,
-      meta: { total, page, limit, pages: Math.ceil(total / limit) || 1 }
-    };
+    return PaginationUtil.buildPaginatedResult(rows, total, page, limit);
   }
   async getEntity(tenantId: string, entityId: string) {
     const [row] = await this.db
@@ -344,21 +360,41 @@ export class PropertiesService {
   async listUnits(tenantId: string, query: PropertyUnitListQueryDto) {
     const limit = query.limit ?? 50;
     const page = query.page ?? 1;
-    const offset = (page - 1) * limit;
+    const offset = PaginationUtil.getOffset(page, limit);
 
-    const filters: SQL[] = [eq(propertyUnits.tenantId, tenantId)];
-    if (query.entityId) filters.push(eq(propertyUnits.entityId, query.entityId));
-    if (query.unitStatus) filters.push(eq(propertyUnits.unitStatus, query.unitStatus));
+    const baseFilters: SQL[] = [eq(propertyUnits.tenantId, tenantId)];
+    if (query.entityId) baseFilters.push(eq(propertyUnits.entityId, query.entityId));
+    if (query.unitStatus) baseFilters.push(eq(propertyUnits.unitStatus, query.unitStatus));
+
+    let searchFilter: SQL | null = null;
     if (query.search) {
-      const term = `%${query.search}%`;
-      const cond = or(ilike(propertyUnits.unitCode, term));
-      if (cond) filters.push(cond);
+      searchFilter = PaginationUtil.buildSearchFilter({
+        fields: [propertyUnits.unitCode],
+        term: query.search
+      });
     }
 
-    let whereClause = filters[0];
-    for (let i = 1; i < filters.length; i += 1) {
-      whereClause = and(whereClause, filters[i]) as SQL;
+    const allFilters = [...baseFilters];
+    if (searchFilter) {
+      allFilters.push(searchFilter);
     }
+
+    const whereClause = PaginationUtil.buildFilters(allFilters);
+
+    const allowedSortFields = {
+      unitCode: propertyUnits.unitCode,
+      price: propertyUnits.price,
+      pricePerSqft: propertyUnits.pricePerSqft,
+      createdAt: propertyUnits.createdAt,
+      updatedAt: propertyUnits.updatedAt
+    };
+
+    const orderBy = PaginationUtil.buildOrderBy(
+      propertyUnits.createdAt,
+      query.sortBy,
+      query.sortOrder || 'desc',
+      allowedSortFields
+    );
 
     const [rows, totalRows] = await Promise.all([
       this.db
@@ -372,18 +408,15 @@ export class PropertiesService {
         })
         .from(propertyUnits)
         .innerJoin(propertyEntities, and(eq(propertyEntities.id, propertyUnits.entityId), eq(propertyEntities.tenantId, tenantId)))
-        .where(whereClause)
-        .orderBy(desc(propertyUnits.createdAt))
+        .where(whereClause || undefined)
+        .orderBy(orderBy)
         .limit(limit)
         .offset(offset),
-      this.db.select({ count: sql<number>`count(*)` }).from(propertyUnits).where(whereClause)
+      this.db.select({ count: sql<number>`count(*)` }).from(propertyUnits).where(whereClause || undefined)
     ]);
 
     const total = totalRows.length ? Number(totalRows[0].count) : 0;
-    return {
-      data: rows,
-      meta: { total, page, limit, pages: Math.ceil(total / limit) || 1 }
-    };
+    return PaginationUtil.buildPaginatedResult(rows, total, page, limit);
   }
 
   async getUnit(tenantId: string, unitId: string) {

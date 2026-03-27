@@ -1,20 +1,10 @@
-import {
-    Body,
-    Controller,
-    Post,
-    Get,
-    Delete,
-    UseGuards,
-    Param,
-    ForbiddenException,
-    NotFoundException
-} from '@nestjs/common';
+import { Get, Post, Delete, Param, Query, Body, Controller, UseGuards, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags, ApiParam } from '@nestjs/swagger';
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RequestContextService } from '../common/utils/request-context.service';
 
-import { SendMessageDto, ScheduleMessageDto } from './whatsapp.dto';
+import { SendMessageDto, ScheduleMessageDto, MessageListQueryDto } from './whatsapp.dto';
 import { WhatsappService } from './whatsapp.service';
 
 @ApiTags('WhatsApp Messaging')
@@ -68,10 +58,11 @@ export class WhatsappController {
     @ApiParam({ name: 'leadId', description: 'Lead ID' })
     async getHistory(
         @Param('tenantId') tenantId: string,
-        @Param('leadId') leadId: string
+        @Param('leadId') leadId: string,
+        @Query() query: MessageListQueryDto
     ) {
         this.verifyTenantAccess(tenantId);
-        return this.whatsappService.getLeadMessageHistory(tenantId, leadId);
+        return this.whatsappService.getLeadMessageHistory(tenantId, leadId, query);
     }
 
     @Get('scheduled/:leadId')

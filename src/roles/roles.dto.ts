@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsArray, IsBoolean, IsOptional, IsString, MinLength, ValidateNested } from 'class-validator';
+import { IsArray, IsBoolean, IsOptional, IsString, MinLength, ValidateNested, IsIn } from 'class-validator';
 import { Type } from 'class-transformer';
+import { BaseListQueryDto } from '../common/dto/base-list-query.dto';
 
 export class RolePermissionAssignmentDto {
   @ApiProperty({ example: 'uuid-of-permission', description: 'ID of the master permission' })
@@ -56,6 +57,18 @@ export class UpdateRoleDto {
   @ValidateNested({ each: true })
   @Type(() => RolePermissionAssignmentDto)
   permissions?: RolePermissionAssignmentDto[];
+}
+
+export class RoleListQueryDto extends BaseListQueryDto {
+  @ApiPropertyOptional({
+    enum: ['name', 'isAdmin', 'createdAt'],
+    default: 'createdAt',
+    description: 'Field to sort by',
+    example: 'name'
+  })
+  @IsOptional()
+  @IsIn(['name', 'isAdmin', 'createdAt'])
+  override sortBy?: 'name' | 'isAdmin' | 'createdAt';
 }
 
 

@@ -1,11 +1,12 @@
 import { BadRequestException, Inject, Injectable } from '@nestjs/common';
-import { eq } from 'drizzle-orm';
+import { eq, sql, type SQL } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 
 import { DRIZZLE } from '../database/database.constants';
 import type { DrizzleDatabase } from '../database/database.types';
 import { tenants, userTenants } from '../database/schema';
-import { CreateTenantDto, UpdateTenantDto } from './tenants.dto';
+import { CreateTenantDto, UpdateTenantDto, TenantListQueryDto } from './tenants.dto';
+import { PaginationUtil } from '../common/utils/pagination.util';
 import { UsersService } from '../users/users.service';
 import { RolesService } from '../roles/roles.service';
 
@@ -96,8 +97,54 @@ export class TenantsService {
     return tenant ?? null;
   }
 
-  async findAll() {
-    return this.db.select().from(tenants);
+  async findAll(query: TenantListQueryDto) {
+    const limit = query.limit ?? 50;
+    const page = query.page ?? 1;
+    const offset = PaginationUtil.getOffset(page, limit);
+
+    const baseFilters: SQL[] = [];
+
+    let searchFilter: SQL | null = null;
+    if (query.search) {
+      searchFilter = PaginationUtil.buildSearchFilter({
+        fields: [tenants.name, tenants.slug],
+        term: query.search
+      });
+    }
+
+    const allFilters = [...baseFilters];
+    if (searchFilter) allFilters.push(searchFilter);
+
+    const whereClause = PaginationUtil.buildFilters(allFilters);
+
+    const allowedSortFields = {
+      name: tenants.name,
+      slug: tenants.slug,
+      plan: tenants.plan,
+      status: tenants.status,
+      createdAt: tenants.createdAt
+    };
+
+    const orderBy = PaginationUtil.buildOrderBy(
+      tenants.createdAt,
+      query.sortBy,
+      query.sortOrder || 'asc',
+      allowedSortFields
+    );
+
+    const [results, totalRows] = await Promise.all([
+      this.db
+        .select()
+        .from(tenants)
+        .where(whereClause || undefined)
+        .orderBy(orderBy)
+        .limit(limit)
+        .offset(offset),
+      this.db.select({ count: sql<number>`count(*)` }).from(tenants).where(whereClause || undefined)
+    ]);
+
+    const total = totalRows.length ? Number(totalRows[0].count) : 0;
+    return PaginationUtil.buildPaginatedResult(results, total, page, limit);
   }
 }
 

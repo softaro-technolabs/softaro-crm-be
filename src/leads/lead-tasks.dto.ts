@@ -105,7 +105,9 @@ export class UpdateLeadTaskDto {
   assignedToUserId?: string | null;
 }
 
-export class LeadTaskListQueryDto {
+import { BaseListQueryDto } from '../common/dto/base-list-query.dto';
+
+export class LeadTaskListQueryDto extends BaseListQueryDto {
   @ApiPropertyOptional({ enum: LEAD_TASK_STATUSES, example: 'open' })
   @IsOptional()
   @IsIn(LEAD_TASK_STATUSES)
@@ -126,22 +128,18 @@ export class LeadTaskListQueryDto {
   @IsBoolean()
   includeArchived?: boolean;
 
-  @ApiPropertyOptional({ minimum: 1, default: 50 })
+  @ApiPropertyOptional({
+    enum: ['title', 'priority', 'status', 'dueAt', 'createdAt', 'updatedAt'],
+    default: 'createdAt',
+    description: 'Field to sort by',
+    example: 'dueAt'
+  })
   @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @IsPositive()
-  limit?: number;
-
-  @ApiPropertyOptional({ minimum: 1, default: 1 })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @IsPositive()
-  page?: number;
+  @IsIn(['title', 'priority', 'status', 'dueAt', 'createdAt', 'updatedAt'])
+  override sortBy?: 'title' | 'priority' | 'status' | 'dueAt' | 'createdAt' | 'updatedAt';
 }
 
-export class TenantTaskListQueryDto {
+export class TenantTaskListQueryDto extends BaseListQueryDto {
   @ApiPropertyOptional({ format: 'uuid' })
   @IsOptional()
   @IsUUID(4)
@@ -175,19 +173,15 @@ export class TenantTaskListQueryDto {
   @IsBoolean()
   includeArchived?: boolean;
 
-  @ApiPropertyOptional({ minimum: 1, default: 50 })
+  @ApiPropertyOptional({
+    enum: ['title', 'priority', 'status', 'dueAt', 'createdAt', 'updatedAt'],
+    default: 'createdAt',
+    description: 'Field to sort by',
+    example: 'dueAt'
+  })
   @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @IsPositive()
-  limit?: number;
-
-  @ApiPropertyOptional({ minimum: 1, default: 1 })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @IsPositive()
-  page?: number;
+  @IsIn(['title', 'priority', 'status', 'dueAt', 'createdAt', 'updatedAt'])
+  override sortBy?: 'title' | 'priority' | 'status' | 'dueAt' | 'createdAt' | 'updatedAt';
 }
 
 

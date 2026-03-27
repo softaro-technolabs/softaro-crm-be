@@ -1,11 +1,12 @@
 import { BadRequestException, Inject, Injectable } from '@nestjs/common';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql, type SQL } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 
 import { DRIZZLE } from '../database/database.constants';
 import type { DrizzleDatabase } from '../database/database.types';
 import { permissions, rolePermissions, modules } from '../database/schema';
-import { CreatePermissionDto, UpdatePermissionDto } from './permissions.dto';
+import { CreatePermissionDto, UpdatePermissionDto, PermissionListQueryDto } from './permissions.dto';
+import { PaginationUtil } from '../common/utils/pagination.util';
 
 @Injectable()
 export class PermissionsService {
@@ -29,8 +30,50 @@ export class PermissionsService {
     return this.db.select().from(permissions);
   }
 
-  async getAll() {
-    return this.db.select().from(permissions);
+  async getAll(query: PermissionListQueryDto) {
+    const limit = query.limit ?? 50;
+    const page = query.page ?? 1;
+    const offset = PaginationUtil.getOffset(page, limit);
+
+    const baseFilters: SQL[] = [];
+
+    let searchFilter: SQL | null = null;
+    if (query.search) {
+      searchFilter = PaginationUtil.buildSearchFilter({
+        fields: [permissions.action, permissions.description],
+        term: query.search
+      });
+    }
+
+    const allFilters = [...baseFilters];
+    if (searchFilter) allFilters.push(searchFilter);
+
+    const whereClause = PaginationUtil.buildFilters(allFilters);
+
+    const allowedSortFields = {
+      action: permissions.action
+    };
+
+    const orderBy = PaginationUtil.buildOrderBy(
+      permissions.action,
+      query.sortBy,
+      query.sortOrder || 'asc',
+      allowedSortFields
+    );
+
+    const [results, totalRows] = await Promise.all([
+      this.db
+        .select()
+        .from(permissions)
+        .where(whereClause || undefined)
+        .orderBy(orderBy)
+        .limit(limit)
+        .offset(offset),
+      this.db.select({ count: sql<number>`count(*)` }).from(permissions).where(whereClause || undefined)
+    ]);
+
+    const total = totalRows.length ? Number(totalRows[0].count) : 0;
+    return PaginationUtil.buildPaginatedResult(results, total, page, limit);
   }
 
   async findById(id: string) {

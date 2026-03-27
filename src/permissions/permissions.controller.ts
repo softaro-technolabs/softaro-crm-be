@@ -1,10 +1,10 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { PermissionsService } from './permissions.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { SuperAdminGuard } from '../auth/super-admin.guard';
-import { CreatePermissionDto, UpdatePermissionDto } from './permissions.dto';
+import { CreatePermissionDto, UpdatePermissionDto, PermissionListQueryDto } from './permissions.dto';
 
 @ApiTags('Permissions')
 @Controller('permissions')
@@ -22,8 +22,8 @@ export class PermissionsController {
 
   @Get()
   @ApiOperation({ summary: 'List all available master permissions' })
-  async findAll() {
-    return await this.permissionsService.getAll();
+  async findAll(@Query() query: PermissionListQueryDto) {
+    return await this.permissionsService.getAll(query);
   }
 
   @Get('actions')

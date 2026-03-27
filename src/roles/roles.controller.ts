@@ -1,8 +1,8 @@
-import { Body, Controller, Delete, ForbiddenException, Get, Param, Post, Put, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, ForbiddenException, Get, Param, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { RolesService } from './roles.service';
-import { CreateRoleDto, UpdateRoleDto } from './roles.dto';
+import { CreateRoleDto, UpdateRoleDto, RoleListQueryDto } from './roles.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RequestContextService } from '../common/utils/request-context.service';
 
@@ -25,9 +25,9 @@ export class RolesController {
 
   @Get()
   @ApiOperation({ summary: 'List all roles in a tenant' })
-  async findAll(@Param('tenantId') tenantId: string) {
+  async findAll(@Param('tenantId') tenantId: string, @Query() query: RoleListQueryDto) {
     this.verifyTenantAccess(tenantId);
-    return this.rolesService.findByTenant(tenantId);
+    return this.rolesService.findByTenant(tenantId, query);
   }
 
   @Get(':roleId')

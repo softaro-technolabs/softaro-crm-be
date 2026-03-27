@@ -3,7 +3,7 @@ import { randomUUID } from 'crypto';
 import { Injectable, Inject, NotFoundException, BadRequestException, Logger, OnApplicationBootstrap, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
-import { eq, and, lte, sql } from 'drizzle-orm';
+import { eq, and, lte, sql, SQL } from 'drizzle-orm';
 
 import { EncryptionService } from '../common/services/encryption.service';
 import { DRIZZLE } from '../database/database.constants';
@@ -11,6 +11,8 @@ import { DrizzleDatabase } from '../database/database.types';
 import { whatsappAccounts, whatsappMessages, whatsappSessions, whatsappMessageQueue, leads, whatsappScheduledMessages } from '../database/schema';
 import { PhoneUtil } from '../common/utils/phone.util';
 import { WhatsappGateway } from './whatsapp.gateway';
+import { PaginationUtil } from '../common/utils/pagination.util';
+import { MessageListQueryDto } from './whatsapp.dto';
 
 @Injectable()
 export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy {
@@ -457,12 +459,56 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
         return { id, status: 'scheduled' };
     }
 
-    async getLeadMessageHistory(tenantId: string, leadId: string) {
-        return this.db
-            .select()
-            .from(whatsappMessages)
-            .where(and(eq(whatsappMessages.tenantId, tenantId), eq(whatsappMessages.leadId, leadId)))
-            .orderBy(whatsappMessages.createdAt);
+    async getLeadMessageHistory(tenantId: string, leadId: string, query: MessageListQueryDto) {
+        const limit = query.limit ?? 50;
+        const page = query.page ?? 1;
+        const offset = PaginationUtil.getOffset(page, limit);
+
+        const filters: SQL[] = [
+            eq(whatsappMessages.tenantId, tenantId),
+            eq(whatsappMessages.leadId, leadId)
+        ];
+
+        let searchFilter: SQL | null = null;
+        if (query.search) {
+            searchFilter = PaginationUtil.buildSearchFilter({
+                fields: [whatsappMessages.content, whatsappMessages.contactPhone],
+                term: query.search
+            });
+        }
+
+        const allFilters = [...filters];
+        if (searchFilter) allFilters.push(searchFilter);
+
+        const whereClause = PaginationUtil.buildFilters(allFilters);
+
+        const allowedSortFields = {
+            createdAt: whatsappMessages.createdAt,
+            status: whatsappMessages.status
+        };
+
+        const orderBy = PaginationUtil.buildOrderBy(
+            whatsappMessages.createdAt,
+            query.sortBy,
+            query.sortOrder || 'asc',
+            allowedSortFields
+        );
+
+        const [results, totalRows] = await Promise.all([
+            this.db
+                .select()
+                .from(whatsappMessages)
+                .where(whereClause || undefined)
+                .orderBy(orderBy)
+                .limit(limit)
+                .offset(offset),
+            this.db.select({ count: sql<number>`count(*)` })
+                .from(whatsappMessages)
+                .where(whereClause || undefined)
+        ]);
+
+        const total = totalRows.length ? Number(totalRows[0].count) : 0;
+        return PaginationUtil.buildPaginatedResult(results, total, page, limit);
     }
 
     async getScheduledMessages(tenantId: string, leadId: string) {

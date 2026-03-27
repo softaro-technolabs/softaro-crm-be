@@ -36,6 +36,7 @@ import {
 } from './leads.dto';
 import { LeadAssignmentService } from './lead-assignment.service';
 import { PhoneUtil } from '../common/utils/phone.util';
+import { PaginationUtil } from '../common/utils/pagination.util';
 
 type CreateLeadOptions = {
   createdByUserId?: string | null;
@@ -64,30 +65,49 @@ export class LeadsService {
 
     const limit = query.limit ?? 50;
     const page = query.page ?? 1;
-    const offset = (page - 1) * limit;
+    const offset = PaginationUtil.getOffset(page, limit);
 
-    const filters: SQL[] = [eq(leads.tenantId, tenantId)];
+    const baseFilters: SQL[] = [eq(leads.tenantId, tenantId)];
 
     if (query.statusId) {
-      filters.push(eq(leads.statusId, query.statusId));
+      baseFilters.push(eq(leads.statusId, query.statusId));
     }
 
     if (query.assignedToUserId) {
-      filters.push(eq(leads.assignedToUserId, query.assignedToUserId));
+      baseFilters.push(eq(leads.assignedToUserId, query.assignedToUserId));
     }
 
+    let searchFilter: SQL | null = null;
     if (query.search) {
-      const term = `%${query.search}%`;
-      const searchCondition = or(ilike(leads.name, term), ilike(leads.email, term), ilike(leads.phone, term));
-      if (searchCondition) {
-        filters.push(searchCondition);
-      }
+      searchFilter = PaginationUtil.buildSearchFilter({
+        fields: [leads.name, leads.email, leads.phone],
+        term: query.search
+      });
     }
 
-    let whereClause = filters[0];
-    for (let i = 1; i < filters.length; i += 1) {
-      whereClause = and(whereClause, filters[i]) as SQL;
+    const allFilters = [...baseFilters];
+    if (searchFilter) {
+      allFilters.push(searchFilter);
     }
+
+    const whereClause = PaginationUtil.buildFilters(allFilters);
+
+    const allowedSortFields = {
+      name: leads.name,
+      email: leads.email,
+      phone: leads.phone,
+      createdAt: leads.createdAt,
+      updatedAt: leads.updatedAt,
+      budget: leads.budget,
+      propertyMatchScore: leads.propertyMatchScore
+    };
+
+    const orderBy = PaginationUtil.buildOrderBy(
+      leads.createdAt,
+      query.sortBy,
+      query.sortOrder || 'desc',
+      allowedSortFields
+    );
 
     const [results, totalRows] = await Promise.all([
       this.db
@@ -103,19 +123,18 @@ export class LeadsService {
         .from(leads)
         .leftJoin(leadStatuses, eq(leads.statusId, leadStatuses.id))
         .leftJoin(users, eq(leads.assignedToUserId, users.id))
-        .where(whereClause)
-        .orderBy(desc(leads.createdAt))
+        .where(whereClause || undefined)
+        .orderBy(orderBy)
         .limit(limit)
         .offset(offset),
       this.db
         .select({ count: sql<number>`count(*)` })
         .from(leads)
-        .where(whereClause)
+        .where(whereClause || undefined)
     ]);
 
     const total = totalRows.length ? Number(totalRows[0].count) : 0;
 
-    // Map results to ensure all fields are present and handle null values
     const mappedResults = results.map((row) => ({
       id: row.id,
       name: row.name ?? '',
@@ -126,15 +145,7 @@ export class LeadsService {
       assignedTo: row.assignedTo ?? null
     }));
 
-    return {
-      data: mappedResults,
-      meta: {
-        total,
-        page,
-        limit,
-        pages: Math.ceil(total / limit) || 1
-      }
-    };
+    return PaginationUtil.buildPaginatedResult(mappedResults, total, page, limit);
   }
 
   async getLead(tenantId: string, leadId: string) {

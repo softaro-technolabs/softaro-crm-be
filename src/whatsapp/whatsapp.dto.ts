@@ -1,5 +1,6 @@
-import { IsString, IsNotEmpty, IsOptional } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
+import { IsString, IsNotEmpty, IsOptional, IsIn } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { BaseListQueryDto } from '../common/dto/base-list-query.dto';
 
 export class OnboardTenantDto {
     @ApiProperty({ description: 'The authorization code received from Meta Embedded Signup' })
@@ -77,4 +78,16 @@ export class ScheduleMessageDto {
     @ApiProperty({ description: 'Is automated message', required: false })
     @IsOptional()
     isAutomated?: boolean;
+}
+
+export class MessageListQueryDto extends BaseListQueryDto {
+    @ApiPropertyOptional({
+        enum: ['createdAt', 'status'],
+        default: 'createdAt',
+        description: 'Field to sort by',
+        example: 'createdAt'
+    })
+    @IsOptional()
+    @IsIn(['createdAt', 'status'])
+    override sortBy?: 'createdAt' | 'status';
 }

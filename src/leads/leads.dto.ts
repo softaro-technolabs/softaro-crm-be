@@ -226,7 +226,9 @@ export class UpdateLeadDto {
   statusId?: string;
 }
 
-export class LeadListQueryDto {
+import { BaseListQueryDto } from '../common/dto/base-list-query.dto';
+
+export class LeadListQueryDto extends BaseListQueryDto {
   @ApiPropertyOptional({ format: 'uuid', example: '2a9b0d26-1644-4c3f-8e01-2eb8a7f7240a' })
   @IsOptional()
   @IsUUID(4)
@@ -237,24 +239,15 @@ export class LeadListQueryDto {
   @IsUUID(4)
   assignedToUserId?: string;
 
-  @ApiPropertyOptional({ description: 'Search string applied to name/email/phone', example: 'john' })
+  @ApiPropertyOptional({
+    enum: ['name', 'email', 'phone', 'createdAt', 'updatedAt', 'budget', 'propertyMatchScore'],
+    default: 'createdAt',
+    description: 'Field to sort by',
+    example: 'name'
+  })
   @IsOptional()
-  @IsString()
-  search?: string;
-
-  @ApiPropertyOptional({ minimum: 1, default: 50, example: 25 })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @IsPositive()
-  limit?: number;
-
-  @ApiPropertyOptional({ minimum: 1, default: 1, example: 2 })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @IsPositive()
-  page?: number;
+  @IsIn(['name', 'email', 'phone', 'createdAt', 'updatedAt', 'budget', 'propertyMatchScore'])
+  override sortBy?: 'name' | 'email' | 'phone' | 'createdAt' | 'updatedAt' | 'budget' | 'propertyMatchScore';
 }
 
 export class UpdateLeadStatusDto {

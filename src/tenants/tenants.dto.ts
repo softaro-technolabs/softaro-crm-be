@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEmail, IsEnum, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsEmail, IsEnum, IsOptional, IsString, MinLength, IsIn } from 'class-validator';
+import { BaseListQueryDto } from '../common/dto/base-list-query.dto';
 
 export class CreateTenantDto {
   @ApiProperty({ example: 'Acme Corporation' })
@@ -53,3 +54,15 @@ export class UpdateTenantDto {
 
 
 
+
+export class TenantListQueryDto extends BaseListQueryDto {
+  @ApiPropertyOptional({
+    enum: ['name', 'slug', 'plan', 'status', 'createdAt'],
+    default: 'createdAt',
+    description: 'Field to sort by',
+    example: 'name'
+  })
+  @IsOptional()
+  @IsIn(['name', 'slug', 'plan', 'status', 'createdAt'])
+  override sortBy?: 'name' | 'slug' | 'plan' | 'status' | 'createdAt';
+}

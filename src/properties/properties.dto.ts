@@ -95,7 +95,9 @@ export class UpsertPropertyLocationDto {
   longitude?: number;
 }
 
-export class PropertyEntityListQueryDto {
+import { BaseListQueryDto } from '../common/dto/base-list-query.dto';
+
+export class PropertyEntityListQueryDto extends BaseListQueryDto {
   @ApiPropertyOptional({ enum: PROPERTY_ENTITY_TYPES, example: 'project' })
   @IsOptional()
   @IsIn(PROPERTY_ENTITY_TYPES)
@@ -117,24 +119,15 @@ export class PropertyEntityListQueryDto {
   @Type(() => Boolean)
   rootOnly?: boolean;
 
-  @ApiPropertyOptional({ description: 'Search by name', example: 'Palm' })
+  @ApiPropertyOptional({
+    enum: ['name', 'createdAt', 'updatedAt'],
+    default: 'createdAt',
+    description: 'Field to sort by',
+    example: 'name'
+  })
   @IsOptional()
-  @IsString()
-  search?: string;
-
-  @ApiPropertyOptional({ minimum: 1, default: 50, example: 25 })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @IsPositive()
-  limit?: number;
-
-  @ApiPropertyOptional({ minimum: 1, default: 1, example: 2 })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @IsPositive()
-  page?: number;
+  @IsIn(['name', 'createdAt', 'updatedAt'])
+  override sortBy?: 'name' | 'createdAt' | 'updatedAt';
 }
 
 export class CreatePropertyEntityDto {
@@ -260,7 +253,7 @@ export class CreatePropertyUnitDto {
   unitStatus?: PropertyUnitStatus;
 }
 
-export class PropertyUnitListQueryDto {
+export class PropertyUnitListQueryDto extends BaseListQueryDto {
   @ApiPropertyOptional({ format: 'uuid', description: 'Filter by entity id', example: 'f61d2c3a-14b8-4b8c-9b7a-87a1a3f2d1aa' })
   @IsOptional()
   @IsUUID(4)
@@ -271,24 +264,15 @@ export class PropertyUnitListQueryDto {
   @IsIn(PROPERTY_UNIT_STATUSES)
   unitStatus?: PropertyUnitStatus;
 
-  @ApiPropertyOptional({ description: 'Search by unit_code', example: '1204' })
+  @ApiPropertyOptional({
+    enum: ['unitCode', 'price', 'pricePerSqft', 'createdAt', 'updatedAt'],
+    default: 'createdAt',
+    description: 'Field to sort by',
+    example: 'price'
+  })
   @IsOptional()
-  @IsString()
-  search?: string;
-
-  @ApiPropertyOptional({ minimum: 1, default: 50 })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @IsPositive()
-  limit?: number;
-
-  @ApiPropertyOptional({ minimum: 1, default: 1 })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @IsPositive()
-  page?: number;
+  @IsIn(['unitCode', 'price', 'pricePerSqft', 'createdAt', 'updatedAt'])
+  override sortBy?: 'unitCode' | 'price' | 'pricePerSqft' | 'createdAt' | 'updatedAt';
 }
 
 export class UpdatePropertyUnitDto {
