@@ -178,8 +178,8 @@ export class AuthService {
         ? await this.modulesService.getTenantModules(tenant.id)
         : await this.modulesService.getAllModules();
 
-      const allMasterPermissions = await this.permissionsService.getAllActions();
-      const tenantsList = await this.tenantsService.findAll();
+      const { data: allMasterPermissions } = await this.permissionsService.getAllActions();
+      const { data: tenantsList } = await this.tenantsService.findAll({});
 
       const normalizedModulesWithFlag = modules.map(({ module, tenantModule }) => ({
         id: module.id,

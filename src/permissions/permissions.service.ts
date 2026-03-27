@@ -26,8 +26,50 @@ export class PermissionsService {
     return rows.map((row) => `${row.moduleSlug}.${row.action}`);
   }
 
-  async getAllActions() {
-    return this.db.select().from(permissions);
+  async getAllActions(query: PermissionListQueryDto = {}) {
+    const limit = query.limit ?? 50;
+    const page = query.page ?? 1;
+    const offset = PaginationUtil.getOffset(page, limit);
+
+    const baseFilters: SQL[] = [];
+
+    let searchFilter: SQL | null = null;
+    if (query.search) {
+      searchFilter = PaginationUtil.buildSearchFilter({
+        fields: [permissions.action, permissions.description],
+        term: query.search
+      });
+    }
+
+    const allFilters = [...baseFilters];
+    if (searchFilter) allFilters.push(searchFilter);
+
+    const whereClause = PaginationUtil.buildFilters(allFilters);
+
+    const allowedSortFields = {
+      action: permissions.action
+    };
+
+    const orderBy = PaginationUtil.buildOrderBy(
+      permissions.action,
+      query.sortBy,
+      query.sortOrder || 'asc',
+      allowedSortFields
+    );
+
+    const [results, totalRows] = await Promise.all([
+      this.db
+        .select()
+        .from(permissions)
+        .where(whereClause || undefined)
+        .orderBy(orderBy)
+        .limit(limit)
+        .offset(offset),
+      this.db.select({ count: sql<number>`count(*)` }).from(permissions).where(whereClause || undefined)
+    ]);
+
+    const total = totalRows.length ? Number(totalRows[0].count) : 0;
+    return PaginationUtil.buildPaginatedResult(results, total, page, limit);
   }
 
   async getAll(query: PermissionListQueryDto) {
