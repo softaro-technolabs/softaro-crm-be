@@ -17,6 +17,7 @@ import {
 } from '../database/schema';
 import { RegisterUserDto, UpdateUserTenantDto, UserListQueryDto } from './users.dto';
 import { PaginationUtil } from '../common/utils/pagination.util';
+import { MailService } from '../common/services/mail.service';
 
 import * as bcrypt from 'bcrypt';
 
@@ -32,7 +33,8 @@ export interface CreateUserInput {
 export class UsersService {
   constructor(
     @Inject(DRIZZLE) private readonly db: DrizzleDatabase,
-    private readonly configService: ConfigService
+    private readonly configService: ConfigService,
+    private readonly mailService: MailService
   ) {}
 
   async createUser(input: CreateUserInput) {
@@ -111,6 +113,19 @@ export class UsersService {
       roleId: dto.roleId ?? null,
       status: dto.status ?? 'active'
     });
+
+    // Send invitation email
+    try {
+      await this.mailService.sendUserInvitation(
+        dto.email,
+        dto.name,
+        tenant[0].name ?? 'Our Organization',
+        dto.password
+      );
+    } catch (mailError) {
+      // We don't want to fail the registration if email fails, but we should log it
+      console.error(`Failed to send invitation email to ${dto.email}:`, mailError);
+    }
 
     return this.findUserWithTenant(user.id, tenantId);
   }

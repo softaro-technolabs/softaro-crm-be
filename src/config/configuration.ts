@@ -27,6 +27,11 @@ export default () => ({
       intervalMinutes: Number(env.KEEP_ALIVE_INTERVAL_MINUTES ?? 10),
       pingUrl: env.KEEP_ALIVE_PING_URL ?? ''
     }
+  },
+  mail: {
+    apiKey: env.RESEND_API_KEY ?? 're_6cXV4SsM_3nfgU8WzA2Lq2sypNeFg6hpr',
+    from: "EstateOS <no-reply@send.estateos.softarotechnolabs.com>",
+    frontendUrl: env.FRONTEND_URL ?? 'https://estateos.softarotechnolabs.com'
   }
 });
 
