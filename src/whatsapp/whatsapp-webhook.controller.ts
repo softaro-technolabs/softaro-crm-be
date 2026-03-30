@@ -1,4 +1,4 @@
-import * as crypto from 'crypto';
+import crypto from 'crypto';
 
 import { Controller, Get, Post, Req, Res, Body, Query, Headers, BadRequestException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';

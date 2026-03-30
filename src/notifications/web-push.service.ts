@@ -1,6 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import * as webpush from 'web-push';
+import webpush from 'web-push';
 
 @Injectable()
 export class WebPushService implements OnModuleInit {

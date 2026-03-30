@@ -19,7 +19,7 @@ import { RegisterUserDto, UpdateUserTenantDto, UserListQueryDto } from './users.
 import { PaginationUtil } from '../common/utils/pagination.util';
 import { MailService } from '../common/services/mail.service';
 
-import * as bcrypt from 'bcrypt';
+import bcrypt from 'bcrypt';
 
 export interface CreateUserInput {
   email: string;

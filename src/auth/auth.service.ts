@@ -12,7 +12,7 @@ import { RolesService } from '../roles/roles.service';
 import { TenantsService } from '../tenants/tenants.service';
 import { UsersService } from '../users/users.service';
 
-import * as bcrypt from 'bcrypt';
+import bcrypt from 'bcrypt';
 
 @Injectable()
 export class AuthService {
