@@ -356,7 +356,7 @@ export class MigrationService {
             CREATE TABLE IF NOT EXISTS "lead_tasks" (
               "id" varchar(36) PRIMARY KEY,
               "tenant_id" varchar(36) NOT NULL,
-              "lead_id" varchar(36) NOT NULL,
+              "lead_id" varchar(36),
               "title" varchar(255) NOT NULL,
               "description" varchar(2000),
               "status" "lead_task_status" NOT NULL DEFAULT 'open',
@@ -394,6 +394,19 @@ export class MigrationService {
           this.logger.log('✓ lead_tasks table created');
         } else {
           this.logger.debug('lead_tasks table already exists');
+          // Ensure lead_id is optional for existing table
+          const columnCheck = await client.query(`
+            SELECT is_nullable 
+            FROM information_schema.columns 
+            WHERE table_name = 'lead_tasks' 
+            AND column_name = 'lead_id'
+            AND table_schema = 'public'
+          `);
+          if (columnCheck.rows.length > 0 && columnCheck.rows[0].is_nullable === 'NO') {
+            this.logger.log('Altering lead_tasks.lead_id to be optional...');
+            await client.query(`ALTER TABLE "lead_tasks" ALTER COLUMN "lead_id" DROP NOT NULL`);
+            this.logger.log('Successfully altered lead_tasks.lead_id to be optional');
+          }
         }
 
         // ─── Chat Tables ────────────────────────────────────────────

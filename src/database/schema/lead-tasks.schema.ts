@@ -9,7 +9,7 @@ export const leadTasks = pgTable(
   {
     id: varchar('id', { length: 36 }).primaryKey(),
     tenantId: varchar('tenant_id', { length: 36 }).notNull(),
-    leadId: varchar('lead_id', { length: 36 }).notNull(),
+    leadId: varchar('lead_id', { length: 36 }),
     title: varchar('title', { length: 255 }).notNull(),
     description: varchar('description', { length: 2000 }),
     status: leadTaskStatusEnum('status').default('open').notNull(),

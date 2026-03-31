@@ -20,14 +20,22 @@ export class LeadTasksService {
     private readonly calendarSyncService: CalendarSyncService
   ) { }
 
-  async listLeadTasks(tenantId: string, leadId: string, query: LeadTaskListQueryDto) {
+  async listLeadTasks(tenantId: string, leadId: string | null, query: LeadTaskListQueryDto) {
     const limit = query.limit ?? 50;
     const page = query.page ?? 1;
     const offset = PaginationUtil.getOffset(page, limit);
 
-    await this.ensureLeadExists(tenantId, leadId);
+    if (leadId) {
+      await this.ensureLeadExists(tenantId, leadId);
+    }
 
-    const baseFilters: SQL[] = [eq(leadTasks.tenantId, tenantId), eq(leadTasks.leadId, leadId)];
+    const baseFilters: SQL[] = [eq(leadTasks.tenantId, tenantId)];
+    if (leadId) {
+      baseFilters.push(eq(leadTasks.leadId, leadId));
+    } else {
+      baseFilters.push(sql`${leadTasks.leadId} IS NULL`);
+    }
+
 
     if (!query.includeArchived) baseFilters.push(eq(leadTasks.isArchived, false));
     if (query.status) baseFilters.push(eq(leadTasks.status, query.status));
@@ -82,9 +90,12 @@ export class LeadTasksService {
     return PaginationUtil.buildPaginatedResult(rows, total, page, limit);
   }
 
-  async createLeadTask(tenantId: string, leadId: string, dto: CreateLeadTaskDto, createdByUserId?: string | null) {
+  async createLeadTask(tenantId: string, leadId: string | null, dto: CreateLeadTaskDto, createdByUserId?: string | null) {
     const now = new Date();
-    await this.ensureLeadExists(tenantId, leadId);
+    if (leadId) {
+      await this.ensureLeadExists(tenantId, leadId);
+    }
+
 
     const assignedToUserId = dto.assignedToUserId
       ? await this.resolveAssignee(tenantId, dto.assignedToUserId)
@@ -120,28 +131,30 @@ export class LeadTasksService {
       });
 
       // Log into lead timeline
-      await tx.insert(leadActivities).values({
-        id: randomUUID(),
-        tenantId,
-        leadId,
-        type: 'task',
-        title: 'Task created',
-        note: dto.title,
-        metadata: {
-          taskId,
-          status: 'open',
-          priority: dto.priority ?? 'medium',
-          dueAt: dueAt ? dueAt.toISOString() : null,
-          assignedToUserId
-        },
-        happenedAt: now,
-        nextFollowUpAt: null,
-        createdByUserId: createdByUserId ?? null,
-        createdAt: now
-      });
+      if (leadId) {
+        await tx.insert(leadActivities).values({
+          id: randomUUID(),
+          tenantId,
+          leadId,
+          type: 'task',
+          title: 'Task created',
+          note: dto.title,
+          metadata: {
+            taskId,
+            status: 'open',
+            priority: dto.priority ?? 'medium',
+            dueAt: dueAt ? dueAt.toISOString() : null,
+            assignedToUserId
+          },
+          happenedAt: now,
+          nextFollowUpAt: null,
+          createdByUserId: createdByUserId ?? null,
+          createdAt: now
+        });
+      }
 
       // Optional: sync lead.nextFollowUpAt
-      if (dto.syncToLeadNextFollowUp && dueAt) {
+      if (leadId && dto.syncToLeadNextFollowUp && dueAt) {
         await tx
           .update(leads)
           .set({ nextFollowUpAt: dueAt, updatedAt: now })
@@ -168,7 +181,7 @@ export class LeadTasksService {
     return this.getTask(tenantId, leadId, taskId);
   }
 
-  async updateLeadTask(tenantId: string, leadId: string, taskId: string, dto: UpdateLeadTaskDto, actorUserId?: string | null) {
+  async updateLeadTask(tenantId: string, leadId: string | null, taskId: string, dto: UpdateLeadTaskDto, actorUserId?: string | null) {
     const now = new Date();
     const existing = await this.getTask(tenantId, leadId, taskId);
 
@@ -204,35 +217,43 @@ export class LeadTasksService {
       await tx
         .update(leadTasks)
         .set(update)
-        .where(and(eq(leadTasks.id, taskId), eq(leadTasks.tenantId, tenantId), eq(leadTasks.leadId, leadId)));
+        .where(
+          and(
+            eq(leadTasks.id, taskId),
+            eq(leadTasks.tenantId, tenantId),
+            leadId ? eq(leadTasks.leadId, leadId) : undefined
+          )
+        );
 
-      await tx.insert(leadActivities).values({
-        id: randomUUID(),
-        tenantId,
-        leadId,
-        type: 'task',
-        title: 'Task updated',
-        note: update.title ?? existing.task.title,
-        metadata: {
-          taskId,
-          from: {
-            status: existing.task.status,
-            priority: existing.task.priority,
-            dueAt: existing.task.dueAt ? new Date(existing.task.dueAt).toISOString() : null,
-            assignedToUserId: existing.task.assignedToUserId ?? null
+      if (leadId) {
+        await tx.insert(leadActivities).values({
+          id: randomUUID(),
+          tenantId,
+          leadId,
+          type: 'task',
+          title: 'Task updated',
+          note: update.title ?? existing.task.title,
+          metadata: {
+            taskId,
+            from: {
+              status: existing.task.status,
+              priority: existing.task.priority,
+              dueAt: existing.task.dueAt ? new Date(existing.task.dueAt).toISOString() : null,
+              assignedToUserId: existing.task.assignedToUserId ?? null
+            },
+            to: {
+              status: update.status ?? existing.task.status,
+              priority: update.priority ?? existing.task.priority,
+              dueAt: update.dueAt ? new Date(update.dueAt).toISOString() : existing.task.dueAt ? new Date(existing.task.dueAt).toISOString() : null,
+              assignedToUserId: update.assignedToUserId ?? existing.task.assignedToUserId ?? null
+            }
           },
-          to: {
-            status: update.status ?? existing.task.status,
-            priority: update.priority ?? existing.task.priority,
-            dueAt: update.dueAt ? new Date(update.dueAt).toISOString() : existing.task.dueAt ? new Date(existing.task.dueAt).toISOString() : null,
-            assignedToUserId: update.assignedToUserId ?? existing.task.assignedToUserId ?? null
-          }
-        },
-        happenedAt: now,
-        nextFollowUpAt: null,
-        createdByUserId: actorUserId ?? null,
-        createdAt: now
-      });
+          happenedAt: now,
+          nextFollowUpAt: null,
+          createdByUserId: actorUserId ?? null,
+          createdAt: now
+        });
+      }
     });
 
     if (
@@ -264,7 +285,7 @@ export class LeadTasksService {
     return updatedTaskObj;
   }
 
-  async archiveLeadTask(tenantId: string, leadId: string, taskId: string, actorUserId?: string | null) {
+  async archiveLeadTask(tenantId: string, leadId: string | null, taskId: string, actorUserId?: string | null) {
     const now = new Date();
     const existing = await this.getTask(tenantId, leadId, taskId);
     if (existing.task.isArchived) {
@@ -275,21 +296,29 @@ export class LeadTasksService {
       await tx
         .update(leadTasks)
         .set({ isArchived: true, updatedAt: now })
-        .where(and(eq(leadTasks.id, taskId), eq(leadTasks.tenantId, tenantId), eq(leadTasks.leadId, leadId)));
+        .where(
+          and(
+            eq(leadTasks.id, taskId),
+            eq(leadTasks.tenantId, tenantId),
+            leadId ? eq(leadTasks.leadId, leadId) : undefined
+          )
+        );
 
-      await tx.insert(leadActivities).values({
-        id: randomUUID(),
-        tenantId,
-        leadId,
-        type: 'task',
-        title: 'Task archived',
-        note: existing.task.title,
-        metadata: { taskId },
-        happenedAt: now,
-        nextFollowUpAt: null,
-        createdByUserId: actorUserId ?? null,
-        createdAt: now
-      });
+      if (leadId) {
+        await tx.insert(leadActivities).values({
+          id: randomUUID(),
+          tenantId,
+          leadId,
+          type: 'task',
+          title: 'Task archived',
+          note: existing.task.title,
+          metadata: { taskId },
+          happenedAt: now,
+          nextFollowUpAt: null,
+          createdByUserId: actorUserId ?? null,
+          createdAt: now
+        });
+      }
     });
 
     if (existing.task.assignedToUserId) {
@@ -310,6 +339,7 @@ export class LeadTasksService {
     if (!query.includeArchived) baseFilters.push(eq(leadTasks.isArchived, false));
     if (query.assignedToUserId) baseFilters.push(eq(leadTasks.assignedToUserId, query.assignedToUserId));
     if (query.status) baseFilters.push(eq(leadTasks.status, query.status));
+    if (query.leadId) baseFilters.push(eq(leadTasks.leadId, query.leadId));
 
     if (query.overdue) {
       baseFilters.push(isNotNull(leadTasks.dueAt));
@@ -361,7 +391,7 @@ export class LeadTasksService {
           assignedTo: { id: users.id, name: users.name, email: users.email }
         })
         .from(leadTasks)
-        .innerJoin(leads, and(eq(leads.id, leadTasks.leadId), eq(leads.tenantId, tenantId)))
+        .leftJoin(leads, and(eq(leads.id, leadTasks.leadId), eq(leads.tenantId, tenantId)))
         .leftJoin(users, eq(users.id, leadTasks.assignedToUserId))
         .where(whereClause || undefined)
         .orderBy(orderBy)
@@ -374,7 +404,7 @@ export class LeadTasksService {
     return PaginationUtil.buildPaginatedResult(rows, total, page, limit);
   }
 
-  async getTask(tenantId: string, leadId: string, taskId: string) {
+  async getTask(tenantId: string, leadId: string | null, taskId: string) {
     const [row] = await this.db
       .select({
         task: leadTasks,
@@ -382,7 +412,13 @@ export class LeadTasksService {
       })
       .from(leadTasks)
       .leftJoin(users, eq(users.id, leadTasks.assignedToUserId))
-      .where(and(eq(leadTasks.tenantId, tenantId), eq(leadTasks.leadId, leadId), eq(leadTasks.id, taskId)))
+      .where(
+        and(
+          eq(leadTasks.tenantId, tenantId),
+          eq(leadTasks.id, taskId),
+          leadId ? eq(leadTasks.leadId, leadId) : undefined
+        )
+      )
       .limit(1);
 
     if (!row) {

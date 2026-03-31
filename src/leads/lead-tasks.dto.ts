@@ -19,6 +19,11 @@ export const LEAD_TASK_PRIORITIES = ['low', 'medium', 'high', 'urgent'] as const
 export type LeadTaskPriority = (typeof LEAD_TASK_PRIORITIES)[number];
 
 export class CreateLeadTaskDto {
+  @ApiPropertyOptional({ format: 'uuid', description: 'Lead ID this task belongs to', example: '1c7a85e8-f5f1-4f05-91e6-4ae3f04c1b0d' })
+  @IsOptional()
+  @IsUUID(4)
+  leadId?: string;
+
   @ApiProperty({ maxLength: 255, example: 'Call the lead and confirm budget' })
   @IsString()
   @MaxLength(255)
@@ -67,6 +72,11 @@ export class CreateLeadTaskDto {
 }
 
 export class UpdateLeadTaskDto {
+  @ApiPropertyOptional({ format: 'uuid', description: 'Lead ID this task belongs to', example: '1c7a85e8-f5f1-4f05-91e6-4ae3f04c1b0d' })
+  @IsOptional()
+  @IsUUID(4)
+  leadId?: string | null;
+
   @ApiPropertyOptional({ maxLength: 255, example: 'Send brochure on WhatsApp' })
   @IsOptional()
   @IsString()
@@ -140,6 +150,11 @@ export class LeadTaskListQueryDto extends BaseListQueryDto {
 }
 
 export class TenantTaskListQueryDto extends BaseListQueryDto {
+  @ApiPropertyOptional({ format: 'uuid', description: 'Filter by Lead ID' })
+  @IsOptional()
+  @IsUUID(4)
+  leadId?: string;
+
   @ApiPropertyOptional({ format: 'uuid' })
   @IsOptional()
   @IsUUID(4)
