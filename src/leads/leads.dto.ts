@@ -86,8 +86,6 @@ export class CreateLeadDto {
     example: 'Indiranagar, Bangalore' 
   })
   @IsOptional()
-  @IsString()
-  @MaxLength(255)
   locationPreference?: string | LocationPointDto;
 
   @ApiPropertyOptional({ minimum: 0, maximum: 100, type: Number, example: 82 })
@@ -193,8 +191,6 @@ export class UpdateLeadDto {
     example: 'Downtown Dubai' 
   })
   @IsOptional()
-  @IsString()
-  @MaxLength(255)
   locationPreference?: string | LocationPointDto;
 
   @ApiPropertyOptional({ minimum: 0, maximum: 100, type: Number, example: 54 })
@@ -449,8 +445,6 @@ export class PublicLeadCaptureDto {
     example: 'Koramangala, Bangalore' 
   })
   @IsOptional()
-  @IsString()
-  @MaxLength(255)
   locationPreference?: string | LocationPointDto;
 
   @ApiPropertyOptional({ minimum: 0, maximum: 100, type: Number, example: 70 })
