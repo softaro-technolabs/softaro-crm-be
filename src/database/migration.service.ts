@@ -271,13 +271,40 @@ export class MigrationService {
         if (locationCheck.rows.length > 0) {
           const columnType = locationCheck.rows[0].data_type;
           if (columnType !== 'jsonb') {
-            this.logger.log('Altering location_preference column from varchar to jsonb...');
+            this.logger.log('Altering leads.location_preference column from varchar to jsonb...');
             await client.query(`
               ALTER TABLE "leads" 
               ALTER COLUMN "location_preference" TYPE jsonb 
               USING jsonb_build_object('name', "location_preference")
             `);
-            this.logger.log('Successfully altered location_preference column to jsonb');
+            this.logger.log('Successfully altered leads.location_preference column to jsonb');
+          }
+        }
+
+        // --- lead_assignment_agents.location_preferences varchar -> jsonb Migration ---
+        const agentLocationCheck = await client.query(`
+          SELECT data_type 
+          FROM information_schema.columns 
+          WHERE table_name = 'lead_assignment_agents' 
+          AND column_name = 'location_preferences'
+          AND table_schema = 'public'
+        `);
+
+        if (agentLocationCheck.rows.length > 0) {
+          const columnType = agentLocationCheck.rows[0].data_type;
+          if (columnType !== 'jsonb') {
+            this.logger.log('Altering lead_assignment_agents.location_preferences column from varchar to jsonb...');
+            await client.query(`
+              ALTER TABLE "lead_assignment_agents" 
+              ALTER COLUMN "location_preferences" TYPE jsonb 
+              USING (
+                CASE 
+                  WHEN "location_preferences" IS NULL THEN '[]'::jsonb
+                  ELSE jsonb_build_array(jsonb_build_object('name', "location_preferences"))
+                END
+              )
+            `);
+            this.logger.log('Successfully altered lead_assignment_agents.location_preferences column to jsonb');
           }
         }
 
