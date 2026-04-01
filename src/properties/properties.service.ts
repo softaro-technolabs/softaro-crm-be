@@ -504,8 +504,15 @@ export class PropertiesService {
   async listUnitStatusLogs(tenantId: string, unitId: string) {
     await this.ensureUnitExists(tenantId, unitId);
     return this.db
-      .select()
+      .select({
+        log: propertyStatusLogs,
+        changedBy: {
+          id: users.id,
+          name: users.name
+        }
+      })
       .from(propertyStatusLogs)
+      .leftJoin(users, eq(users.id, propertyStatusLogs.changedByUserId))
       .where(and(eq(propertyStatusLogs.tenantId, tenantId), eq(propertyStatusLogs.unitId, unitId)))
       .orderBy(desc(propertyStatusLogs.changedAt));
   }
