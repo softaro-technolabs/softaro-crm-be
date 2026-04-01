@@ -839,8 +839,22 @@ export class PropertiesService {
 
     const [rows, totalRows] = await Promise.all([
       this.db
-        .select()
+        .select({
+          interest: leadPropertyInterests,
+          lead: {
+            id: leads.id,
+            name: leads.name,
+            phone: leads.phone,
+            email: leads.email
+          },
+          unit: {
+            id: propertyUnits.id,
+            unitCode: propertyUnits.unitCode
+          }
+        })
         .from(leadPropertyInterests)
+        .innerJoin(leads, and(eq(leads.id, leadPropertyInterests.leadId), eq(leads.tenantId, tenantId)))
+        .innerJoin(propertyUnits, and(eq(propertyUnits.id, leadPropertyInterests.unitId), eq(propertyUnits.tenantId, tenantId)))
         .where(whereClause)
         .orderBy(desc(leadPropertyInterests.updatedAt))
         .limit(limit)
@@ -876,8 +890,22 @@ export class PropertiesService {
 
   async getLeadPropertyInterest(tenantId: string, interestId: string) {
     const [row] = await this.db
-      .select()
+      .select({
+        interest: leadPropertyInterests,
+        lead: {
+          id: leads.id,
+          name: leads.name,
+          phone: leads.phone,
+          email: leads.email
+        },
+        unit: {
+          id: propertyUnits.id,
+          unitCode: propertyUnits.unitCode
+        }
+      })
       .from(leadPropertyInterests)
+      .innerJoin(leads, and(eq(leads.id, leadPropertyInterests.leadId), eq(leads.tenantId, tenantId)))
+      .innerJoin(propertyUnits, and(eq(propertyUnits.id, leadPropertyInterests.unitId), eq(propertyUnits.tenantId, tenantId)))
       .where(and(eq(leadPropertyInterests.tenantId, tenantId), eq(leadPropertyInterests.id, interestId)))
       .limit(1);
     if (!row) throw new NotFoundException('Interest not found');

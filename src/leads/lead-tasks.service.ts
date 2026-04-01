@@ -6,7 +6,7 @@ import { randomUUID } from 'crypto';
 import { DRIZZLE } from '../database/database.constants';
 import type { DrizzleDatabase } from '../database/database.types';
 import { leadActivities, leadTasks, leads, userTenants, users } from '../database/schema';
-import { CreateLeadTaskDto, LeadTaskListQueryDto, TenantTaskListQueryDto, UpdateLeadTaskDto } from './lead-tasks.dto';
+import { CreateLeadTaskDto, TenantTaskListQueryDto, UpdateLeadTaskDto } from './lead-tasks.dto';
 
 import { NotificationsService } from '../notifications/notifications.service';
 import { CalendarSyncService } from '../calendar-sync/calendar-sync.service';
@@ -20,75 +20,6 @@ export class LeadTasksService {
     private readonly calendarSyncService: CalendarSyncService
   ) { }
 
-  async listLeadTasks(tenantId: string, leadId: string | null, query: LeadTaskListQueryDto) {
-    const limit = query.limit ?? 50;
-    const page = query.page ?? 1;
-    const offset = PaginationUtil.getOffset(page, limit);
-
-    if (leadId) {
-      await this.ensureLeadExists(tenantId, leadId);
-    }
-
-    const baseFilters: SQL[] = [eq(leadTasks.tenantId, tenantId)];
-    if (leadId) {
-      baseFilters.push(eq(leadTasks.leadId, leadId));
-    } else {
-      baseFilters.push(sql`${leadTasks.leadId} IS NULL`);
-    }
-
-
-    if (!query.includeArchived) baseFilters.push(eq(leadTasks.isArchived, false));
-    if (query.status) baseFilters.push(eq(leadTasks.status, query.status));
-    if (query.priority) baseFilters.push(eq(leadTasks.priority, query.priority));
-    if (query.assignedToUserId) baseFilters.push(eq(leadTasks.assignedToUserId, query.assignedToUserId));
-
-    let searchFilter: SQL | null = null;
-    if (query.search) {
-      searchFilter = PaginationUtil.buildSearchFilter({
-        fields: [leadTasks.title, leadTasks.description],
-        term: query.search
-      });
-    }
-
-    const allFilters = [...baseFilters];
-    if (searchFilter) allFilters.push(searchFilter);
-
-    const whereClause = PaginationUtil.buildFilters(allFilters);
-
-    const allowedSortFields = {
-      title: leadTasks.title,
-      priority: leadTasks.priority,
-      status: leadTasks.status,
-      dueAt: leadTasks.dueAt,
-      createdAt: leadTasks.createdAt,
-      updatedAt: leadTasks.updatedAt
-    };
-
-    const orderBy = PaginationUtil.buildOrderBy(
-      leadTasks.createdAt,
-      query.sortBy,
-      query.sortOrder || 'desc',
-      allowedSortFields
-    );
-
-    const [rows, totalRows] = await Promise.all([
-      this.db
-        .select({
-          task: leadTasks,
-          assignedTo: { id: users.id, name: users.name, email: users.email }
-        })
-        .from(leadTasks)
-        .leftJoin(users, eq(users.id, leadTasks.assignedToUserId))
-        .where(whereClause || undefined)
-        .orderBy(orderBy)
-        .limit(limit)
-        .offset(offset),
-      this.db.select({ count: sql<number>`count(*)` }).from(leadTasks).where(whereClause || undefined)
-    ]);
-
-    const total = totalRows.length ? Number(totalRows[0].count) : 0;
-    return PaginationUtil.buildPaginatedResult(rows, total, page, limit);
-  }
 
   async createLeadTask(tenantId: string, leadId: string | null, dto: CreateLeadTaskDto, createdByUserId?: string | null) {
     const now = new Date();

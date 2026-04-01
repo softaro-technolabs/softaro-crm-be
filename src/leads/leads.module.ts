@@ -12,7 +12,6 @@ import { LeadPublicController } from './lead-public.controller';
 import { LeadFollowUpsController } from './lead-followups.controller';
 import { LeadsController } from './leads.controller';
 import { LeadsService } from './leads.service';
-import { LeadTasksController } from './lead-tasks.controller';
 import { LeadTasksService } from './lead-tasks.service';
 import { TenantTasksController } from './tenant-tasks.controller';
 import { CalendarSyncModule } from '../calendar-sync/calendar-sync.module';
@@ -24,7 +23,6 @@ import { CalendarSyncModule } from '../calendar-sync/calendar-sync.module';
     LeadPublicController,
     LeadActivitiesController,
     LeadFollowUpsController,
-    LeadTasksController,
     TenantTasksController,
     LeadsController
   ],

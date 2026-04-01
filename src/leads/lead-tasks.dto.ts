@@ -117,37 +117,6 @@ export class UpdateLeadTaskDto {
 
 import { BaseListQueryDto } from '../common/dto/base-list-query.dto';
 
-export class LeadTaskListQueryDto extends BaseListQueryDto {
-  @ApiPropertyOptional({ enum: LEAD_TASK_STATUSES, example: 'open' })
-  @IsOptional()
-  @IsIn(LEAD_TASK_STATUSES)
-  status?: LeadTaskStatus;
-
-  @ApiPropertyOptional({ enum: LEAD_TASK_PRIORITIES, example: 'high' })
-  @IsOptional()
-  @IsIn(LEAD_TASK_PRIORITIES)
-  priority?: LeadTaskPriority;
-
-  @ApiPropertyOptional({ format: 'uuid', example: '1c7a85e8-f5f1-4f05-91e6-4ae3f04c1b0d' })
-  @IsOptional()
-  @IsUUID(4)
-  assignedToUserId?: string;
-
-  @ApiPropertyOptional({ default: false, example: false })
-  @IsOptional()
-  @IsBoolean()
-  includeArchived?: boolean;
-
-  @ApiPropertyOptional({
-    enum: ['title', 'priority', 'status', 'dueAt', 'createdAt', 'updatedAt'],
-    default: 'createdAt',
-    description: 'Field to sort by',
-    example: 'dueAt'
-  })
-  @IsOptional()
-  @IsIn(['title', 'priority', 'status', 'dueAt', 'createdAt', 'updatedAt'])
-  override sortBy?: 'title' | 'priority' | 'status' | 'dueAt' | 'createdAt' | 'updatedAt';
-}
 
 export class TenantTaskListQueryDto extends BaseListQueryDto {
   @ApiPropertyOptional({ format: 'uuid', description: 'Filter by Lead ID' })
