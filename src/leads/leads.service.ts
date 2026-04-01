@@ -251,7 +251,9 @@ export class LeadsService {
     if (dto.propertyType !== undefined) updateData.propertyType = dto.propertyType;
     if (dto.propertyCategory !== undefined) updateData.propertyCategory = dto.propertyCategory;
     if (dto.bhkType !== undefined) updateData.bhkType = dto.bhkType;
-    if (dto.locationPreference !== undefined) updateData.locationPreference = dto.locationPreference;
+    if (dto.locationPreference !== undefined) {
+      updateData.locationPreference = dto.locationPreference;
+    }
     if (dto.propertyMatchScore !== undefined) updateData.propertyMatchScore = dto.propertyMatchScore;
     if (dto.leadSource !== undefined) updateData.leadSource = dto.leadSource;
     if (dto.captureChannel !== undefined) updateData.captureChannel = dto.captureChannel;

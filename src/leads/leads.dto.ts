@@ -18,6 +18,7 @@ import {
   MaxLength,
   Min
 } from 'class-validator';
+import { LocationPointDto } from './location-preference.dto';
 
 export const LEAD_REQUIREMENT_TYPES = ['buy', 'rent', 'investment'] as const;
 export type LeadRequirementType = (typeof LEAD_REQUIREMENT_TYPES)[number];
@@ -80,11 +81,14 @@ export class CreateLeadDto {
   @MaxLength(50)
   bhkType?: string;
 
-  @ApiPropertyOptional({ maxLength: 255, example: 'Indiranagar, Bangalore' })
+  @ApiPropertyOptional({ 
+    oneOf: [{ type: 'string' }, { $ref: '#/components/schemas/LocationPointDto' }],
+    example: 'Indiranagar, Bangalore' 
+  })
   @IsOptional()
   @IsString()
   @MaxLength(255)
-  locationPreference?: string;
+  locationPreference?: string | LocationPointDto;
 
   @ApiPropertyOptional({ minimum: 0, maximum: 100, type: Number, example: 82 })
   @IsOptional()
@@ -184,11 +188,14 @@ export class UpdateLeadDto {
   @MaxLength(50)
   bhkType?: string;
 
-  @ApiPropertyOptional({ maxLength: 255, example: 'Downtown Dubai' })
+  @ApiPropertyOptional({ 
+    oneOf: [{ type: 'string' }, { $ref: '#/components/schemas/LocationPointDto' }],
+    example: 'Downtown Dubai' 
+  })
   @IsOptional()
   @IsString()
   @MaxLength(255)
-  locationPreference?: string;
+  locationPreference?: string | LocationPointDto;
 
   @ApiPropertyOptional({ minimum: 0, maximum: 100, type: Number, example: 54 })
   @IsOptional()
@@ -369,17 +376,16 @@ export class UpsertLeadAssignmentAgentDto {
 
   @ApiPropertyOptional({
     type: 'array',
-    items: { type: 'string' },
+    items: { oneOf: [{ type: 'string' }, { $ref: '#/components/schemas/LocationPointDto' }] },
     maxItems: 20,
-    description: 'Preferred locations',
-    example: ['Bangalore', 'Mumbai']
+    description: 'Preferred locations (strings or structured objects)',
+    example: ['Bangalore', { name: 'Indiranagar', radiusKm: 5, latitude: 12.9716, longitude: 77.5946 }]
   })
   @IsOptional()
   @IsArray()
   @ArrayMaxSize(20)
-  @ArrayUnique()
-  @IsString({ each: true })
-  locationPreferences?: string[];
+  // We remove @IsString({ each: true }) to support objects
+  locationPreferences?: (string | LocationPointDto)[];
 
   @ApiPropertyOptional({
     type: 'array',
@@ -438,11 +444,14 @@ export class PublicLeadCaptureDto {
   @MaxLength(120)
   propertyCategory?: string;
 
-  @ApiPropertyOptional({ maxLength: 255, example: 'Koramangala, Bangalore' })
+  @ApiPropertyOptional({ 
+    oneOf: [{ type: 'string' }, { $ref: '#/components/schemas/LocationPointDto' }],
+    example: 'Koramangala, Bangalore' 
+  })
   @IsOptional()
   @IsString()
   @MaxLength(255)
-  locationPreference?: string;
+  locationPreference?: string | LocationPointDto;
 
   @ApiPropertyOptional({ minimum: 0, maximum: 100, type: Number, example: 70 })
   @IsOptional()

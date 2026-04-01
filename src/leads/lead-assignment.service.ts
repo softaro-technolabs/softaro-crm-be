@@ -19,12 +19,13 @@ import {
   UpdateLeadAssignmentSettingsDto,
   UpsertLeadAssignmentAgentDto
 } from './leads.dto';
+import { LocationPointDto } from './location-preference.dto';
 
 type LeadAutoAssignPayload = {
   requirementType: string;
   propertyCategory?: string | null;
   propertyType?: string | null;
-  locationPreference?: string | null;
+  locationPreference?: string | LocationPointDto | null;
 };
 
 type AgentSnapshot = {
@@ -35,7 +36,7 @@ type AgentSnapshot = {
   isAvailable: boolean;
   maxActiveLeads: number | null;
   categoryPreferences: string[];
-  locationPreferences: string[];
+  locationPreferences: (string | LocationPointDto)[];
   propertyTypes: string[];
   activeLeadCount: number;
   lastAssignedAt: Date | null;
@@ -347,7 +348,7 @@ export class LeadAssignmentService {
         ? (row.profile.categoryPreferences as string[])
         : [],
       locationPreferences: Array.isArray(row.profile.locationPreferences)
-        ? (row.profile.locationPreferences as string[])
+        ? (row.profile.locationPreferences as (string | LocationPointDto)[])
         : [],
       propertyTypes: Array.isArray(row.profile.propertyTypes) ? (row.profile.propertyTypes as string[]) : [],
       activeLeadCount: countsMap.get(row.user.id) ?? 0,
@@ -434,16 +435,59 @@ export class LeadAssignmentService {
   }
 
   private pickByLocation(agents: AgentSnapshot[], payload: LeadAutoAssignPayload) {
-    const location = (payload.locationPreference ?? '').trim().toLowerCase();
-    if (!location) {
+    const leadLoc = payload.locationPreference;
+    if (!leadLoc) {
       return null;
     }
 
-    const eligible = agents.filter((agent) =>
-      agent.locationPreferences.some((entry) => location.includes(entry.toLowerCase()))
-    );
+    // Normalized search text for fallback
+    const leadSearchText = (typeof leadLoc === 'string' ? leadLoc : leadLoc.name ?? '').trim().toLowerCase();
+
+    const eligible = agents.filter((agent) => {
+      return agent.locationPreferences.some((pref) => {
+        // CASE 1: Both are structured (Geographic Match)
+        if (typeof leadLoc !== 'string' && typeof pref !== 'string') {
+          if (leadLoc.osmId && pref.osmId && leadLoc.osmId === pref.osmId) {
+            return true;
+          }
+          if (leadLoc.latitude && leadLoc.longitude && pref.latitude && pref.longitude) {
+            const distance = this.calculateDistance(
+              leadLoc.latitude,
+              leadLoc.longitude,
+              pref.latitude,
+              pref.longitude
+            );
+            const radius = pref.radiusKm ?? 5; // Default 5km radius
+            return distance <= radius;
+          }
+        }
+
+        // CASE 2: Hybrid (Lead is string, Agent is structured)
+        if (typeof leadLoc === 'string' && typeof pref !== 'string') {
+          return leadSearchText.includes((pref.name || '').toLowerCase());
+        }
+
+        // CASE 3: Traditional String matching
+        const agentLocName = (typeof pref === 'string' ? pref : pref.name || '').toLowerCase();
+        return leadSearchText.includes(agentLocName);
+      });
+    });
 
     return eligible.length > 0 ? eligible[0] : null;
+  }
+
+  private calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+    const R = 6371; // Earth radius in KM
+    const dLat = (lat2 - lat1) * (Math.PI / 180);
+    const dLon = (lon2 - lon1) * (Math.PI / 180);
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(lat1 * (Math.PI / 180)) *
+        Math.cos(lat2 * (Math.PI / 180)) *
+        Math.sin(dLon / 2) *
+        Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
   }
 
   private pickByRoundRobin(agents: AgentSnapshot[], pointer: string | null) {

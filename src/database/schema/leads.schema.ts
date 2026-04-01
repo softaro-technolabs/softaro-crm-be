@@ -58,7 +58,7 @@ export const leads = pgTable(
     propertyType: varchar('property_type', { length: 120 }),
     propertyCategory: varchar('property_category', { length: 120 }),
     bhkType: varchar('bhk_type', { length: 50 }),
-    locationPreference: varchar('location_preference', { length: 255 }),
+    locationPreference: jsonb('location_preference'),
     propertyMatchScore: integer('property_match_score').default(0),
     leadSource: leadSourceEnum('lead_source').default('website').notNull(),
     captureChannel: varchar('capture_channel', { length: 120 }),

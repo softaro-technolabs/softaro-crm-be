@@ -259,6 +259,28 @@ export class MigrationService {
           this.logger.debug('leads table or kanban_position column does not exist yet, will be created by drizzle-kit');
         }
 
+        // --- location_preference varchar -> jsonb Migration (New) ---
+        const locationCheck = await client.query(`
+          SELECT data_type 
+          FROM information_schema.columns 
+          WHERE table_name = 'leads' 
+          AND column_name = 'location_preference'
+          AND table_schema = 'public'
+        `);
+
+        if (locationCheck.rows.length > 0) {
+          const columnType = locationCheck.rows[0].data_type;
+          if (columnType !== 'jsonb') {
+            this.logger.log('Altering location_preference column from varchar to jsonb...');
+            await client.query(`
+              ALTER TABLE "leads" 
+              ALTER COLUMN "location_preference" TYPE jsonb 
+              USING jsonb_build_object('name', "location_preference")
+            `);
+            this.logger.log('Successfully altered location_preference column to jsonb');
+          }
+        }
+
         // Ensure lead_activities table exists (production-safe even if drizzle-kit isn't available)
         const leadActivitiesCheck = await client.query(`
           SELECT to_regclass('public.lead_activities') as regclass
