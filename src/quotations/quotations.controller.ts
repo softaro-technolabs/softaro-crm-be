@@ -22,7 +22,8 @@ import { PdfGeneratorService } from './pdf-generator.service';
 import {
   CreateQuotationDto,
   UpdateQuotationDto,
-  QuotationListQueryDto
+  QuotationListQueryDto,
+  ConvertToDealDto
 } from './quotations.dto';
 
 @ApiTags('Quotations')
@@ -100,6 +101,24 @@ export class QuotationsController {
   async sendEmail(@Param('tenantId') tenantId: string, @Param('id') id: string) {
     this.verifyTenantAccess(tenantId);
     return this.quotationsService.sendQuotationByEmail(tenantId, id);
+  }
+
+  @Post(':id/revision')
+  @ApiOperation({ summary: 'Create a new version of the quotation' })
+  async createRevision(@Param('tenantId') tenantId: string, @Param('id') id: string) {
+    this.verifyTenantAccess(tenantId);
+    return this.quotationsService.createRevision(tenantId, id);
+  }
+
+  @Post(':id/convert-to-deal')
+  @ApiOperation({ summary: 'Convert quotation to a deal and create contact' })
+  async convertToDeal(
+    @Param('tenantId') tenantId: string, 
+    @Param('id') id: string,
+    @Body() dto: ConvertToDealDto
+  ) {
+    this.verifyTenantAccess(tenantId);
+    return this.quotationsService.convertToDeal(tenantId, id, dto);
   }
 
   private verifyTenantAccess(tenantId: string) {

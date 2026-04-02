@@ -470,8 +470,16 @@ export class MigrationService {
         await this.runWhatsappMigrations(client);
         // ─────────────────────────────────────────────────────────────
 
+        // ─── Contact Tables (New) ──────────────────────────────────
+        await this.runContactMigrations(client);
+        // ─────────────────────────────────────────────────────────────
+
         // ─── Quotation Tables (New) ──────────────────────────────────
         await this.runQuotationMigrations(client);
+        // ─────────────────────────────────────────────────────────────
+
+        // ─── Deal Tables (New) ──────────────────────────────────
+        await this.runDealMigrations(client);
         // ─────────────────────────────────────────────────────────────
       } finally {
         client.release();
@@ -839,12 +847,22 @@ export class MigrationService {
           "notes"             text,
           "terms"             text,
           "metadata"          jsonb,
+
+          "contact_id"           varchar(36),
+          "assigned_to_user_id"  varchar(36),
+          "version_number"       integer NOT NULL DEFAULT 1,
+          "parent_id"            varchar(36),
+          "document_url"         varchar(500),
+          "signed_copy_url"      varchar(500),
+
           "created_at"        timestamptz NOT NULL DEFAULT now(),
           "updated_at"        timestamptz NOT NULL DEFAULT now()
         );
       `);
       await client.query(`CREATE INDEX IF NOT EXISTS "quotations_tenant_idx" ON "quotations" ("tenant_id");`);
       await client.query(`CREATE INDEX IF NOT EXISTS "quotations_lead_idx" ON "quotations" ("lead_id");`);
+      await client.query(`CREATE INDEX IF NOT EXISTS "quotations_contact_idx" ON "quotations" ("contact_id");`);
+      await client.query(`CREATE INDEX IF NOT EXISTS "quotations_parent_idx" ON "quotations" ("parent_id");`);
       await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS "quotations_tenant_number_uq" ON "quotations" ("tenant_id", "quotation_number");`);
       this.logger.log('✓ quotations table created');
     } else {
@@ -867,7 +885,13 @@ export class MigrationService {
         { name: 'gst_amount', type: 'numeric(15,2) DEFAULT 0' },
         { name: 'stamp_duty', type: 'numeric(15,2) DEFAULT 0' },
         { name: 'discount', type: 'numeric(15,2) DEFAULT 0' },
-        { name: 'other_charges', type: "jsonb DEFAULT '[]'" }
+        { name: 'other_charges', type: "jsonb DEFAULT '[]'" },
+        { name: 'contact_id', type: 'varchar(36)' },
+        { name: 'assigned_to_user_id', type: 'varchar(36)' },
+        { name: 'version_number', type: 'integer NOT NULL DEFAULT 1' },
+        { name: 'parent_id', type: 'varchar(36)' },
+        { name: 'document_url', type: 'varchar(500)' },
+        { name: 'signed_copy_url', type: 'varchar(500)' }
       ];
 
       for (const col of columns) {
@@ -904,6 +928,81 @@ export class MigrationService {
       `);
       await client.query(`CREATE INDEX IF NOT EXISTS "quotation_items_quotation_idx" ON "quotation_items" ("quotation_id");`);
       this.logger.log('✓ quotation_items table created');
+    }
+  }
+  private async runContactMigrations(client: any) {
+    const contactsCheck = await client.query('SELECT to_regclass(\'public.contacts\') as t');
+    if (contactsCheck.rows[0]?.t === null) {
+      this.logger.log('Creating contacts table...');
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS "contacts" (
+          "id"                varchar(36) PRIMARY KEY,
+          "tenant_id"         varchar(36) NOT NULL,
+          "lead_id"           varchar(36),
+          "name"              varchar(255) NOT NULL,
+          "email"             varchar(255),
+          "phone"             varchar(50),
+          "alternate_phone"   varchar(50),
+          "address"           jsonb,
+          "city"              varchar(100),
+          "state"             varchar(100),
+          "country"           varchar(100),
+          "pincode"           varchar(20),
+          "occupation"        varchar(255),
+          "company"           varchar(255),
+          "pan_number"        varchar(20),
+          "aadhaar_number"    varchar(20),
+          "metadata"          jsonb,
+          "created_at"        timestamptz NOT NULL DEFAULT now(),
+          "updated_at"        timestamptz NOT NULL DEFAULT now()
+        );
+      `);
+      await client.query('CREATE INDEX IF NOT EXISTS "contacts_tenant_idx" ON "contacts" ("tenant_id");');
+      await client.query('CREATE INDEX IF NOT EXISTS "contacts_email_idx" ON "contacts" ("email");');
+      await client.query('CREATE INDEX IF NOT EXISTS "contacts_phone_idx" ON "contacts" ("phone");');
+      this.logger.log('✓ contacts table created');
+    }
+  }
+
+  private async runDealMigrations(client: any) {
+    await client.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'deal_status') THEN
+          CREATE TYPE "deal_status" AS ENUM ('active', 'closed_won', 'closed_lost', 'cancelled', 'pending_payment', 'on_hold');
+        END IF;
+      END $$;
+    `);
+    const dealsCheck = await client.query('SELECT to_regclass(\'public.deals\') as t');
+    if (dealsCheck.rows[0]?.t === null) {
+      this.logger.log('Creating deals table...');
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS "deals" (
+          "id"                    varchar(36) PRIMARY KEY,
+          "tenant_id"             varchar(36) NOT NULL,
+          "lead_id"               varchar(36),
+          "contact_id"            varchar(36),
+          "quotation_id"          varchar(36),
+          "property_unit_id"      varchar(36),
+          "deal_number"           varchar(50) NOT NULL,
+          "status"                "deal_status" NOT NULL DEFAULT 'active',
+          "expected_closing_date" timestamptz,
+          "actual_closing_date"   timestamptz,
+          "total_amount"          numeric(15,2) NOT NULL DEFAULT 0,
+          "received_amount"       numeric(15,2) NOT NULL DEFAULT 0,
+          "pending_amount"        numeric(15,2) NOT NULL DEFAULT 0,
+          "assigned_to_user_id"   varchar(36),
+          "notes"                 text,
+          "metadata"              jsonb,
+          "created_at"            timestamptz NOT NULL DEFAULT now(),
+          "updated_at"            timestamptz NOT NULL DEFAULT now()
+        );
+      `);
+      await client.query('CREATE INDEX IF NOT EXISTS "deals_tenant_idx" ON "deals" ("tenant_id");');
+      await client.query('CREATE INDEX IF NOT EXISTS "deals_lead_idx" ON "deals" ("lead_id");');
+      await client.query('CREATE INDEX IF NOT EXISTS "deals_contact_idx" ON "deals" ("contact_id");');
+      await client.query('CREATE INDEX IF NOT EXISTS "deals_status_idx" ON "deals" ("status");');
+      this.logger.log('✓ deals table created');
     }
   }
 }

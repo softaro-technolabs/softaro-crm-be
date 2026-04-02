@@ -16,3 +16,5 @@ export * from './whatsapp.schema';
 export * from './calendar-sync.schema';
 export * from './push-subscriptions.schema';
 export * from './quotations.schema';
+export * from './contacts.schema';
+export * from './deals.schema';

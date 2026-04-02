@@ -100,7 +100,17 @@ export class CreateQuotationDto {
   @ApiPropertyOptional() @IsNumber() @IsOptional() gstAmount?: number;
   @ApiPropertyOptional() @IsNumber() @IsOptional() stampDuty?: number;
   @ApiPropertyOptional() @IsNumber() @IsOptional() discount?: number;
-  @ApiPropertyOptional() @IsArray() @IsOptional() otherCharges?: any[];
+  @IsArray() @IsOptional() otherCharges?: any[];
+
+  @ApiPropertyOptional({ description: 'Assigned agent user ID' })
+  @IsUUID()
+  @IsOptional()
+  assignedToUserId?: string;
+
+  @ApiPropertyOptional({ description: 'Parent quotation ID (for versioning)' })
+  @IsUUID()
+  @IsOptional()
+  parentId?: string;
 }
 
 export class UpdateQuotationDto extends PartialType(CreateQuotationDto) {
@@ -137,4 +147,21 @@ export class QuotationListQueryDto {
   @Type(() => Number)
   @IsNumber()
   limit?: number = 10;
+}
+
+export class ConvertToDealDto {
+  @ApiProperty({ description: 'Expected closing date' })
+  @IsDateString()
+  @IsNotEmpty()
+  expectedClosingDate!: string;
+
+  @ApiPropertyOptional({ description: 'Initial payment received' })
+  @IsNumber()
+  @IsOptional()
+  receivedAmount?: number;
+
+  @ApiPropertyOptional({ description: 'Notes' })
+  @IsString()
+  @IsOptional()
+  notes?: string;
 }

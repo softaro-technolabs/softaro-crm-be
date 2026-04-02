@@ -62,6 +62,14 @@ export const quotations = pgTable(
     discount: numeric('discount', { precision: 15, scale: 2 }).default('0'),
     otherCharges: jsonb('other_charges').default('[]'),
 
+    // Professional Features
+    contactId: varchar('contact_id', { length: 36 }), // Nullable, as it starts from a Lead
+    assignedToUserId: varchar('assigned_to_user_id', { length: 36 }),
+    versionNumber: integer('version_number').default(1).notNull(),
+    parentId: varchar('parent_id', { length: 36 }), // Self-reference for versioning
+    documentUrl: varchar('document_url', { length: 500 }), // Store the generated PDF link
+    signedCopyUrl: varchar('signed_copy_url', { length: 500 }), // Store signed copy upload
+
     notes: text('notes'),
     terms: text('terms'),
     metadata: jsonb('metadata'),
@@ -71,6 +79,8 @@ export const quotations = pgTable(
   (table) => ({
     tenantIdx: index('quotations_tenant_idx').on(table.tenantId),
     leadIdx: index('quotations_lead_idx').on(table.leadId),
+    contactIdx: index('quotations_contact_idx').on(table.contactId),
+    parentIdx: index('quotations_parent_idx').on(table.parentId),
     tenantQuotationNumberUnique: uniqueIndex('quotations_tenant_number_uq').on(table.tenantId, table.quotationNumber),
     statusIdx: index('quotations_status_idx').on(table.status)
   })

@@ -2,8 +2,8 @@ import { Injectable, NotFoundException, Inject } from '@nestjs/common';
 import { eq, and, desc, sql, or, ilike, SQL, inArray } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { DrizzleDatabase } from '../database/database.types';
-import { quotations, quotationItems, leads, tenants, propertyUnits, propertyEntities, propertyAttributes, propertyAttributeValues } from '../database/schema';
-import { CreateQuotationDto, UpdateQuotationDto, QuotationListQueryDto } from './quotations.dto';
+import { quotations, quotationItems, leads, tenants, contacts, deals } from '../database/schema';
+import { CreateQuotationDto, UpdateQuotationDto, QuotationListQueryDto, ConvertToDealDto } from './quotations.dto';
 import { DRIZZLE } from '../database/database.constants';
 import { MailService } from '../common/services/mail.service';
 import { PdfGeneratorService } from './pdf-generator.service';
@@ -61,10 +61,22 @@ export class QuotationsService {
   }
 
   async createQuotation(tenantId: string, dto: CreateQuotationDto) {
-    const { leadId, title, expiryDate, currency, notes, terms, items } = dto;
+    const { leadId, title, expiryDate, currency, notes, terms, items, assignedToUserId, parentId } = dto;
 
     const [lead] = await this.db.select().from(leads).where(and(eq(leads.id, leadId), eq(leads.tenantId, tenantId))).limit(1);
     if (!lead) throw new NotFoundException('Lead not found');
+
+    let versionNumber = 1;
+    if (parentId) {
+      const [parent] = await this.db.select().from(quotations).where(eq(quotations.id, parentId)).limit(1);
+      if (parent) {
+        const [maxVersion] = await this.db
+          .select({ value: sql<number>`max(version_number)` })
+          .from(quotations)
+          .where(eq(quotations.parentId, parentId));
+        versionNumber = (maxVersion?.value || parent.versionNumber) + 1;
+      }
+    }
 
     const [countResult] = await this.db
       .select({ value: sql<number>`count(*)` })
@@ -117,7 +129,10 @@ export class QuotationsService {
         gstAmount: dto.gstAmount?.toString(),
         stampDuty: dto.stampDuty?.toString(),
         discount: dto.discount?.toString(),
-        otherCharges: dto.otherCharges
+        otherCharges: dto.otherCharges,
+        assignedToUserId: assignedToUserId || lead.assignedToUserId,
+        parentId,
+        versionNumber
       });
 
       if (processedItems.length > 0) {
@@ -321,5 +336,122 @@ export class QuotationsService {
     }
 
     return { success: true, message: 'Quotation sent successfully' };
+  }
+
+  /**
+   * Create a new version of an existing quotation
+   */
+  async createRevision(tenantId: string, id: string) {
+    const original = await this.getQuotation(tenantId, id);
+    if (!original) throw new NotFoundException('Quotation not found');
+
+    const parentId = original.parentId || original.id;
+    
+    const [maxVersion] = await this.db
+      .select({ value: sql<number>`max(version_number)` })
+      .from(quotations)
+      .where(or(eq(quotations.id, parentId), eq(quotations.parentId, parentId)));
+    
+    const nextVersion = (Number(maxVersion?.value) || 1) + 1;
+
+    const { items, lead, tenantName, ...data } = original;
+
+    const newId = uuidv4();
+    const newNumber = `${original.quotationNumber.split('-v')[0]}-v${nextVersion}`;
+
+    await this.db.transaction(async (tx: any) => {
+      await tx.insert(quotations).values({
+        ...data,
+        id: newId,
+        quotationNumber: newNumber,
+        status: 'draft',
+        versionNumber: nextVersion,
+        parentId: parentId,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      });
+
+      if (items && items.length > 0) {
+        await tx.insert(quotationItems).values(
+          items.map(item => ({
+            ...item,
+            id: uuidv4(),
+            quotationId: newId,
+            createdAt: new Date(),
+            updatedAt: new Date()
+          }))
+        );
+      }
+    });
+
+    return this.getQuotation(tenantId, newId);
+  }
+
+  /**
+   * Convert a Quotation into a Deal and create a Contact for the Lead
+   */
+  async convertToDeal(tenantId: string, id: string, dto: ConvertToDealDto) {
+    const quotation = await this.getQuotation(tenantId, id);
+    if (!quotation) throw new NotFoundException('Quotation not found');
+    if (quotation.status === 'converted') throw new Error('Quotation already converted');
+
+    const lead = quotation.lead as any;
+    
+    return await this.db.transaction(async (tx: any) => {
+      // 1. Check if contact exists, if not create one
+      let contactId = quotation.contactId;
+      if (!contactId) {
+        contactId = uuidv4();
+        await tx.insert(contacts).values({
+          id: contactId,
+          tenantId,
+          leadId: lead.id,
+          name: lead.name,
+          email: lead.email,
+          phone: lead.phone,
+          createdAt: new Date(),
+          updatedAt: new Date()
+        });
+      }
+
+      // 2. Create the Deal
+      const [countResult] = await tx
+        .select({ value: sql<number>`count(*)` })
+        .from(deals)
+        .where(eq(deals.tenantId, tenantId));
+      
+      const dealNumber = `DL-${new Date().getFullYear()}-${(Number(countResult?.value || 0) + 1).toString().padStart(4, '0')}`;
+      const dealId = uuidv4();
+
+      await tx.insert(deals).values({
+        id: dealId,
+        tenantId,
+        leadId: lead.id,
+        contactId,
+        quotationId: id,
+        propertyUnitId: quotation.propertyUnitId,
+        dealNumber,
+        status: 'active',
+        totalAmount: quotation.grandTotal,
+        receivedAmount: dto.receivedAmount?.toString() || '0',
+        pendingAmount: (Number(quotation.grandTotal) - Number(dto.receivedAmount || 0)).toString(),
+        expectedClosingDate: new Date(dto.expectedClosingDate),
+        notes: dto.notes,
+        assignedToUserId: quotation.assignedToUserId,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      });
+
+      // 3. Update Quotation Status
+      await tx.update(quotations)
+        .set({ 
+          status: 'converted', 
+          contactId,
+          updatedAt: new Date() 
+        })
+        .where(eq(quotations.id, id));
+
+      return { success: true, dealId, dealNumber, contactId };
+    });
   }
 }
