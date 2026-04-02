@@ -167,48 +167,65 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
             });
             const accessToken = tokenResponse.data.access_token;
 
-            // 2. Discover WhatsApp Business Accounts (WABA)
-            this.logger.log(`Discovering WABAs for tenant: ${tenantId}`);
-            const wabaResponse = await axios.get(`${this.baseUrl}/me?fields=whatsapp_business_accounts`, {
+            // 2. Discover Businesses first
+            this.logger.log(`Discovering Businesses for tenant: ${tenantId}`);
+            const businessesResponse = await axios.get(`${this.baseUrl}/me/businesses`, {
                 headers: { Authorization: `Bearer ${accessToken}` }
             });
-            const wabas = wabaResponse.data.whatsapp_business_accounts?.data || [];
-
-            if (!wabas || wabas.length === 0) {
-                return { accessToken, accounts: [], message: 'No WhatsApp Business Accounts found.' };
-            }
-
-            // 3. Simple Auto-fetch logic: For each WABA, fetch its verified phone numbers
+            const businesses = businessesResponse.data.data || [];
+            
             const discoveredAccounts = [];
-            for (const waba of wabas) {
+
+            // 3. For each business, find WABAs
+            for (const business of businesses) {
+                this.logger.log(`Fetching WABAs for Business: ${business.name} (${business.id})`);
                 try {
-                    const phoneResponse = await axios.get(`${this.baseUrl}/${waba.id}/phone_numbers`, {
+                    const wabaResponse = await axios.get(`${this.baseUrl}/${business.id}/owned_whatsapp_business_accounts`, {
                         headers: { Authorization: `Bearer ${accessToken}` }
                     });
+                    const wabas = wabaResponse.data.data || [];
 
-                    const phones = phoneResponse.data.data;
-                    for (const phone of phones) {
-                        discoveredAccounts.push({
-                            wabaId: waba.id,
-                            businessAccountId: waba.id, // Primary ID for messaging
-                            phoneNumberId: phone.id,
-                            phoneNumber: phone.display_phone_number,
-                            verifiedName: phone.verified_name
-                        });
+                    // 4. For each WABA, fetch phone numbers
+                    for (const waba of wabas) {
+                        this.logger.log(`Fetching phone numbers for WABA: ${waba.name} (${waba.id})`);
+                        try {
+                            const phoneResponse = await axios.get(`${this.baseUrl}/${waba.id}/phone_numbers`, {
+                                headers: { Authorization: `Bearer ${accessToken}` }
+                            });
+                            const phoneNumbers = phoneResponse.data.data || [];
+
+                            for (const phoneNumber of phoneNumbers) {
+                                discoveredAccounts.push({
+                                    businessAccountId: waba.id,
+                                    phoneNumberId: phoneNumber.id,
+                                    phoneNumber: phoneNumber.display_phone_number,
+                                    verifiedName: phoneNumber.verified_name,
+                                    wabaId: waba.id,
+                                    wabaName: waba.name
+                                });
+                            }
+                        } catch (phoneErr: any) {
+                            this.logger.warn(`Failed to fetch phones for WABA ${waba.id}`);
+                        }
                     }
-                } catch (phoneError: any) {
-                    this.logger.warn(`Failed to fetch phones for WABA ${waba.id}: ${phoneError.message}`);
+                } catch (wabaErr: any) {
+                    this.logger.warn(`Failed to fetch WABAs for Business ${business.id}`);
                 }
+            }
+
+            if (discoveredAccounts.length === 0) {
+                return { accessToken, accounts: [], message: 'No WhatsApp accounts found across your businesses.' };
             }
 
             return {
                 accessToken,
                 accounts: discoveredAccounts,
-                suggestedAccount: discoveredAccounts.length > 0 ? discoveredAccounts[0] : null
+                suggestedAccount: discoveredAccounts[0]
             };
         } catch (error: any) {
-            this.logger.error('Failed Meta OAuth flow', error?.response?.data || error.message);
-            throw new BadRequestException(error?.response?.data?.error?.message || 'Failed to exchange code with Meta');
+            const errorData = error?.response?.data || error.message;
+            this.logger.error('Failed Meta OAuth flow', errorData);
+            throw new BadRequestException(errorData?.error?.message || 'Failed to exchange code with Meta');
         }
     }
 
