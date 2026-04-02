@@ -1,8 +1,8 @@
 import { Injectable, NotFoundException, Inject } from '@nestjs/common';
-import { eq, and, desc, sql, or, ilike, SQL } from 'drizzle-orm';
+import { eq, and, desc, sql, or, ilike, SQL, inArray } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { DrizzleDatabase } from '../database/database.types';
-import { quotations, quotationItems, leads, tenants } from '../database/schema';
+import { quotations, quotationItems, leads, tenants, propertyUnits, propertyEntities, propertyAttributes, propertyAttributeValues } from '../database/schema';
 import { CreateQuotationDto, UpdateQuotationDto, QuotationListQueryDto } from './quotations.dto';
 import { DRIZZLE } from '../database/database.constants';
 
@@ -210,11 +210,74 @@ export class QuotationsService {
     const [lead] = await this.db.select().from(leads).where(eq(leads.id, quotation.leadId)).limit(1);
     const [tenant] = await this.db.select().from(tenants).where(eq(tenants.id, tenantId)).limit(1);
 
+    // Enrich with Property Unit details if linked
+    const firstLinkedUnitItem = items.find(i => i.propertyUnitId);
+    let unitDetails = {};
+    
+    if (firstLinkedUnitItem?.propertyUnitId) {
+      const [unitData] = await this.db
+        .select({
+          unitCode: propertyUnits.unitCode,
+          entityName: propertyEntities.name,
+          unitStatus: propertyUnits.unitStatus,
+          price: propertyUnits.price
+        })
+        .from(propertyUnits)
+        .innerJoin(propertyEntities, eq(propertyUnits.entityId, propertyEntities.id))
+        .where(eq(propertyUnits.id, firstLinkedUnitItem.propertyUnitId))
+        .limit(1);
+      
+      if (unitData) {
+        // Fetch unit attributes
+        const attributes = await this.db
+          .select({
+            name: propertyAttributes.name,
+            value: propertyAttributeValues.value
+          })
+          .from(propertyAttributeValues)
+          .innerJoin(propertyAttributes, eq(propertyAttributeValues.attributeId, propertyAttributes.id))
+          .where(eq(propertyAttributeValues.unitId, firstLinkedUnitItem.propertyUnitId || ''));
+
+        const getAttr = (name: string) => {
+          const attr = attributes.find(a => a.name.toLowerCase().includes(name.toLowerCase()));
+          return attr?.value || '';
+        };
+
+        const getLabel = (desc: string) => {
+          const match = desc.match(/\(([^)]+)\)/);
+          return match ? match[1] : desc;
+        };
+
+        unitDetails = {
+          projectName: unitData.entityName,
+          unitNumber: unitData.unitCode,
+          unitType: getAttr('type') || getAttr('bhk') || 'Residential',
+          floorTower: `${getAttr('tower')} / ${getAttr('floor')}`.replace(/^\s*\/\s*$/, '') || 'N/A',
+          carpetArea: getAttr('carpet'),
+          superBuiltUp: getAttr('super'),
+          basePrice: items.find(i => i.description.toLowerCase().includes('base price'))?.unitPrice || 0,
+          plc: items.find(i => i.description.toLowerCase().includes('plc'))?.unitPrice || 0,
+          parking: items.find(i => i.description.toLowerCase().includes('parking'))?.unitPrice || 0,
+          clubMembership: items.find(i => i.description.toLowerCase().includes('club'))?.unitPrice || 0,
+          discount: quotation.discountTotal || 0,
+          gstRate: items.find(i => Number(i.taxRate) > 0)?.taxRate || 5,
+          gstAmount: quotation.taxTotal || 0,
+          otherCharges: items.filter(i => 
+             !i.description.toLowerCase().includes('base price') &&
+             !i.description.toLowerCase().includes('plc') &&
+             !i.description.toLowerCase().includes('parking') &&
+             !i.description.toLowerCase().includes('club')
+          ).map(i => ({ label: getLabel(i.description), amount: i.unitPrice }))
+        };
+      }
+    }
+
     return {
       ...quotation,
       items,
       lead,
-      tenantName: tenant?.name
+      tenantName: tenant?.name,
+      ...unitDetails
     };
   }
 
