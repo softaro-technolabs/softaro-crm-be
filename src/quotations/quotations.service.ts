@@ -2,12 +2,13 @@ import { Injectable, NotFoundException, Inject } from '@nestjs/common';
 import { eq, and, desc, sql, or, ilike, SQL } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { DrizzleDatabase } from '../database/database.types';
-import { quotations, quotationItems, leads } from '../database/schema';
+import { quotations, quotationItems, leads, tenants } from '../database/schema';
 import { CreateQuotationDto, UpdateQuotationDto, QuotationListQueryDto } from './quotations.dto';
+import { DRIZZLE } from '../database/database.constants';
 
 @Injectable()
 export class QuotationsService {
-  constructor(@Inject('DATABASE') private readonly db: DrizzleDatabase) {}
+  constructor(@Inject(DRIZZLE) private readonly db: DrizzleDatabase) {}
 
   private calculateTotals(items: { quantity: number; unitPrice: number; taxRate?: number; discountRate?: number }[]) {
     let subTotal = 0;
@@ -207,11 +208,13 @@ export class QuotationsService {
       .orderBy(quotationItems.order);
 
     const [lead] = await this.db.select().from(leads).where(eq(leads.id, quotation.leadId)).limit(1);
+    const [tenant] = await this.db.select().from(tenants).where(eq(tenants.id, tenantId)).limit(1);
 
     return {
       ...quotation,
       items,
-      lead
+      lead,
+      tenantName: tenant?.name
     };
   }
 
