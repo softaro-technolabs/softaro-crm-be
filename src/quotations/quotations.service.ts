@@ -67,7 +67,13 @@ export class QuotationsService {
     const countVal = Number(countResult?.value ?? 0);
     const quotationNumber = `QT-${new Date().getFullYear()}-${(countVal + 1).toString().padStart(4, '0')}`;
 
-    const { subTotal, taxTotal, discountTotal, grandTotal, processedItems } = this.calculateTotals(items);
+    const { 
+      subTotal, 
+      taxTotal: calculatedTax, 
+      discountTotal: calculatedDiscount, 
+      grandTotal: calculatedGrand, 
+      processedItems 
+    } = this.calculateTotals(items || []);
 
     const quotationId = uuidv4();
 
@@ -82,12 +88,29 @@ export class QuotationsService {
         issueDate: new Date(),
         expiryDate: expiryDate ? new Date(expiryDate) : null,
         currency: currency || 'INR',
-        subTotal,
-        taxTotal,
-        discountTotal,
-        grandTotal,
+        subTotal: dto.basePrice ? (Number(dto.basePrice) + Number(dto.plc || 0) + Number(dto.parking || 0) + Number(dto.clubMembership || 0)).toString() : subTotal,
+        taxTotal: dto.gstAmount ? dto.gstAmount.toString() : calculatedTax,
+        discountTotal: dto.discount ? dto.discount.toString() : calculatedDiscount,
+        grandTotal: dto.basePrice ? (Number(dto.basePrice) + Number(dto.plc || 0) + Number(dto.parking || 0) + Number(dto.clubMembership || 0) + Number(dto.gstAmount || 0) + Number(dto.stampDuty || 0) - Number(dto.discount || 0)).toString() : calculatedGrand,
         notes,
-        terms
+        terms,
+        projectName: dto.projectName,
+        unitNumber: dto.unitNumber,
+        floorTower: dto.floorTower,
+        unitType: dto.unitType,
+        carpetArea: dto.carpetArea,
+        superBuiltUp: dto.superBuiltUp,
+        possession: dto.possession,
+        paymentPlan: dto.paymentPlan,
+        basePrice: dto.basePrice?.toString(),
+        plc: dto.plc?.toString(),
+        parking: dto.parking?.toString(),
+        clubMembership: dto.clubMembership?.toString(),
+        gstRate: dto.gstRate?.toString(),
+        gstAmount: dto.gstAmount?.toString(),
+        stampDuty: dto.stampDuty?.toString(),
+        discount: dto.discount?.toString(),
+        otherCharges: dto.otherCharges
       });
 
       if (processedItems.length > 0) {
@@ -111,17 +134,17 @@ export class QuotationsService {
     const { items, ...updates } = dto;
 
     await this.db.transaction(async (tx: any) => {
+      let finalSub = existing.subTotal;
+      let finalTax = existing.taxTotal;
+      let finalDiscount = existing.discountTotal;
+      let finalGrand = existing.grandTotal;
+
       if (items) {
         const { subTotal, taxTotal, discountTotal, grandTotal, processedItems } = this.calculateTotals(items);
-        
-        await tx.update(quotations).set({
-          ...updates,
-          subTotal,
-          taxTotal,
-          discountTotal,
-          grandTotal,
-          updatedAt: new Date()
-        }).where(eq(quotations.id, id));
+        finalSub = subTotal;
+        finalTax = taxTotal;
+        finalDiscount = discountTotal;
+        finalGrand = grandTotal;
 
         await tx.delete(quotationItems).where(eq(quotationItems.quotationId, id));
         if (processedItems.length > 0) {
@@ -133,12 +156,32 @@ export class QuotationsService {
             }))
           );
         }
-      } else {
-        await tx.update(quotations).set({
-          ...updates,
-          updatedAt: new Date()
-        }).where(eq(quotations.id, id));
       }
+
+      // If Cost Sheet fields are provided, override totals
+      const bp = dto.basePrice !== undefined ? Number(dto.basePrice) : (existing.basePrice ? Number(existing.basePrice) : null);
+      if (bp !== null) {
+        const plc = dto.plc !== undefined ? Number(dto.plc) : Number(existing.plc || 0);
+        const pkg = dto.parking !== undefined ? Number(dto.parking) : Number(existing.parking || 0);
+        const club = dto.clubMembership !== undefined ? Number(dto.clubMembership) : Number(existing.clubMembership || 0);
+        const gstA = dto.gstAmount !== undefined ? Number(dto.gstAmount) : Number(existing.gstAmount || 0);
+        const sd = dto.stampDuty !== undefined ? Number(dto.stampDuty) : Number(existing.stampDuty || 0);
+        const disc = dto.discount !== undefined ? Number(dto.discount) : Number(existing.discount || 0);
+
+        finalSub = (bp + plc + pkg + club).toString();
+        finalTax = gstA.toString();
+        finalDiscount = disc.toString();
+        finalGrand = (bp + plc + pkg + club + gstA + sd - disc).toString();
+      }
+
+      await tx.update(quotations).set({
+        ...updates,
+        subTotal: finalSub,
+        taxTotal: finalTax,
+        discountTotal: finalDiscount,
+        grandTotal: finalGrand,
+        updatedAt: new Date()
+      }).where(eq(quotations.id, id));
     });
 
     return this.getQuotation(tenantId, id);
@@ -210,74 +253,11 @@ export class QuotationsService {
     const [lead] = await this.db.select().from(leads).where(eq(leads.id, quotation.leadId)).limit(1);
     const [tenant] = await this.db.select().from(tenants).where(eq(tenants.id, tenantId)).limit(1);
 
-    // Enrich with Property Unit details if linked
-    const firstLinkedUnitItem = items.find(i => i.propertyUnitId);
-    let unitDetails = {};
-    
-    if (firstLinkedUnitItem?.propertyUnitId) {
-      const [unitData] = await this.db
-        .select({
-          unitCode: propertyUnits.unitCode,
-          entityName: propertyEntities.name,
-          unitStatus: propertyUnits.unitStatus,
-          price: propertyUnits.price
-        })
-        .from(propertyUnits)
-        .innerJoin(propertyEntities, eq(propertyUnits.entityId, propertyEntities.id))
-        .where(eq(propertyUnits.id, firstLinkedUnitItem.propertyUnitId))
-        .limit(1);
-      
-      if (unitData) {
-        // Fetch unit attributes
-        const attributes = await this.db
-          .select({
-            name: propertyAttributes.name,
-            value: propertyAttributeValues.value
-          })
-          .from(propertyAttributeValues)
-          .innerJoin(propertyAttributes, eq(propertyAttributeValues.attributeId, propertyAttributes.id))
-          .where(eq(propertyAttributeValues.unitId, firstLinkedUnitItem.propertyUnitId || ''));
-
-        const getAttr = (name: string) => {
-          const attr = attributes.find(a => a.name.toLowerCase().includes(name.toLowerCase()));
-          return attr?.value || '';
-        };
-
-        const getLabel = (desc: string) => {
-          const match = desc.match(/\(([^)]+)\)/);
-          return match ? match[1] : desc;
-        };
-
-        unitDetails = {
-          projectName: unitData.entityName,
-          unitNumber: unitData.unitCode,
-          unitType: getAttr('type') || getAttr('bhk') || 'Residential',
-          floorTower: `${getAttr('tower')} / ${getAttr('floor')}`.replace(/^\s*\/\s*$/, '') || 'N/A',
-          carpetArea: getAttr('carpet'),
-          superBuiltUp: getAttr('super'),
-          basePrice: items.find(i => i.description.toLowerCase().includes('base price'))?.unitPrice || 0,
-          plc: items.find(i => i.description.toLowerCase().includes('plc'))?.unitPrice || 0,
-          parking: items.find(i => i.description.toLowerCase().includes('parking'))?.unitPrice || 0,
-          clubMembership: items.find(i => i.description.toLowerCase().includes('club'))?.unitPrice || 0,
-          discount: quotation.discountTotal || 0,
-          gstRate: items.find(i => Number(i.taxRate) > 0)?.taxRate || 5,
-          gstAmount: quotation.taxTotal || 0,
-          otherCharges: items.filter(i => 
-             !i.description.toLowerCase().includes('base price') &&
-             !i.description.toLowerCase().includes('plc') &&
-             !i.description.toLowerCase().includes('parking') &&
-             !i.description.toLowerCase().includes('club')
-          ).map(i => ({ label: getLabel(i.description), amount: i.unitPrice }))
-        };
-      }
-    }
-
     return {
       ...quotation,
       items,
       lead,
-      tenantName: tenant?.name,
-      ...unitDetails
+      tenantName: tenant?.name
     };
   }
 

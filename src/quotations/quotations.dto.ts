@@ -76,11 +76,31 @@ export class CreateQuotationDto {
   @IsOptional()
   terms?: string;
 
-  @ApiProperty({ type: [QuotationItemDto] })
+  @ApiPropertyOptional({ type: [QuotationItemDto] })
   @IsArray()
+  @IsOptional()
   @ValidateNested({ each: true })
   @Type(() => QuotationItemDto)
-  items!: QuotationItemDto[];
+  items?: QuotationItemDto[];
+
+  @ApiPropertyOptional() @IsString() @IsOptional() projectName?: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() unitNumber?: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() floorTower?: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() unitType?: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() carpetArea?: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() superBuiltUp?: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() possession?: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() paymentPlan?: string;
+
+  @ApiPropertyOptional() @IsNumber() @IsOptional() basePrice?: number;
+  @ApiPropertyOptional() @IsNumber() @IsOptional() plc?: number;
+  @ApiPropertyOptional() @IsNumber() @IsOptional() parking?: number;
+  @ApiPropertyOptional() @IsNumber() @IsOptional() clubMembership?: number;
+  @ApiPropertyOptional() @IsNumber() @IsOptional() gstRate?: number;
+  @ApiPropertyOptional() @IsNumber() @IsOptional() gstAmount?: number;
+  @ApiPropertyOptional() @IsNumber() @IsOptional() stampDuty?: number;
+  @ApiPropertyOptional() @IsNumber() @IsOptional() discount?: number;
+  @ApiPropertyOptional() @IsArray() @IsOptional() otherCharges?: any[];
 }
 
 export class UpdateQuotationDto extends PartialType(CreateQuotationDto) {
