@@ -169,11 +169,11 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
 
             // 2. Discover WhatsApp Business Accounts (WABA)
             this.logger.log(`Discovering WABAs for tenant: ${tenantId}`);
-            const wabaResponse = await axios.get(`${this.baseUrl}/me/whatsapp_business_accounts`, {
+            const wabaResponse = await axios.get(`${this.baseUrl}/me?fields=whatsapp_business_accounts`, {
                 headers: { Authorization: `Bearer ${accessToken}` }
             });
+            const wabas = wabaResponse.data.whatsapp_business_accounts?.data || [];
 
-            const wabas = wabaResponse.data.data;
             if (!wabas || wabas.length === 0) {
                 return { accessToken, accounts: [], message: 'No WhatsApp Business Accounts found.' };
             }
