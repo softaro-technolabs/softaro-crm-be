@@ -152,12 +152,8 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
     }
 
     async onboardTenantAccount(tenantId: string, code: string) {
-        const clientId = this.configService.get<string>('META_APP_ID');
-        const clientSecret = this.configService.get<string>('META_APP_SECRET');
-
-        if (!clientId || !clientSecret) {
-            throw new BadRequestException('Meta App credentials are not configured.');
-        }
+        const clientId = '954680540449477';
+        const clientSecret = 'abfdb9688d296ab87e31a81ea9b540c9';
 
         try {
             // 1. Exchange code for access token
@@ -216,11 +212,9 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
     }
 
     async getAuthUrl(tenantId: string) {
-        const clientId = this.configService.get<string>('META_APP_ID');
-        if (!clientId) throw new BadRequestException('Meta App ID not configured');
-
+        const clientId = '954680540449477';
         // frontend callback URL
-        const redirectUri = `${this.configService.get<string>('FRONTEND_URL')}/settings/whatsapp/callback`;
+        const redirectUri = `http://localhost:5173/settings/whatsapp/callback`;
         const scope = 'whatsapp_business_management,whatsapp_business_messaging,business_management';
         
         return {
