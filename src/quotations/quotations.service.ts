@@ -1,8 +1,8 @@
-import { Injectable, NotFoundException, Inject } from '@nestjs/common';
+import { Injectable, NotFoundException, Inject, BadRequestException } from '@nestjs/common';
 import { eq, and, desc, sql, or, ilike, SQL, inArray } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { DrizzleDatabase } from '../database/database.types';
-import { quotations, quotationItems, leads, tenants, contacts, deals } from '../database/schema';
+import { quotations, quotationItems, leads, tenants, contacts, deals, leadActivities, propertyUnits } from '../database/schema';
 import { CreateQuotationDto, UpdateQuotationDto, QuotationListQueryDto, ConvertToDealDto } from './quotations.dto';
 import { DRIZZLE } from '../database/database.constants';
 import { MailService } from '../common/services/mail.service';
@@ -16,6 +16,19 @@ export class QuotationsService {
     private readonly pdfGenerator: PdfGeneratorService,
     private readonly mailService: MailService,
   ) {}
+
+  private async logActivity(tx: any, tenantId: string, leadId: string, type: any, title: string, note?: string, metadata?: any) {
+    await tx.insert(leadActivities).values({
+      id: uuidv4(),
+      tenantId,
+      leadId,
+      type,
+      title,
+      note,
+      metadata,
+      happenedAt: new Date(),
+    });
+  }
 
   private calculateTotals(items: { quantity: number; unitPrice: number; taxRate?: number; discountRate?: number }[]) {
     let subTotal = 0;
@@ -97,6 +110,13 @@ export class QuotationsService {
     const quotationId = uuidv4();
 
     await this.db.transaction(async (tx: any) => {
+      if (dto.propertyUnitId) {
+        const [unit] = await tx.select().from(propertyUnits).where(eq(propertyUnits.id, dto.propertyUnitId)).limit(1);
+        if (unit && (unit.unitStatus === 'sold' || unit.unitStatus === 'booked')) {
+          throw new BadRequestException(`Unit ${unit.unitCode} is already ${unit.unitStatus}`);
+        }
+      }
+
       await tx.insert(quotations).values({
         id: quotationId,
         tenantId,
@@ -131,9 +151,20 @@ export class QuotationsService {
         discount: dto.discount?.toString(),
         otherCharges: dto.otherCharges,
         assignedToUserId: assignedToUserId || lead.assignedToUserId,
+        propertyUnitId: dto.propertyUnitId,
         parentId,
         versionNumber
       });
+
+      await this.logActivity(
+        tx,
+        tenantId,
+        leadId,
+        'quotation',
+        `Quotation Created: ${quotationNumber}`,
+        `Title: ${title}`,
+        { quotationId, quotationNumber, grandTotal: calculatedGrand }
+      );
 
       if (processedItems.length > 0) {
         await tx.insert(quotationItems).values(
@@ -156,6 +187,13 @@ export class QuotationsService {
     const { items, ...updates } = dto;
 
     await this.db.transaction(async (tx: any) => {
+      if (dto.propertyUnitId && dto.propertyUnitId !== existing.propertyUnitId) {
+        const [unit] = await tx.select().from(propertyUnits).where(eq(propertyUnits.id, dto.propertyUnitId)).limit(1);
+        if (unit && (unit.unitStatus === 'sold' || unit.unitStatus === 'booked')) {
+          throw new BadRequestException(`Unit ${unit.unitCode} is already ${unit.unitStatus}`);
+        }
+      }
+
       let finalSub = existing.subTotal;
       let finalTax = existing.taxTotal;
       let finalDiscount = existing.discountTotal;
@@ -204,6 +242,18 @@ export class QuotationsService {
         grandTotal: finalGrand,
         updatedAt: new Date()
       }).where(eq(quotations.id, id));
+
+      if (dto.status && dto.status !== existing.status) {
+        await this.logActivity(
+          tx,
+          tenantId,
+          existing.leadId,
+          'quotation',
+          `Quotation Status Updated: ${existing.quotationNumber}`,
+          `Status changed from ${existing.status} to ${dto.status}`,
+          { quotationId: id, oldStatus: existing.status, newStatus: dto.status }
+        );
+      }
     });
 
     return this.getQuotation(tenantId, id);
@@ -333,6 +383,16 @@ export class QuotationsService {
       await this.db.update(quotations)
         .set({ status: 'sent', updatedAt: new Date() })
         .where(eq(quotations.id, id));
+
+      await this.logActivity(
+        this.db,
+        tenantId,
+        quotation.leadId,
+        'email',
+        `Quotation Emailed: ${quotation.quotationNumber}`,
+        `Sent to ${lead.email}`,
+        { quotationId: id }
+      );
     }
 
     return { success: true, message: 'Quotation sent successfully' };
@@ -382,6 +442,16 @@ export class QuotationsService {
           }))
         );
       }
+
+      await this.logActivity(
+        tx,
+        tenantId,
+        original.leadId,
+        'quotation',
+        `New Revision Created: ${newNumber}`,
+        `Revised from ${original.quotationNumber}`,
+        { quotationId: newId, parentId, versionNumber: nextVersion }
+      );
     });
 
     return this.getQuotation(tenantId, newId);
@@ -450,6 +520,24 @@ export class QuotationsService {
           updatedAt: new Date() 
         })
         .where(eq(quotations.id, id));
+      
+      // 4. Update Unit Status to 'booked'
+      if (quotation.propertyUnitId) {
+        await tx.update(propertyUnits)
+          .set({ unitStatus: 'booked', updatedAt: new Date() })
+          .where(eq(propertyUnits.id, quotation.propertyUnitId));
+      }
+
+      // 5. Log Activity
+      await this.logActivity(
+        tx,
+        tenantId,
+        lead.id,
+        'quotation',
+        `Quotation Converted to Deal: ${quotation.quotationNumber}`,
+        `New Deal: ${dealNumber}`,
+        { quotationId: id, dealId, dealNumber }
+      );
 
       return { success: true, dealId, dealNumber, contactId };
     });

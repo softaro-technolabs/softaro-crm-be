@@ -21,7 +21,8 @@ export const quotationStatusEnum = pgEnum('quotation_status', [
   'accepted',
   'rejected',
   'expired',
-  'converted'
+  'converted',
+  'pending_approval'
 ]);
 
 export const quotations = pgTable(

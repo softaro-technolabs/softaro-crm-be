@@ -375,6 +375,14 @@ export class MigrationService {
               ) THEN
                 ALTER TYPE "lead_activity_type" ADD VALUE 'task';
               END IF;
+              IF NOT EXISTS (
+                SELECT 1
+                FROM pg_enum e
+                JOIN pg_type t ON t.oid = e.enumtypid
+                WHERE t.typname = 'lead_activity_type' AND e.enumlabel = 'quotation'
+              ) THEN
+                ALTER TYPE "lead_activity_type" ADD VALUE 'quotation';
+              END IF;
             END IF;
           END $$;
         `);
@@ -799,7 +807,24 @@ export class MigrationService {
       DO $$
       BEGIN
         IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'quotation_status') THEN
-          CREATE TYPE "quotation_status" AS ENUM ('draft', 'sent', 'accepted', 'rejected', 'expired', 'converted');
+          CREATE TYPE "quotation_status" AS ENUM ('draft', 'sent', 'accepted', 'rejected', 'expired', 'converted', 'pending_approval');
+        END IF;
+      END $$;
+    `);
+
+    // Ensure 'pending_approval' exists in existing enum
+    await client.query(`
+      DO $$
+      BEGIN
+        IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'quotation_status') THEN
+          IF NOT EXISTS (
+            SELECT 1
+            FROM pg_enum e
+            JOIN pg_type t ON t.oid = e.enumtypid
+            WHERE t.typname = 'quotation_status' AND e.enumlabel = 'pending_approval'
+          ) THEN
+            ALTER TYPE "quotation_status" ADD VALUE 'pending_approval';
+          END IF;
         END IF;
       END $$;
     `);

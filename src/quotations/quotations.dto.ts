@@ -18,7 +18,8 @@ export enum QuotationStatus {
   ACCEPTED = 'accepted',
   REJECTED = 'rejected',
   EXPIRED = 'expired',
-  CONVERTED = 'converted'
+  CONVERTED = 'converted',
+  PENDING_APPROVAL = 'pending_approval'
 }
 
 export class QuotationItemDto {
@@ -106,6 +107,11 @@ export class CreateQuotationDto {
   @IsUUID()
   @IsOptional()
   assignedToUserId?: string;
+
+  @ApiPropertyOptional({ description: 'Property Unit ID' })
+  @IsUUID()
+  @IsOptional()
+  propertyUnitId?: string;
 
   @ApiPropertyOptional({ description: 'Parent quotation ID (for versioning)' })
   @IsUUID()

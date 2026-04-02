@@ -7,7 +7,8 @@ export const leadActivityTypeEnum = pgEnum('lead_activity_type', [
   'meeting',
   'task',
   'note',
-  'status_change'
+  'status_change',
+  'quotation'
 ]);
 
 export const leadActivities = pgTable(
