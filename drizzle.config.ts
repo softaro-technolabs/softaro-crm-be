@@ -71,7 +71,9 @@ export default defineConfig({
     'property_media',
     'property_status_logs',
     'lead_property_interests',
-    'property_pricing_breakups'
+    'property_pricing_breakups',
+    'quotations',
+    'quotation_items'
   ],
 });
 

@@ -469,6 +469,10 @@ export class MigrationService {
         // ─── WhatsApp Tables ─────────────────────────────────────────
         await this.runWhatsappMigrations(client);
         // ─────────────────────────────────────────────────────────────
+
+        // ─── Quotation Tables (New) ──────────────────────────────────
+        await this.runQuotationMigrations(client);
+        // ─────────────────────────────────────────────────────────────
       } finally {
         client.release();
       }
@@ -534,12 +538,12 @@ export class MigrationService {
   private async runChatMigrations(client: any) {
     // Enum
     await client.query(`
-      DO \$\$
+      DO $$
       BEGIN
         IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'conversation_type') THEN
           CREATE TYPE "conversation_type" AS ENUM ('direct','group');
         END IF;
-      END \$\$;
+      END $$;
     `);
 
     // chat_conversations
@@ -778,4 +782,128 @@ export class MigrationService {
     }
   }
 
+  /**
+   * Create Quotation tables if they don't exist (idempotent).
+   */
+  private async runQuotationMigrations(client: any) {
+    // 1. Create Enum
+    await client.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'quotation_status') THEN
+          CREATE TYPE "quotation_status" AS ENUM ('draft', 'sent', 'accepted', 'rejected', 'expired', 'converted');
+        END IF;
+      END $$;
+    `);
+
+    // 2. Create Quotations Table
+    const quotationsCheck = await client.query(`SELECT to_regclass('public.quotations') as t`);
+    if (quotationsCheck.rows[0]?.t === null) {
+      this.logger.log('Creating quotations table...');
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS "quotations" (
+          "id"                varchar(36) PRIMARY KEY,
+          "tenant_id"         varchar(36) NOT NULL,
+          "lead_id"           varchar(36) NOT NULL,
+          "property_unit_id"  varchar(36),
+          "quotation_number"  varchar(50) NOT NULL,
+          "title"             varchar(255) NOT NULL,
+          "status"            "quotation_status" NOT NULL DEFAULT 'draft',
+          "issue_date"        timestamptz NOT NULL DEFAULT now(),
+          "expiry_date"       timestamptz,
+          "currency"          varchar(10) NOT NULL DEFAULT 'INR',
+          "sub_total"         numeric(15,2) NOT NULL DEFAULT 0,
+          "tax_total"         numeric(15,2) NOT NULL DEFAULT 0,
+          "discount_total"    numeric(15,2) NOT NULL DEFAULT 0,
+          "grand_total"       numeric(15,2) NOT NULL DEFAULT 0,
+          
+          "project_name"      varchar(255),
+          "unit_number"       varchar(50),
+          "floor_tower"       varchar(100),
+          "unit_type"         varchar(100),
+          "carpet_area"       varchar(100),
+          "super_built_up"    varchar(100),
+          "possession"        varchar(100),
+          "payment_plan"      varchar(255),
+          
+          "base_price"        numeric(15,2) DEFAULT 0,
+          "plc"               numeric(15,2) DEFAULT 0,
+          "parking"           numeric(15,2) DEFAULT 0,
+          "club_membership"   numeric(15,2) DEFAULT 0,
+          "gst_rate"          numeric(5,2) DEFAULT 5,
+          "gst_amount"        numeric(15,2) DEFAULT 0,
+          "stamp_duty"        numeric(15,2) DEFAULT 0,
+          "discount"          numeric(15,2) DEFAULT 0,
+          "other_charges"     jsonb DEFAULT '[]',
+          
+          "notes"             text,
+          "terms"             text,
+          "metadata"          jsonb,
+          "created_at"        timestamptz NOT NULL DEFAULT now(),
+          "updated_at"        timestamptz NOT NULL DEFAULT now()
+        );
+      `);
+      await client.query(`CREATE INDEX IF NOT EXISTS "quotations_tenant_idx" ON "quotations" ("tenant_id");`);
+      await client.query(`CREATE INDEX IF NOT EXISTS "quotations_lead_idx" ON "quotations" ("lead_id");`);
+      await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS "quotations_tenant_number_uq" ON "quotations" ("tenant_id", "quotation_number");`);
+      this.logger.log('✓ quotations table created');
+    } else {
+      // Logic for adding missing columns to existing table
+      const columns = [
+        { name: 'property_unit_id', type: 'varchar(36)' },
+        { name: 'project_name', type: 'varchar(255)' },
+        { name: 'unit_number', type: 'varchar(50)' },
+        { name: 'floor_tower', type: 'varchar(100)' },
+        { name: 'unit_type', type: 'varchar(100)' },
+        { name: 'carpet_area', type: 'varchar(100)' },
+        { name: 'super_built_up', type: 'varchar(100)' },
+        { name: 'possession', type: 'varchar(100)' },
+        { name: 'payment_plan', type: 'varchar(255)' },
+        { name: 'base_price', type: 'numeric(15,2) DEFAULT 0' },
+        { name: 'plc', type: 'numeric(15,2) DEFAULT 0' },
+        { name: 'parking', type: 'numeric(15,2) DEFAULT 0' },
+        { name: 'club_membership', type: 'numeric(15,2) DEFAULT 0' },
+        { name: 'gst_rate', type: 'numeric(5,2) DEFAULT 5' },
+        { name: 'gst_amount', type: 'numeric(15,2) DEFAULT 0' },
+        { name: 'stamp_duty', type: 'numeric(15,2) DEFAULT 0' },
+        { name: 'discount', type: 'numeric(15,2) DEFAULT 0' },
+        { name: 'other_charges', type: "jsonb DEFAULT '[]'" }
+      ];
+
+      for (const col of columns) {
+        const colCheck = await client.query(`
+          SELECT 1 FROM information_schema.columns 
+          WHERE table_schema = 'public' AND table_name = 'quotations' AND column_name = '${col.name}'
+        `);
+        if (colCheck.rows.length === 0) {
+          this.logger.log(`Adding missing column "${col.name}" to quotations table...`);
+          await client.query(`ALTER TABLE "quotations" ADD COLUMN "${col.name}" ${col.type}`);
+        }
+      }
+    }
+
+    // 3. Create Quotation Items Table
+    const itemsCheck = await client.query(`SELECT to_regclass('public.quotation_items') as t`);
+    if (itemsCheck.rows[0]?.t === null) {
+      this.logger.log('Creating quotation_items table...');
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS "quotation_items" (
+          "id"                varchar(36) PRIMARY KEY,
+          "quotation_id"      varchar(36) NOT NULL REFERENCES quotations(id) ON DELETE CASCADE,
+          "property_unit_id"  varchar(36),
+          "description"       text NOT NULL,
+          "quantity"          numeric(15,2) NOT NULL DEFAULT 1,
+          "unit_price"        numeric(15,2) NOT NULL DEFAULT 0,
+          "tax_rate"          numeric(5,2) NOT NULL DEFAULT 0,
+          "discount_rate"     numeric(5,2) NOT NULL DEFAULT 0,
+          "total"             numeric(15,2) NOT NULL DEFAULT 0,
+          "display_order"     integer NOT NULL DEFAULT 0,
+          "created_at"        timestamptz NOT NULL DEFAULT now(),
+          "updated_at"        timestamptz NOT NULL DEFAULT now()
+        );
+      `);
+      await client.query(`CREATE INDEX IF NOT EXISTS "quotation_items_quotation_idx" ON "quotation_items" ("quotation_id");`);
+      this.logger.log('✓ quotation_items table created');
+    }
+  }
 }
