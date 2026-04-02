@@ -5,10 +5,17 @@ import { DrizzleDatabase } from '../database/database.types';
 import { quotations, quotationItems, leads, tenants, propertyUnits, propertyEntities, propertyAttributes, propertyAttributeValues } from '../database/schema';
 import { CreateQuotationDto, UpdateQuotationDto, QuotationListQueryDto } from './quotations.dto';
 import { DRIZZLE } from '../database/database.constants';
+import { MailService } from '../common/services/mail.service';
+import { PdfGeneratorService } from './pdf-generator.service';
+import { getQuotationEmailTemplate } from '../common/mail-templates/quotation-email.template';
 
 @Injectable()
 export class QuotationsService {
-  constructor(@Inject(DRIZZLE) private readonly db: DrizzleDatabase) {}
+  constructor(
+    @Inject(DRIZZLE) private readonly db: DrizzleDatabase,
+    private readonly pdfGenerator: PdfGeneratorService,
+    private readonly mailService: MailService,
+  ) {}
 
   private calculateTotals(items: { quantity: number; unitPrice: number; taxRate?: number; discountRate?: number }[]) {
     let subTotal = 0;
@@ -264,5 +271,55 @@ export class QuotationsService {
   async deleteQuotation(tenantId: string, id: string) {
     await this.db.delete(quotations).where(and(eq(quotations.id, id), eq(quotations.tenantId, tenantId)));
     return { success: true };
+  }
+
+  async sendQuotationByEmail(tenantId: string, id: string) {
+    const quotation = await this.getQuotation(tenantId, id);
+    if (!quotation) throw new NotFoundException('Quotation not found');
+
+    const lead = quotation.lead as any;
+    if (!lead?.email) {
+      throw new Error('Lead does not have an email address');
+    }
+
+    // 1. Generate PDF
+    const pdfBuffer = await this.pdfGenerator.generateQuotationPdf(quotation);
+
+    // 2. Prepare Email
+    const fmt = (amount: any): string => {
+      const num = typeof amount === 'string' ? parseFloat(amount) : amount;
+      if (isNaN(num)) return '₹ 0';
+      return '₹ ' + num.toLocaleString('en-IN');
+    };
+
+    const emailHtml = getQuotationEmailTemplate({
+      customerName: lead.name,
+      quotationNumber: quotation.quotationNumber,
+      projectName: quotation.projectName || 'Proposed Project',
+      unitNumber: quotation.unitNumber || 'N/A',
+      amount: fmt(quotation.grandTotal),
+      senderName: quotation.tenantName || 'Sales Team',
+      companyName: quotation.tenantName || 'Softaro CRM',
+      expiryDate: quotation.expiryDate ? new Date(quotation.expiryDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' }) : undefined
+    });
+
+    // 3. Send Email
+    const fileName = `${quotation.quotationNumber}.pdf`;
+    await this.mailService.sendQuotationEmail(
+      lead.email,
+      `Quotation ${quotation.quotationNumber} — ${quotation.projectName || 'Softaro CRM'}`,
+      emailHtml,
+      pdfBuffer,
+      fileName
+    );
+
+    // 4. Update status if it's draft
+    if (quotation.status === 'draft') {
+      await this.db.update(quotations)
+        .set({ status: 'sent', updatedAt: new Date() })
+        .where(eq(quotations.id, id));
+    }
+
+    return { success: true, message: 'Quotation sent successfully' };
   }
 }

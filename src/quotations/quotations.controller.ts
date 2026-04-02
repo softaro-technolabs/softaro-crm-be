@@ -95,6 +95,13 @@ export class QuotationsController {
     return this.quotationsService.deleteQuotation(tenantId, id);
   }
 
+  @Post(':id/send-email')
+  @ApiOperation({ summary: 'Send quotation to lead via email' })
+  async sendEmail(@Param('tenantId') tenantId: string, @Param('id') id: string) {
+    this.verifyTenantAccess(tenantId);
+    return this.quotationsService.sendQuotationByEmail(tenantId, id);
+  }
+
   private verifyTenantAccess(tenantId: string) {
     const user = this.requestContext.getUser();
     if (!user) {

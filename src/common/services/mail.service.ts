@@ -17,13 +17,14 @@ export class MailService {
   /**
    * Send a standard email using Resend
    */
-  async sendEmail(to: string | string[], subject: string, html: string) {
+  async sendEmail(to: string | string[], subject: string, html: string, attachments?: any[]) {
     try {
       const { data, error } = await this.resend.emails.send({
         from: this.fromEmail,
         to: Array.isArray(to) ? to : [to],
         subject,
         html,
+        attachments,
       });
 
       if (error) {
@@ -55,5 +56,17 @@ export class MailService {
     });
 
     return this.sendEmail(email, subject, html);
+  }
+
+  /**
+   * Send a quotation email with PDF attachment
+   */
+  async sendQuotationEmail(to: string, subject: string, html: string, pdfBuffer: Buffer, fileName: string) {
+    return this.sendEmail(to, subject, html, [
+      {
+        filename: fileName,
+        content: pdfBuffer,
+      },
+    ]);
   }
 }
