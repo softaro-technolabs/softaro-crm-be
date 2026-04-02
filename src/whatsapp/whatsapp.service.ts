@@ -170,22 +170,62 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
             });
             const accessToken = tokenResponse.data.access_token;
 
-            // 2. We need a System User permanent token ideally, or we exchange this user token.
-            // Assuming Embedded Signup gives us a long-lived generic token to call /debug_token 
-            // or directly use it as a permanent token for the WABA if configured properly.
-            // Usually, we register the client, get WABA ID and Phone ID using standard graph API:
+            // 2. Discover WhatsApp Business Accounts (WABA)
+            this.logger.log(`Discovering WABAs for tenant: ${tenantId}`);
+            const wabaResponse = await axios.get(`${this.baseUrl}/me/whatsapp_business_accounts`, {
+                headers: { Authorization: `Bearer ${accessToken}` }
+            });
 
-            // Getting Phone Numbers associated with the WABA
-            // For embedded signup flow, clients typically pick a specific WABA and Phone during the UI flow.
-            // We will need WABA ID and Phone Number ID to be provided, or fetched from shared WABA endpoint.
-            // However, we only got the access token here. 
-            // To simplify, we will just return the accessToken to the frontend and frontend should query what phones are available and then call another endpoint, OR we take wabaId and phoneNumberId in the payload.
+            const wabas = wabaResponse.data.data;
+            if (!wabas || wabas.length === 0) {
+                return { accessToken, accounts: [], message: 'No WhatsApp Business Accounts found.' };
+            }
 
-            return { accessToken };
+            // 3. Simple Auto-fetch logic: For each WABA, fetch its verified phone numbers
+            const discoveredAccounts = [];
+            for (const waba of wabas) {
+                try {
+                    const phoneResponse = await axios.get(`${this.baseUrl}/${waba.id}/phone_numbers`, {
+                        headers: { Authorization: `Bearer ${accessToken}` }
+                    });
+
+                    const phones = phoneResponse.data.data;
+                    for (const phone of phones) {
+                        discoveredAccounts.push({
+                            wabaId: waba.id,
+                            businessAccountId: waba.id, // Primary ID for messaging
+                            phoneNumberId: phone.id,
+                            phoneNumber: phone.display_phone_number,
+                            verifiedName: phone.verified_name
+                        });
+                    }
+                } catch (phoneError: any) {
+                    this.logger.warn(`Failed to fetch phones for WABA ${waba.id}: ${phoneError.message}`);
+                }
+            }
+
+            return {
+                accessToken,
+                accounts: discoveredAccounts,
+                suggestedAccount: discoveredAccounts.length > 0 ? discoveredAccounts[0] : null
+            };
         } catch (error: any) {
-            this.logger.error('Failed to exchange code for Meta access token', error?.response?.data || error.message);
-            throw new BadRequestException('Failed to exchange code with Meta');
+            this.logger.error('Failed Meta OAuth flow', error?.response?.data || error.message);
+            throw new BadRequestException(error?.response?.data?.error?.message || 'Failed to exchange code with Meta');
         }
+    }
+
+    async getAuthUrl(tenantId: string) {
+        const clientId = this.configService.get<string>('META_APP_ID');
+        if (!clientId) throw new BadRequestException('Meta App ID not configured');
+
+        // frontend callback URL
+        const redirectUri = `${this.configService.get<string>('FRONTEND_URL')}/settings/whatsapp/callback`;
+        const scope = 'whatsapp_business_management,whatsapp_business_messaging,business_management';
+        
+        return {
+            url: `https://www.facebook.com/v18.0/dialog/oauth?client_id=${clientId}&redirect_uri=${redirectUri}&scope=${scope}&response_type=code`
+        };
     }
 
     async saveTenantAccount(
@@ -540,5 +580,22 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
             .where(eq(whatsappScheduledMessages.id, id));
 
         return { success: true };
+    }
+
+    async getTenantAccount(tenantId: string) {
+        const [account] = await this.db
+            .select({
+                id: whatsappAccounts.id,
+                tenantId: whatsappAccounts.tenantId,
+                phoneNumber: whatsappAccounts.phoneNumber,
+                phoneNumberId: whatsappAccounts.phoneNumberId,
+                wabaId: whatsappAccounts.wabaId,
+                isActive: whatsappAccounts.isActive,
+                createdAt: whatsappAccounts.createdAt
+            })
+            .from(whatsappAccounts)
+            .where(eq(whatsappAccounts.tenantId, tenantId))
+            .limit(1);
+        return account || null;
     }
 }

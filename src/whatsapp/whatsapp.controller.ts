@@ -89,6 +89,21 @@ export class WhatsappController {
         return this.whatsappService.cancelScheduledMessage(tenantId, id);
     }
 
+    @Get('auth-url')
+    @ApiOperation({ summary: 'Get Meta OAuth authorization URL for the tenant' })
+    @ApiParam({ name: 'tenantId', description: 'Tenant ID' })
+    async getAuthUrl(@Param('tenantId') tenantId: string) {
+        this.verifyTenantAccess(tenantId);
+        return this.whatsappService.getAuthUrl(tenantId);
+    }
+
+    @Get('account')
+    @ApiOperation({ summary: 'Get current connected WhatsApp account details' })
+    async getAccount(@Param('tenantId') tenantId: string) {
+        this.verifyTenantAccess(tenantId);
+        return this.whatsappService.getTenantAccount(tenantId);
+    }
+
     private verifyTenantAccess(tenantId: string) {
         const user = this.requestContext.getUser();
         if (!user) {
