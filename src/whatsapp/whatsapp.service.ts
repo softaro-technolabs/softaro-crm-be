@@ -161,7 +161,8 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
                 params: {
                     client_id: clientId,
                     client_secret: clientSecret,
-                    code: code
+                    code: code,
+                    redirect_uri: 'http://localhost:5173/settings/whatsapp/callback'
                 }
             });
             const accessToken = tokenResponse.data.access_token;
