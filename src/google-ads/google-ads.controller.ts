@@ -45,7 +45,7 @@ export class GoogleAdsWebhookController {
         @Query('key') key: string,
         @Res() res: Response
     ) {
-        this.logger.log(`Incoming Google Ads webhook for tenant: ${tenantId}`);
+        this.logger.log(`Incoming Google Ads webhook for tenant ${tenantId}. Payload: ${JSON.stringify(data)}`);
 
         // 1. Verify the Secret Key
         try {

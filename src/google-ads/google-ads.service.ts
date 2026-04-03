@@ -18,7 +18,9 @@ export class GoogleAdsService {
         const fieldData: Record<string, any> = {};
         if (leadData.user_column_data) {
             leadData.user_column_data.forEach((col: any) => {
-                fieldData[col.column_id.toLowerCase()] = col.string_value;
+                if (col.column_id) {
+                    fieldData[col.column_id.toLowerCase()] = col.string_value;
+                }
             });
         }
 
