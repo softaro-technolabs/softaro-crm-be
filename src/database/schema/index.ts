@@ -18,3 +18,4 @@ export * from './push-subscriptions.schema';
 export * from './quotations.schema';
 export * from './contacts.schema';
 export * from './deals.schema';
+export * from './bookings.schema';

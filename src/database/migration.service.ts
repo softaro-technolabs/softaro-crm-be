@@ -489,6 +489,10 @@ export class MigrationService {
         // ─── Deal Tables (New) ──────────────────────────────────
         await this.runDealMigrations(client);
         // ─────────────────────────────────────────────────────────────
+
+        // ─── Booking Tables (New) ──────────────────────────────────
+        await this.runBookingMigrations(client);
+        // ─────────────────────────────────────────────────────────────
       } finally {
         client.release();
       }
@@ -1028,6 +1032,46 @@ export class MigrationService {
       await client.query('CREATE INDEX IF NOT EXISTS "deals_contact_idx" ON "deals" ("contact_id");');
       await client.query('CREATE INDEX IF NOT EXISTS "deals_status_idx" ON "deals" ("status");');
       this.logger.log('✓ deals table created');
+    }
+  }
+
+  private async runBookingMigrations(client: any) {
+    await client.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'booking_status') THEN
+          CREATE TYPE "booking_status" AS ENUM ('draft', 'confirmed', 'cancelled', 'completed');
+        END IF;
+      END $$;
+    `);
+
+    const bookingsCheck = await client.query('SELECT to_regclass(\'public.bookings\') as t');
+    if (bookingsCheck.rows[0]?.t === null) {
+      this.logger.log('Creating bookings table...');
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS "bookings" (
+          "id"                varchar(36) PRIMARY KEY,
+          "tenant_id"         varchar(36) NOT NULL,
+          "deal_id"           varchar(36),
+          "lead_id"           varchar(36),
+          "property_unit_id"  varchar(36),
+          "booking_number"    varchar(50) NOT NULL,
+          "booking_date"      timestamptz NOT NULL,
+          "booking_amount"    numeric(15,2) NOT NULL DEFAULT 0,
+          "paid_amount"       numeric(15,2) NOT NULL DEFAULT 0,
+          "status"            "booking_status" NOT NULL DEFAULT 'draft',
+          "notes"             text,
+          "created_by_user_id" varchar(36),
+          "created_at"        timestamptz NOT NULL DEFAULT now(),
+          "updated_at"        timestamptz NOT NULL DEFAULT now()
+        );
+      `);
+      await client.query('CREATE INDEX IF NOT EXISTS "bookings_tenant_idx" ON "bookings" ("tenant_id");');
+      await client.query('CREATE INDEX IF NOT EXISTS "bookings_deal_idx" ON "bookings" ("deal_id");');
+      await client.query('CREATE INDEX IF NOT EXISTS "bookings_lead_idx" ON "bookings" ("lead_id");');
+      await client.query('CREATE INDEX IF NOT EXISTS "bookings_property_unit_idx" ON "bookings" ("property_unit_id");');
+      await client.query('CREATE INDEX IF NOT EXISTS "bookings_status_idx" ON "bookings" ("status");');
+      this.logger.log('✓ bookings table created');
     }
   }
 }

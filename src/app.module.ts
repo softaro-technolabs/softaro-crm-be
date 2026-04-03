@@ -22,6 +22,8 @@ import { UsersModule } from './users/users.module';
 import { WhatsappModule } from './whatsapp/whatsapp.module';
 import { CalendarSyncModule } from './calendar-sync/calendar-sync.module';
 import { QuotationsModule } from './quotations/quotations.module';
+import { DealsModule } from './deals/deals.module';
+import { BookingsModule } from './bookings/bookings.module';
 
 @Module({
   imports: [
@@ -45,7 +47,9 @@ import { QuotationsModule } from './quotations/quotations.module';
     NotificationsModule,
     WhatsappModule,
     CalendarSyncModule,
-    QuotationsModule
+    QuotationsModule,
+    DealsModule,
+    BookingsModule
   ],
   providers: [MigrationService, DatabaseSyncService, TenantMiddleware]
 })
