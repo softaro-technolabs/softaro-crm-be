@@ -237,14 +237,14 @@ export class LeadsService {
           locationPreference: dto.locationPreference ?? null
         }
       );
-
-      this.notificationGateway.sendNotificationToUser(assignedToUserId, 'lead_captured', {
-        id,
-        name: dto.name,
-        leadSource: dto.leadSource ?? 'website',
-        phone: dto.phone
-      });
     }
+
+    this.notificationGateway.sendNotificationToTenant(tenantId, 'lead_captured', {
+      id,
+      name: dto.name,
+      leadSource: dto.leadSource ?? 'website',
+      phone: dto.phone
+    });
 
     return this.getLead(tenantId, id);
   }
