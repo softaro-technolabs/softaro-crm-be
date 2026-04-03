@@ -8,6 +8,8 @@ import { DrizzleDatabase } from '../database/database.types';
 import { metaAdsAccounts, metaAdsLeads } from '../database/schema';
 import { EncryptionService } from '../common/services/encryption.service';
 import { LeadsService } from '../leads/leads.service';
+import { WhatsappService } from '../whatsapp/whatsapp.service';
+import { NotificationsService } from '../common/services/notifications.service';
 
 @Injectable()
 export class MetaAdsService {
@@ -17,7 +19,9 @@ export class MetaAdsService {
     constructor(
         @Inject(DRIZZLE) private readonly db: DrizzleDatabase,
         private readonly encryptionService: EncryptionService,
-        private readonly leadsService: LeadsService
+        private readonly leadsService: LeadsService,
+        private readonly whatsappService: WhatsappService,
+        private readonly notificationsService: NotificationsService
     ) { }
 
     getAuthUrl(tenantId: string) {
@@ -122,7 +126,7 @@ export class MetaAdsService {
     }
 
     async handleWebhook(data: any) {
-        this.logger.debug('Received Meta Webhook:', JSON.stringify(data));
+        this.logger.log(`Received Meta Webhook: ${JSON.stringify(data)}`);
         if (data.object !== 'page') return;
 
         for (const entry of data.entry) {
@@ -183,7 +187,7 @@ export class MetaAdsService {
             });
 
             // Create lead in CRM
-            await this.leadsService.createLead(account.tenantId, {
+            const crmLead = await this.leadsService.createLead(account.tenantId, {
                 name: name || 'Facebook Lead',
                 email: email,
                 phone: phone,
@@ -194,7 +198,46 @@ export class MetaAdsService {
                 requirementType: 'buy' // Default
             });
 
-            this.logger.log(`Created CRM lead for Meta lead ${leadgenId} (Tenant: ${account.tenantId})`);
+            this.logger.log(`Created CRM lead ${crmLead.lead.id} for Meta lead ${leadgenId} (Tenant: ${account.tenantId})`);
+
+            // --- Real-time Notifications ---
+
+            // 1. Notify Assigned Agent
+            if (crmLead.assignee && crmLead.assignee.email) {
+                await this.notificationsService.notifyAgent(
+                    crmLead.assignee.email,
+                    crmLead.assignee.name,
+                    'New Meta Ads Lead!',
+                    `You have been assigned a new lead from Facebook Ads.\n\nName: ${crmLead.lead.name}\nPhone: ${crmLead.lead.phone || 'N/A'}\nEmail: ${crmLead.lead.email || 'N/A'}\n\nPlease take action immediately.`
+                );
+            }
+
+            // 2. WhatsApp Auto-Response to Lead
+            if (phone) {
+                try {
+                    // Try to send a welcome message if WhatsApp is configured
+                    await this.whatsappService.sendMessage(
+                        account.tenantId,
+                        crmLead.lead.id,
+                        phone,
+                        {
+                            messaging_product: 'whatsapp',
+                            recipient_type: 'individual',
+                            to: phone,
+                            type: 'text',
+                            text: { 
+                                body: `Hi ${name || 'there'}, thank you for your interest in our property! We have received your inquiry from Facebook and our team will contact you shortly. 😊` 
+                            }
+                        },
+                        false // Set to false for text, but normally we'd use a template for new leads
+                    ).catch(e => {
+                        this.logger.warn(`WhatsApp auto-response failed (likely no 24h session): ${e.message}`);
+                        // In production, we should use a Meta-approved TEMPLATE here instead of a raw text message
+                    });
+                } catch (waError) {
+                    this.logger.error('WhatsApp notification error:', waError);
+                }
+            }
         } catch (error: any) {
             this.logger.error(`Error processing Meta lead ${leadgenId}:`, error.response?.data || error.message);
         }
