@@ -139,7 +139,7 @@ export class NotificationsService {
             .where(
                 and(
                     eq(pushSubscriptions.userId, userId),
-                    sql`${pushSubscriptions.subscription} ->> 'endpoint' = ${dto.endpoint}`
+                    sql`${pushSubscriptions.subscription}->>'endpoint' = ${dto.endpoint}`
                 )
             )
             .limit(1);
