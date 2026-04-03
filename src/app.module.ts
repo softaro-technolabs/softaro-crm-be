@@ -24,6 +24,7 @@ import { CalendarSyncModule } from './calendar-sync/calendar-sync.module';
 import { QuotationsModule } from './quotations/quotations.module';
 import { DealsModule } from './deals/deals.module';
 import { BookingsModule } from './bookings/bookings.module';
+import { MetaAdsModule } from './meta-ads/meta-ads.module';
 
 @Module({
   imports: [
@@ -49,7 +50,8 @@ import { BookingsModule } from './bookings/bookings.module';
     CalendarSyncModule,
     QuotationsModule,
     DealsModule,
-    BookingsModule
+    BookingsModule,
+    MetaAdsModule
   ],
   providers: [MigrationService, DatabaseSyncService, TenantMiddleware]
 })
