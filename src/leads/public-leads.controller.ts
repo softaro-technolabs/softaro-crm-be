@@ -5,7 +5,7 @@ import { LeadAssignmentService } from './lead-assignment.service';
 import { PublicLeadCaptureDto } from './leads.dto';
 
 @ApiTags('Public Lead API')
-@Controller('public/leads')
+@Controller('public/external-leads')
 export class PublicLeadsController {
     private readonly logger = new Logger(PublicLeadsController.name);
 
