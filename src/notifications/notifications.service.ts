@@ -133,16 +133,14 @@ export class NotificationsService {
         const now = new Date();
 
         // Check if subscription already exists for this endpoint to avoid duplicates
-        const [existing] = await this.db
+        const allUserSubscriptions = await this.db
             .select()
             .from(pushSubscriptions)
-            .where(
-                and(
-                    eq(pushSubscriptions.userId, userId),
-                    sql`${pushSubscriptions.subscription}->>'endpoint' = ${dto.endpoint}`
-                )
-            )
-            .limit(1);
+            .where(eq(pushSubscriptions.userId, userId));
+
+        const existing = allUserSubscriptions.find(
+            (sub: any) => sub.subscription.endpoint === dto.endpoint
+        );
 
         if (existing) {
             await this.db
