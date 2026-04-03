@@ -26,6 +26,7 @@ import { DealsModule } from './deals/deals.module';
 import { BookingsModule } from './bookings/bookings.module';
 import { MetaAdsModule } from './meta-ads/meta-ads.module';
 import { GoogleAdsModule } from './google-ads/google-ads.module';
+import { ContactsModule } from './contacts/contacts.module';
 
 @Module({
   imports: [
@@ -53,7 +54,8 @@ import { GoogleAdsModule } from './google-ads/google-ads.module';
     DealsModule,
     BookingsModule,
     MetaAdsModule,
-    GoogleAdsModule
+    GoogleAdsModule,
+    ContactsModule
   ],
   providers: [MigrationService, DatabaseSyncService, TenantMiddleware]
 })
