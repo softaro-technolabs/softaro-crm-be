@@ -15,6 +15,7 @@ import { LeadsService } from './leads.service';
 import { LeadTasksService } from './lead-tasks.service';
 import { TenantTasksController } from './tenant-tasks.controller';
 import { CalendarSyncModule } from '../calendar-sync/calendar-sync.module';
+import { PublicLeadsController } from './public-leads.controller';
 
 @Module({
   imports: [DatabaseModule, CommonModule, UsersModule, NotificationsModule, CalendarSyncModule],
@@ -24,7 +25,8 @@ import { CalendarSyncModule } from '../calendar-sync/calendar-sync.module';
     LeadActivitiesController,
     LeadFollowUpsController,
     TenantTasksController,
-    LeadsController
+    LeadsController,
+    PublicLeadsController
   ],
   providers: [LeadsService, LeadAssignmentService, LeadActivitiesService, LeadTasksService],
   exports: [LeadsService, LeadAssignmentService, LeadActivitiesService, LeadTasksService]

@@ -53,11 +53,14 @@ const DEFAULT_PIPELINE_STATUSES = [
   { name: 'Not Interested', slug: 'not_interested', color: '#4b5563', isFinal: true }
 ] as const;
 
+import { NotificationGateway } from '../notifications/notification.gateway';
+
 @Injectable()
 export class LeadsService {
   constructor(
     @Inject(DRIZZLE) private readonly db: DrizzleDatabase,
-    private readonly assignmentService: LeadAssignmentService
+    private readonly assignmentService: LeadAssignmentService,
+    private readonly notificationGateway: NotificationGateway
   ) { }
 
   async listLeads(tenantId: string, query: LeadListQueryDto) {
@@ -234,6 +237,13 @@ export class LeadsService {
           locationPreference: dto.locationPreference ?? null
         }
       );
+
+      this.notificationGateway.sendNotificationToUser(assignedToUserId, 'lead_captured', {
+        id,
+        name: dto.name,
+        leadSource: dto.leadSource ?? 'website',
+        phone: dto.phone
+      });
     }
 
     return this.getLead(tenantId, id);

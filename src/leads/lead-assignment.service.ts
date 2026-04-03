@@ -105,6 +105,16 @@ export class LeadAssignmentService {
       .where(eq(leadAssignmentSettings.id, settings.id));
     return this.getSettings(tenantId);
   }
+  
+  async findSettingsByApiKey(apiKey: string) {
+    const [settings] = await this.db
+      .select()
+      .from(leadAssignmentSettings)
+      .where(eq(leadAssignmentSettings.publicApiKey, apiKey))
+      .limit(1);
+
+    return settings;
+  }
 
   async updateSettings(tenantId: string, dto: UpdateLeadAssignmentSettingsDto) {
     const settings = await this.ensureSettings(tenantId);
