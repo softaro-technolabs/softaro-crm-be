@@ -25,6 +25,7 @@ import { QuotationsModule } from './quotations/quotations.module';
 import { DealsModule } from './deals/deals.module';
 import { BookingsModule } from './bookings/bookings.module';
 import { MetaAdsModule } from './meta-ads/meta-ads.module';
+import { GoogleAdsModule } from './google-ads/google-ads.module';
 
 @Module({
   imports: [
@@ -51,7 +52,8 @@ import { MetaAdsModule } from './meta-ads/meta-ads.module';
     QuotationsModule,
     DealsModule,
     BookingsModule,
-    MetaAdsModule
+    MetaAdsModule,
+    GoogleAdsModule
   ],
   providers: [MigrationService, DatabaseSyncService, TenantMiddleware]
 })
