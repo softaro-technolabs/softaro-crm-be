@@ -121,7 +121,10 @@ export class LeadsService {
           phone: leads.phone,
           status: leadStatuses.name,
           createdAt: leads.createdAt,
-          assignedTo: users.name
+          assignedTo: users.name,
+          propertyMatchScore: leads.propertyMatchScore,
+          leadScore: leads.leadScore,
+          leadLabel: leads.leadLabel
         })
         .from(leads)
         .leftJoin(leadStatuses, eq(leads.statusId, leadStatuses.id))
@@ -145,7 +148,10 @@ export class LeadsService {
       phone: row.phone ?? null,
       status: row.status ?? null,
       created: row.createdAt,
-      assignedTo: row.assignedTo ?? null
+      assignedTo: row.assignedTo ?? null,
+      propertyMatchScore: row.propertyMatchScore ?? 0,
+      leadScore: row.leadScore ?? 0,
+      leadLabel: row.leadLabel ?? null
     }));
 
     return PaginationUtil.buildPaginatedResult(mappedResults, total, page, limit);
@@ -181,8 +187,14 @@ export class LeadsService {
     await this.ensureLeadDefaults(tenantId);
     const statusId = await this.resolveStatusId(tenantId, dto.statusId);
 
+    const id = randomUUID();
+    const now = new Date();
+
     let assignedToUserId = dto.assignedToUserId ? await this.resolveAssignee(tenantId, dto.assignedToUserId) : null;
     let chosenStrategy: LeadAssignmentStrategy | null = null;
+    let score = 0;
+    let label: string | null = null;
+
     const shouldAutoAssign = dto.autoAssign ?? true;
 
     if (!assignedToUserId && shouldAutoAssign) {
@@ -190,14 +202,16 @@ export class LeadsService {
         requirementType: dto.requirementType,
         propertyCategory: dto.propertyCategory,
         propertyType: dto.propertyType,
-        locationPreference: dto.locationPreference
+        locationPreference: dto.locationPreference,
+        leadSource: dto.leadSource,
+        budget: dto.budget,
+        createdAt: now
       });
       assignedToUserId = autoResult.userId;
       chosenStrategy = autoResult.strategy;
+      score = autoResult.score;
+      label = autoResult.label;
     }
-
-    const id = randomUUID();
-    const now = new Date();
 
     await this.db.insert(leads).values({
       id,
@@ -213,6 +227,8 @@ export class LeadsService {
       bhkType: dto.bhkType ?? null,
       locationPreference: dto.locationPreference ?? null,
       propertyMatchScore: dto.propertyMatchScore ?? 0,
+      leadScore: score,
+      leadLabel: label,
       leadSource: dto.leadSource ?? 'website',
       captureChannel: dto.captureChannel ?? null,
       notes: dto.notes ?? null,

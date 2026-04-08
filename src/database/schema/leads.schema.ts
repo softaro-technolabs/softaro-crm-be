@@ -60,6 +60,8 @@ export const leads = pgTable(
     bhkType: varchar('bhk_type', { length: 50 }),
     locationPreference: jsonb('location_preference'),
     propertyMatchScore: integer('property_match_score').default(0),
+    leadScore: integer('lead_score').default(0).notNull(),
+    leadLabel: varchar('lead_label', { length: 20 }),
     leadSource: leadSourceEnum('lead_source').default('website').notNull(),
     captureChannel: varchar('capture_channel', { length: 120 }),
     notes: varchar('notes', { length: 1000 }),

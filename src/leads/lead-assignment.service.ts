@@ -20,12 +20,19 @@ import {
   UpsertLeadAssignmentAgentDto
 } from './leads.dto';
 import { LocationPointDto } from './location-preference.dto';
+import { LeadScoringService } from './lead-scoring.service';
+import { LeadSource } from './leads.dto';
+import { deals } from '../database/schema/deals.schema';
+import { desc } from 'drizzle-orm';
 
 type LeadAutoAssignPayload = {
   requirementType: string;
   propertyCategory?: string | null;
   propertyType?: string | null;
   locationPreference?: string | LocationPointDto | null;
+  leadSource?: LeadSource | null;
+  budget?: number | null;
+  createdAt?: Date | null;
 };
 
 type AgentSnapshot = {
@@ -40,6 +47,7 @@ type AgentSnapshot = {
   propertyTypes: string[];
   activeLeadCount: number;
   lastAssignedAt: Date | null;
+  conversionRate?: number;
 };
 
 const DEFAULT_STRATEGY_ORDER: LeadAssignmentStrategy[] = [
@@ -51,7 +59,10 @@ const DEFAULT_STRATEGY_ORDER: LeadAssignmentStrategy[] = [
 
 @Injectable()
 export class LeadAssignmentService {
-  constructor(@Inject(DRIZZLE) private readonly db: DrizzleDatabase) {}
+  constructor(
+    @Inject(DRIZZLE) private readonly db: DrizzleDatabase,
+    private readonly scoringService: LeadScoringService
+  ) {}
 
   async ensureSettings(tenantId: string) {
     const [existing] = await this.db
@@ -237,25 +248,73 @@ export class LeadAssignmentService {
 
   async autoAssignLead(tenantId: string, payload: LeadAutoAssignPayload) {
     const settings = await this.ensureSettings(tenantId);
+
+    // 1. Score the lead
+    const score = this.scoringService.calculateScore({
+      source: payload.leadSource || 'other',
+      budget: payload.budget ?? 0,
+      timeOfDay: (payload.createdAt || new Date()).getHours()
+    });
+    const label = this.scoringService.getLeadLabel(score);
+
     if (!settings.autoAssignEnabled) {
-      return { userId: null, strategy: null as LeadAssignmentStrategy | null };
+      return { userId: null, strategy: null as LeadAssignmentStrategy | null, score, label };
     }
 
-    const strategies = this.normalizeStrategies(settings.strategyOrder);
     const agents = await this.buildAgentSnapshots(tenantId);
     if (agents.length === 0) {
-      return { userId: null, strategy: null };
+      return { userId: null, strategy: null, score, label };
     }
 
+    // 2. High priority (Hot) leads assignment - Priority to Top Performing Agents
+    if (label === 'hot') {
+      const candidate = await this.pickByConversionRate(tenantId, agents);
+      if (candidate) {
+        await this.onAgentAssigned(tenantId, candidate.userId);
+        return { userId: candidate.userId, strategy: 'round_robin' as LeadAssignmentStrategy, score, label };
+      }
+    }
+
+    // 3. Normal strategy-based assignment
+    const strategies = this.normalizeStrategies(settings.strategyOrder);
     for (const strategy of strategies) {
       const candidate = this.pickAgentByStrategy(strategy, agents, settings, payload);
       if (candidate) {
         await this.onAgentAssigned(tenantId, candidate.userId);
-        return { userId: candidate.userId, strategy };
+        return { userId: candidate.userId, strategy, score, label };
       }
     }
 
-    return { userId: null, strategy: null };
+    return { userId: null, strategy: null, score, label };
+  }
+
+  private async pickByConversionRate(tenantId: string, agents: AgentSnapshot[]) {
+    // Get agents with closed deals to calculate conversion ranking
+    const stats = await this.db
+      .select({
+        agentId: deals.assignedToUserId,
+        closedWonCount: sql<number>`count(*)`
+      })
+      .from(deals)
+      .where(and(eq(deals.tenantId, tenantId), eq(deals.status, 'closed_won')))
+      .groupBy(deals.assignedToUserId)
+      .orderBy(desc(sql`count(*)`));
+
+    if (stats.length === 0) return null;
+
+    // Filter available agents from the top performers
+    for (const stat of stats) {
+      if (!stat.agentId) continue;
+      const agent = agents.find((a) => a.userId === stat.agentId && a.isAvailable);
+      if (agent) {
+        // Enforce load balancing even for top agents
+        if (agent.maxActiveLeads === null || agent.activeLeadCount < agent.maxActiveLeads) {
+          return agent;
+        }
+      }
+    }
+
+    return null;
   }
 
   async recordAssignmentLog(
