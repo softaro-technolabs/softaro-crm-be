@@ -39,7 +39,7 @@ export const getLeadNotificationTemplate = (data: {
   <![endif]-->
   <style>
     * { -ms-text-size-adjust: 100%; -webkit-text-size-adjust: 100%; }
-    body { margin: 0 !important; padding: 0 !important; background-color: #f0f2f5; width: 100% !important; }
+    body { margin: 0 !important; padding: 0 !important; background-color: #edf4f5; width: 100% !important; }
     table { border-collapse: collapse !important; mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
     img { border: 0; height: auto; line-height: 100%; outline: none; text-decoration: none; -ms-interpolation-mode: bicubic; }
     a { text-decoration: none; }
@@ -53,15 +53,15 @@ export const getLeadNotificationTemplate = (data: {
     }
   </style>
 </head>
-<body style="margin:0;padding:0;background-color:#f0f2f5;width:100%;">
+<body style="margin:0;padding:0;background-color:#edf4f5;width:100%;">
 
 <!-- Hidden preheader -->
-<div style="display:none;max-height:0;overflow:hidden;mso-hide:all;font-size:1px;color:#f0f2f5;line-height:1px;">
+<div style="display:none;max-height:0;overflow:hidden;mso-hide:all;font-size:1px;color:#edf4f5;line-height:1px;">
   New lead ${leadName} has been ${roleText} in Softaro CRM.
   &zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;
 </div>
 
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f0f2f5;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#edf4f5;">
   <tr>
     <td align="center" style="padding:32px 16px 48px;">
 
@@ -78,7 +78,7 @@ export const getLeadNotificationTemplate = (data: {
                       <td valign="middle" style="padding-right:9px;">
                         <table role="presentation" cellpadding="0" cellspacing="0" border="0">
                           <tr>
-                            <td width="30" height="30" bgcolor="#2563eb" style="border-radius:7px;text-align:center;vertical-align:middle;background-color:#2563eb;">
+                            <td width="30" height="30" bgcolor="#027b88" style="border-radius:7px;text-align:center;vertical-align:middle;background-color:#027b88;">
                               <span style="font-size:14px;font-weight:700;color:#ffffff;line-height:30px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;">S</span>
                             </td>
                           </tr>
@@ -92,7 +92,7 @@ export const getLeadNotificationTemplate = (data: {
                 </td>
                 <!-- Badge -->
                 <td align="right" valign="middle">
-                  <span style="font-size:10px;font-weight:700;color:#2563eb;background-color:#dbeafe;padding:4px 12px;border-radius:100px;letter-spacing:0.9px;text-transform:uppercase;border:1px solid #bfdbfe;">${badgeText}</span>
+                  <span style="font-size:10px;font-weight:700;color:#027b88;background-color:#dff0f2;padding:4px 12px;border-radius:100px;letter-spacing:0.9px;text-transform:uppercase;border:1px solid #b3d8db;">${badgeText}</span>
                 </td>
               </tr>
             </table>
@@ -101,11 +101,11 @@ export const getLeadNotificationTemplate = (data: {
       </table>
 
       <!-- MAIN CARD -->
-      <table class="email-container" role="presentation" width="580" cellpadding="0" cellspacing="0" border="0" style="max-width:580px;width:100%;background-color:#ffffff;border-radius:16px;border:1px solid #cbd5e1;">
+      <table class="email-container" role="presentation" width="580" cellpadding="0" cellspacing="0" border="0" style="max-width:580px;width:100%;background-color:#ffffff;border-radius:16px;border:1px solid #c4dce0;">
 
         <!-- HERO -->
         <tr>
-          <td bgcolor="#2563eb" style="background-color:#2563eb;padding:40px 40px 34px;border-radius:15px 15px 0 0;" class="hero-pad">
+          <td bgcolor="#027b88" style="background-color:#027b88;padding:40px 40px 34px;border-radius:15px 15px 0 0;" class="hero-pad">
             <p style="margin:0 0 10px;font-size:10px;font-weight:600;color:rgba(255,255,255,0.5);letter-spacing:1.8px;text-transform:uppercase;">
               Lead Notification
             </p>
@@ -137,12 +137,12 @@ export const getLeadNotificationTemplate = (data: {
             </p>
 
             <!-- LEAD INFO TABLE -->
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f8fafc;border:1px solid #cbd5e1;border-radius:12px;margin-bottom:26px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f8fafc;border:1px solid #c4dce0;border-radius:12px;margin-bottom:26px;">
 
               <!-- Table header -->
               <tr>
-                <td colspan="2" bgcolor="#dbeafe" style="background-color:#dbeafe;padding:10px 20px;border-radius:12px 12px 0 0;border-bottom:1px solid #bfdbfe;">
-                  <span style="font-size:10px;font-weight:700;color:#2563eb;text-transform:uppercase;letter-spacing:1px;">
+                <td colspan="2" bgcolor="#dff0f2" style="background-color:#dff0f2;padding:10px 20px;border-radius:12px 12px 0 0;border-bottom:1px solid #b3d8db;">
+                  <span style="font-size:10px;font-weight:700;color:#027b88;text-transform:uppercase;letter-spacing:1px;">
                     Lead Information
                   </span>
                 </td>
@@ -167,7 +167,7 @@ export const getLeadNotificationTemplate = (data: {
                 <td valign="middle" style="padding:12px 20px 12px 12px;border-bottom:1px solid #e2e8f0;">
                   <table role="presentation" cellpadding="0" cellspacing="0" border="0">
                     <tr>
-                      <td bgcolor="#ffffff" style="background-color:#ffffff;border:1px solid #cbd5e1;border-radius:6px;padding:6px 12px;">
+                      <td bgcolor="#ffffff" style="background-color:#ffffff;border:1px solid #c4dce0;border-radius:6px;padding:6px 12px;">
                         <span style="font-size:12.5px;font-weight:500;color:#0f172a;font-family:'Courier New',Courier,monospace;">${leadEmail}</span>
                       </td>
                     </tr>
@@ -184,7 +184,7 @@ export const getLeadNotificationTemplate = (data: {
                 <td valign="middle" style="padding:12px 20px 12px 12px;border-bottom:1px solid #e2e8f0;">
                   <table role="presentation" cellpadding="0" cellspacing="0" border="0">
                     <tr>
-                      <td bgcolor="#ffffff" style="background-color:#ffffff;border:1px solid #cbd5e1;border-radius:6px;padding:6px 12px;">
+                      <td bgcolor="#ffffff" style="background-color:#ffffff;border:1px solid #c4dce0;border-radius:6px;padding:6px 12px;">
                         <span style="font-size:12.5px;font-weight:500;color:#0f172a;font-family:'Courier New',Courier,monospace;">${leadPhone}</span>
                       </td>
                     </tr>
@@ -198,7 +198,7 @@ export const getLeadNotificationTemplate = (data: {
                   <p style="margin:0;font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.7px;line-height:1.4;">Source</p>
                 </td>
                 <td valign="middle" style="padding:12px 20px 12px 12px;border-bottom:1px solid #e2e8f0;">
-                  <span style="font-size:10px;font-weight:700;color:#2563eb;background-color:#dbeafe;padding:3px 10px;border-radius:100px;letter-spacing:0.6px;text-transform:uppercase;border:1px solid #bfdbfe;">${leadSource}</span>
+                  <span style="font-size:10px;font-weight:700;color:#027b88;background-color:#dff0f2;padding:3px 10px;border-radius:100px;letter-spacing:0.6px;text-transform:uppercase;border:1px solid #b3d8db;">${leadSource}</span>
                 </td>
               </tr>
 
@@ -233,10 +233,10 @@ export const getLeadNotificationTemplate = (data: {
             <!-- CTA BUTTON -->
             <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:32px;">
               <tr>
-                <td bgcolor="#2563eb" style="border-radius:10px;background-color:#2563eb;">
-                  <!--[if mso]><v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${dashboardUrl}" style="height:46px;v-text-anchor:middle;width:210px;" arcsize="22%" fillcolor="#2563eb" strokecolor="none"><w:anchorlock/><center style="color:#ffffff;font-family:Arial,sans-serif;font-size:14px;font-weight:700;">View Lead Details &rarr;</center></v:roundrect><![endif]-->
+                <td bgcolor="#027b88" style="border-radius:10px;background-color:#027b88;">
+                  <!--[if mso]><v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${dashboardUrl}" style="height:46px;v-text-anchor:middle;width:210px;" arcsize="22%" fillcolor="#027b88" strokecolor="none"><w:anchorlock/><center style="color:#ffffff;font-family:Arial,sans-serif;font-size:14px;font-weight:700;">View Lead Details &rarr;</center></v:roundrect><![endif]-->
                   <!--[if !mso]><!-->
-                  <a href="${dashboardUrl}" style="display:inline-block;padding:14px 30px;font-size:14px;font-weight:700;color:#ffffff;background-color:#2563eb;border-radius:10px;text-decoration:none;letter-spacing:-0.1px;">
+                  <a href="${dashboardUrl}" style="display:inline-block;padding:14px 30px;font-size:14px;font-weight:700;color:#ffffff;background-color:#027b88;border-radius:10px;text-decoration:none;letter-spacing:-0.1px;">
                     View Lead Details &nbsp;&rarr;
                   </a>
                   <!--<![endif]-->
@@ -257,8 +257,8 @@ export const getLeadNotificationTemplate = (data: {
                 <td valign="top" width="46" style="padding:15px 0 15px 16px;">
                   <table role="presentation" cellpadding="0" cellspacing="0" border="0">
                     <tr>
-                      <td width="22" height="22" bgcolor="#dbeafe" style="background-color:#dbeafe;border:1.5px solid #bfdbfe;border-radius:50%;text-align:center;vertical-align:middle;">
-                        <span style="font-size:11px;font-weight:700;color:#2563eb;line-height:22px;">!</span>
+                      <td width="22" height="22" bgcolor="#dff0f2" style="background-color:#dff0f2;border:1.5px solid #b3d8db;border-radius:50%;text-align:center;vertical-align:middle;">
+                        <span style="font-size:11px;font-weight:700;color:#027b88;line-height:22px;">!</span>
                       </td>
                     </tr>
                   </table>
