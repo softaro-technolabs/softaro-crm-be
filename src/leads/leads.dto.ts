@@ -135,6 +135,10 @@ export class CreateLeadDto {
   @IsOptional()
   @IsBoolean()
   autoAssign?: boolean;
+
+  @ApiPropertyOptional({ description: 'Additional custom metadata', example: { utm_medium: 'cpc' } })
+  @IsOptional()
+  metadata?: Record<string, any>;
 }
 
 export class UpdateLeadDto {
@@ -227,6 +231,10 @@ export class UpdateLeadDto {
   @IsOptional()
   @IsUUID(4)
   statusId?: string;
+
+  @ApiPropertyOptional({ description: 'Additional custom metadata', example: { utm_medium: 'cpc' } })
+  @IsOptional()
+  metadata?: Record<string, any>;
 }
 
 import { BaseListQueryDto } from '../common/dto/base-list-query.dto';
@@ -440,6 +448,12 @@ export class PublicLeadCaptureDto {
   @MaxLength(120)
   propertyCategory?: string;
 
+  @ApiPropertyOptional({ description: 'E.g. 2BHK', maxLength: 50, example: '3BHK' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  bhkType?: string;
+
   @ApiPropertyOptional({ 
     oneOf: [{ type: 'string' }, { $ref: '#/components/schemas/LocationPointDto' }],
     example: 'Koramangala, Bangalore' 
@@ -459,6 +473,21 @@ export class PublicLeadCaptureDto {
   @IsOptional()
   @IsIn(LEAD_SOURCES)
   leadSource?: LeadSource;
+
+  @ApiPropertyOptional({ maxLength: 1000, example: 'Looking for a flat in Indiranagar' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  notes?: string;
+
+  @ApiPropertyOptional({ example: 'landing_page' })
+  @IsOptional()
+  @IsString()
+  source?: string;
+
+  @ApiPropertyOptional({ description: 'Additional custom metadata', example: { utm_medium: 'cpc', campaign: 'summer_sale' } })
+  @IsOptional()
+  metadata?: Record<string, any>;
 }
 
 export class BulkLeadImportResultDto {

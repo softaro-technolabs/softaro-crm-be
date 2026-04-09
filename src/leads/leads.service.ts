@@ -232,6 +232,7 @@ export class LeadsService {
       leadSource: dto.leadSource ?? 'website',
       captureChannel: dto.captureChannel ?? null,
       notes: dto.notes ?? null,
+      metadata: dto.metadata ?? null,
       assignedToUserId,
       createdByUserId: options?.createdByUserId ?? null,
       kanbanPosition: now.getTime(),
@@ -284,6 +285,7 @@ export class LeadsService {
     if (dto.leadSource !== undefined) updateData.leadSource = dto.leadSource;
     if (dto.captureChannel !== undefined) updateData.captureChannel = dto.captureChannel;
     if (dto.notes !== undefined) updateData.notes = dto.notes;
+    if (dto.metadata !== undefined) updateData.metadata = dto.metadata;
 
     if (dto.statusId) {
       updateData.statusId = await this.resolveStatusId(tenantId, dto.statusId);
@@ -563,11 +565,18 @@ export class LeadsService {
       }
 
       // Create lead payload
+      const originalSource = dto.leadSource || (dto as any).source;
+      const normalizedSource = this.normalizeSource(originalSource) || 'website';
+      
       const payload: CreateLeadDto = {
         ...dto,
-        leadSource: dto.leadSource ?? 'website',
+        leadSource: normalizedSource,
         captureChannel: 'public_api',
-        autoAssign: true
+        autoAssign: true,
+        metadata: {
+          ...dto.metadata,
+          ...(originalSource && originalSource.toLowerCase() !== normalizedSource ? { original_source: originalSource } : {})
+        }
       };
 
       return await this.createLead(tenant.id, payload, { createdByUserId: null });
