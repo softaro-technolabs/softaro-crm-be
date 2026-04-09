@@ -190,6 +190,13 @@ export class LeadsService {
 
   async createLead(tenantId: string, dto: CreateLeadDto, options?: CreateLeadOptions) {
     await this.ensureLeadDefaults(tenantId);
+
+    // 1. Check for duplicate lead (same phone or email in this tenant)
+    const existingLead = await this.checkForDuplicate(tenantId, dto.phone, dto.email);
+    if (existingLead) {
+      return this.handleDuplicateLead(tenantId, existingLead.id, dto, options);
+    }
+
     const statusId = await this.resolveStatusId(tenantId, dto.statusId);
 
     const id = randomUUID();
@@ -280,7 +287,8 @@ export class LeadsService {
     tenantId: string,
     leadId: string,
     dto: CreateLeadDto,
-    assignedToUserId: string | null
+    assignedToUserId: string | null,
+    isRecapture: boolean = false
   ) {
     try {
       // 1. Fetch Tenant Name
@@ -323,7 +331,8 @@ export class LeadsService {
         requirementType: dto.requirementType,
         notes: dto.notes,
         dashboardUrl,
-        organization
+        organization,
+        isRecapture
       };
 
       // 4. Send to Assignee
@@ -331,7 +340,8 @@ export class LeadsService {
         await this.mailService.sendLeadNotification(assignee.email, {
           ...emailData,
           recipientName: assignee.name,
-          isAssignee: true
+          isAssignee: true,
+          isRecapture
         });
       }
 
@@ -342,7 +352,8 @@ export class LeadsService {
         await this.mailService.sendLeadNotification(admin.email, {
           ...emailData,
           recipientName: admin.name,
-          isAssignee: false
+          isAssignee: false,
+          isRecapture
         });
       }
     } catch (error) {
@@ -845,6 +856,127 @@ export class LeadsService {
       return null;
     }
     return value.toString();
+  }
+
+  private async checkForDuplicate(tenantId: string, phone?: string, email?: string) {
+    const normalizedPhone = PhoneUtil.normalize(phone);
+    if (!normalizedPhone && !email) return null;
+
+    const orConditions: SQL[] = [];
+    if (normalizedPhone) orConditions.push(eq(leads.phone, normalizedPhone));
+    if (email) orConditions.push(eq(leads.email, email));
+
+    const [existing] = await this.db
+      .select()
+      .from(leads)
+      .where(and(eq(leads.tenantId, tenantId), or(...orConditions)))
+      .limit(1);
+
+    return existing || null;
+  }
+
+  private async handleDuplicateLead(
+    tenantId: string,
+    leadId: string,
+    dto: CreateLeadDto,
+    options?: CreateLeadOptions
+  ) {
+    const existing = await this.getLead(tenantId, leadId);
+    const now = new Date();
+    const updateData: Partial<typeof leads.$inferInsert> = {
+      updatedAt: now
+    };
+
+    // 1. Differentiate and Merge Notes
+    let newNotes = existing.lead.notes || '';
+    if (dto.notes) {
+      const timestamp = now.toLocaleDateString();
+      const sourceInfo = dto.leadSource || (dto as any).source || 'external form';
+      const formattedNote = `\n[${timestamp} Re-captured via ${sourceInfo}]: ${dto.notes}`;
+      newNotes = (newNotes + formattedNote).substring(0, 1000);
+      updateData.notes = newNotes;
+    }
+
+    // 2. Update empty or better data
+    if (!existing.lead.phone && dto.phone) updateData.phone = PhoneUtil.normalize(dto.phone);
+    if (!existing.lead.email && dto.email) updateData.email = dto.email;
+    if (dto.requirementType) updateData.requirementType = dto.requirementType;
+    if (dto.propertyType) updateData.propertyType = dto.propertyType;
+    if (dto.propertyCategory) updateData.propertyCategory = dto.propertyCategory;
+    if (dto.bhkType) updateData.bhkType = dto.bhkType;
+    if (dto.locationPreference) updateData.locationPreference = dto.locationPreference;
+    
+    if (dto.propertyMatchScore && (dto.propertyMatchScore > (existing.lead.propertyMatchScore || 0))) {
+      updateData.propertyMatchScore = dto.propertyMatchScore;
+    }
+    if (dto.budget && (!existing.lead.budget || Number(dto.budget) > Number(existing.lead.budget))) {
+      updateData.budget = this.serializeBudget(dto.budget);
+    }
+
+    // 3. Merge Metadata properly
+    const mergedMetadata = {
+      ...(existing.lead.metadata as object || {}),
+      ...(dto.metadata || {}),
+      last_recapture_at: now.toISOString(),
+      last_recapture_source: dto.leadSource || (dto as any).source || 'website'
+    };
+    updateData.metadata = mergedMetadata;
+
+    // 4. Activity Logs for re-capture
+    await this.db.insert(leadActivities).values({
+      id: randomUUID(),
+      tenantId,
+      leadId: existing.lead.id,
+      type: 'note',
+      title: `Re-captured via ${dto.leadSource || (dto as any).source || 'external source'}`,
+      note: dto.notes || 'No new notes provided during re-capture.',
+      metadata: { 
+        isRecapture: true, 
+        newRequirement: dto.requirementType,
+        newPropertyType: dto.propertyType
+      },
+      happenedAt: now,
+      createdAt: now
+    });
+
+    // 5. Reactivate if in final status
+    const [statusObj] = await this.db.select().from(leadStatuses).where(eq(leadStatuses.id, existing.lead.statusId)).limit(1);
+    
+    if (statusObj?.isFinal) {
+      const defaultStatusId = await this.resolveStatusId(tenantId);
+      updateData.statusId = defaultStatusId;
+      
+      // Log status change activity
+      await this.db.insert(leadActivities).values({
+        id: randomUUID(),
+        tenantId,
+        leadId: existing.lead.id,
+        type: 'status_change',
+        title: 'Lead reactivated via re-capture',
+        note: `Moved from ${statusObj.name} to New`,
+        metadata: { fromStatusId: statusObj.id, toStatusId: defaultStatusId },
+        happenedAt: now,
+        createdAt: now
+      });
+    }
+
+    await this.db.update(leads).set(updateData).where(eq(leads.id, leadId));
+
+    // 5. Notify the existing assignee if present
+    if (existing.lead.assignedToUserId) {
+      this.notificationGateway.sendNotificationToUser(existing.lead.assignedToUserId, 'lead_recaptured', {
+        id: leadId,
+        name: existing.lead.name,
+        changes: Object.keys(updateData)
+      });
+    }
+
+    // Trigger emails for re-capture as well
+    this.sendLeadCaptureEmails(tenantId, leadId, dto, existing.lead.assignedToUserId, true).catch((err) => {
+      console.error('[Recapture Email Notification Failed]', err);
+    });
+
+    return this.getLead(tenantId, leadId);
   }
 }
 

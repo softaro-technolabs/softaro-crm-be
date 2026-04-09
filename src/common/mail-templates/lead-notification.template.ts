@@ -8,6 +8,7 @@ export const getLeadNotificationTemplate = (data: {
     dashboardUrl: string;
     recipientName: string;
     isAssignee: boolean;
+    isRecapture?: boolean;
 }) => {
     const {
         leadName,
@@ -19,11 +20,15 @@ export const getLeadNotificationTemplate = (data: {
         dashboardUrl,
         recipientName,
         isAssignee,
+        isRecapture
     } = data;
 
     const year = new Date().getFullYear();
-    const roleText = isAssignee ? 'assigned to you' : 'captured in your system';
-    const badgeText = isAssignee ? 'Assigned to You' : 'New Lead';
+    const roleText = isAssignee 
+        ? (isRecapture ? 're-assigned/re-captured for you' : 'assigned to you')
+        : (isRecapture ? 're-captured in your system' : 'captured in your system');
+    
+    const badgeText = isRecapture ? 'Lead Re-captured' : (isAssignee ? 'Assigned to You' : 'New Lead');
 
     return `<!DOCTYPE html>
 <html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
@@ -57,7 +62,7 @@ export const getLeadNotificationTemplate = (data: {
 
 <!-- Hidden preheader -->
 <div style="display:none;max-height:0;overflow:hidden;mso-hide:all;font-size:1px;color:#edf4f5;line-height:1px;">
-  New lead ${leadName} has been ${roleText} in Softaro CRM.
+  ${isRecapture ? 'RE-CAPTURED: ' : 'New lead '} ${leadName} has been ${roleText} in Softaro CRM.
   &zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;
 </div>
 
@@ -92,7 +97,7 @@ export const getLeadNotificationTemplate = (data: {
                 </td>
                 <!-- Badge -->
                 <td align="right" valign="middle">
-                  <span style="font-size:10px;font-weight:700;color:#027b88;background-color:#dff0f2;padding:4px 12px;border-radius:100px;letter-spacing:0.9px;text-transform:uppercase;border:1px solid #b3d8db;">${badgeText}</span>
+                  <span style="font-size:10px;font-weight:700;color: ${isRecapture ? '#b45309' : '#027b88'};background-color: ${isRecapture ? '#fef3c7' : '#dff0f2'};padding:4px 12px;border-radius:100px;letter-spacing:0.9px;text-transform:uppercase;border:1px solid ${isRecapture ? '#f59e0b' : '#b3d8db'};">${badgeText}</span>
                 </td>
               </tr>
             </table>
@@ -105,12 +110,12 @@ export const getLeadNotificationTemplate = (data: {
 
         <!-- HERO -->
         <tr>
-          <td bgcolor="#027b88" style="background-color:#027b88;padding:40px 40px 34px;border-radius:15px 15px 0 0;" class="hero-pad">
+          <td bgcolor="${isRecapture ? '#b45309' : '#027b88'}" style="background-color:${isRecapture ? '#b45309' : '#027b88'};padding:40px 40px 34px;border-radius:15px 15px 0 0;" class="hero-pad">
             <p style="margin:0 0 10px;font-size:10px;font-weight:600;color:rgba(255,255,255,0.5);letter-spacing:1.8px;text-transform:uppercase;">
               Lead Notification
             </p>
             <p style="margin:0 0 2px;font-size:13px;font-weight:300;color:rgba(255,255,255,0.85);letter-spacing:-0.1px;">
-              New lead has been ${roleText}
+              ${isRecapture ? 'Existing lead' : 'New lead'} has been ${roleText}
             </p>
             <p style="margin:0;font-size:28px;font-weight:700;color:#ffffff;letter-spacing:-0.6px;line-height:1.15;">
               ${leadName}
@@ -132,8 +137,11 @@ export const getLeadNotificationTemplate = (data: {
               Hello, <strong style="color:#0f172a;font-weight:600;">${recipientName}</strong>
             </p>
             <p style="margin:0 0 28px;font-size:13.5px;color:#64748b;line-height:1.75;">
-              A new lead has been <strong style="color:#0f172a;font-weight:600;">${roleText}</strong> in Softaro CRM.
-              Review the details below and follow up promptly.
+              ${isRecapture 
+                ? `An existing lead has <strong style="color:#0f172a;font-weight:600;">re-submitted their interest</strong>. Their record has been merged and reactivated.` 
+                : `A new lead has been <strong style="color:#0f172a;font-weight:600;">${roleText}</strong> in Softaro CRM.`
+              }
+              Review the updated details below.
             </p>
 
             <!-- LEAD INFO TABLE -->
@@ -143,7 +151,7 @@ export const getLeadNotificationTemplate = (data: {
               <tr>
                 <td colspan="2" bgcolor="#dff0f2" style="background-color:#dff0f2;padding:10px 20px;border-radius:12px 12px 0 0;border-bottom:1px solid #b3d8db;">
                   <span style="font-size:10px;font-weight:700;color:#027b88;text-transform:uppercase;letter-spacing:1px;">
-                    Lead Information
+                    Lead Information ${isRecapture ? '(Updated)' : ''}
                   </span>
                 </td>
               </tr>
@@ -266,7 +274,7 @@ export const getLeadNotificationTemplate = (data: {
                 <td valign="middle" style="padding:15px 18px 15px 4px;">
                   <p style="margin:0;font-size:12.5px;color:#64748b;line-height:1.65;">
                     ${isAssignee
-            ? 'This lead has been assigned to you. Please follow up as soon as possible to maximize conversion.'
+            ? (isRecapture ? 'This lead (already assigned to you) has re-submitted a form. Stay updated on their latest requirements.' : 'This lead has been assigned to you. Please follow up as soon as possible to maximize conversion.')
             : 'This is an automated notification. You are receiving this because you manage leads in this system.'}
                   </p>
                 </td>
