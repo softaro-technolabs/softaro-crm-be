@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
 import { IsBoolean, IsIn, IsInt, IsOptional, IsPositive, IsString, IsUUID, Max, MaxLength } from 'class-validator';
 
 export const LEAD_ACTIVITY_TYPES = ['call', 'whatsapp', 'email', 'meeting', 'task', 'note', 'status_change'] as const;
@@ -102,7 +102,7 @@ export class LeadFollowUpsQueryDto {
     example: true
   })
   @IsOptional()
-  @Type(() => Boolean)
+  @Transform(({ value }) => value === 'true' || value === true)
   @IsBoolean()
   due?: boolean;
 
@@ -112,7 +112,7 @@ export class LeadFollowUpsQueryDto {
     example: false
   })
   @IsOptional()
-  @Type(() => Boolean)
+  @Transform(({ value }) => value === 'true' || value === true)
   @IsBoolean()
   overdue?: boolean;
 
