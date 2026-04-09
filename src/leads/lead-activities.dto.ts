@@ -102,6 +102,7 @@ export class LeadFollowUpsQueryDto {
     example: true
   })
   @IsOptional()
+  @Type(() => Boolean)
   @IsBoolean()
   due?: boolean;
 
@@ -111,6 +112,7 @@ export class LeadFollowUpsQueryDto {
     example: false
   })
   @IsOptional()
+  @Type(() => Boolean)
   @IsBoolean()
   overdue?: boolean;
 

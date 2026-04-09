@@ -1,5 +1,5 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { and, desc, eq, ilike, isNotNull, lte, lt, or, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, ilike, isNotNull, lte, lt, or, sql } from 'drizzle-orm';
 import type { SQL } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 
@@ -139,7 +139,8 @@ export class LeadActivitiesService {
     } else if (due) {
       if (query.withinHours) {
         const until = new Date(now.getTime() + query.withinHours * 60 * 60 * 1000);
-        filters.push(lte(leads.nextFollowUpAt, until));
+        // Strictly show upcoming follow-ups within the window, excluding overdue ones
+        filters.push(and(gte(leads.nextFollowUpAt, now), lte(leads.nextFollowUpAt, until)) as SQL);
       } else {
         filters.push(lte(leads.nextFollowUpAt, now));
       }
