@@ -96,6 +96,10 @@ export class LeadActivitiesService {
 
       if (nextFollowUpAt) {
         leadUpdates.nextFollowUpAt = nextFollowUpAt;
+      } else if (markContacted) {
+        // If we contacted them but didn't set a NEW follow-up date, 
+        // we should clear the existing one so it doesn't show as overdue.
+        leadUpdates.nextFollowUpAt = null;
       }
 
       await tx
