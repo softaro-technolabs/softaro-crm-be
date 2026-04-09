@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Resend } from 'resend';
 import { getUserInvitationTemplate } from '../mail-templates/user-invitation.template';
+import { getLeadNotificationTemplate } from '../mail-templates/lead-notification.template';
 
 @Injectable()
 export class MailService {
@@ -68,5 +69,14 @@ export class MailService {
         content: pdfBuffer,
       },
     ]);
+  }
+
+  /**
+   * Send a lead notification email
+   */
+  async sendLeadNotification(recipientEmail: string, data: Parameters<typeof getLeadNotificationTemplate>[0]) {
+    const subject = data.isAssignee ? `[New Lead] Assigned to you: ${data.leadName}` : `[New Lead] Captured: ${data.leadName}`;
+    const html = getLeadNotificationTemplate(data);
+    return this.sendEmail(recipientEmail, subject, html);
   }
 }

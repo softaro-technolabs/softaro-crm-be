@@ -6,6 +6,7 @@ import {
   InternalServerErrorException,
   NotFoundException
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { and, desc, eq, ilike, or, sql } from 'drizzle-orm';
 import type { SQL } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
@@ -19,9 +20,11 @@ import {
   leadActivities,
   leads,
   tenants,
+  users,
   userTenants,
-  users
+  roles
 } from '../database/schema';
+import { MailService } from '../common/services/mail.service';
 import {
   BulkLeadImportResultDto,
   CreateLeadDto,
@@ -60,7 +63,9 @@ export class LeadsService {
   constructor(
     @Inject(DRIZZLE) private readonly db: DrizzleDatabase,
     private readonly assignmentService: LeadAssignmentService,
-    private readonly notificationGateway: NotificationGateway
+    private readonly notificationGateway: NotificationGateway,
+    private readonly mailService: MailService,
+    private readonly configService: ConfigService
   ) { }
 
   async listLeads(tenantId: string, query: LeadListQueryDto) {
@@ -263,7 +268,86 @@ export class LeadsService {
       phone: dto.phone
     });
 
+    // Send Email Notifications (Background process)
+    this.sendLeadCaptureEmails(tenantId, id, dto, assignedToUserId).catch((err) => {
+      console.error('[Email Notification Failed]', err);
+    });
+
     return this.getLead(tenantId, id);
+  }
+
+  private async sendLeadCaptureEmails(
+    tenantId: string,
+    leadId: string,
+    dto: CreateLeadDto,
+    assignedToUserId: string | null
+  ) {
+    try {
+      // 1. Fetch Tenant Name
+      const [tenant] = await this.db.select().from(tenants).where(eq(tenants.id, tenantId)).limit(1);
+      const organization = tenant?.name || 'Your Company';
+      const frontendUrl = this.configService.get<string>('mail.frontendUrl', 'https://softaro-crm.vercel.app');
+      const dashboardUrl = `${frontendUrl}/leads/${leadId}`;
+
+      // 2. Fetch Assignee Email
+      let assignee: { name: string; email: string } | null = null;
+      if (assignedToUserId) {
+        const [user] = await this.db.select().from(users).where(eq(users.id, assignedToUserId)).limit(1);
+        if (user) {
+          assignee = { name: user.name, email: user.email };
+        }
+      }
+
+      // 3. Fetch Tenant Admins
+      const tenantAdmins = await this.db
+        .select({
+          name: users.name,
+          email: users.email
+        })
+        .from(userTenants)
+        .innerJoin(users, eq(userTenants.userId, users.id))
+        .innerJoin(roles, eq(userTenants.roleId, roles.id))
+        .where(
+          and(
+            eq(userTenants.tenantId, tenantId),
+            eq(userTenants.status, 'active'),
+            eq(roles.isAdmin, true)
+          )
+        );
+
+      const emailData = {
+        leadName: dto.name,
+        leadEmail: dto.email,
+        leadPhone: dto.phone,
+        leadSource: dto.leadSource || 'website',
+        requirementType: dto.requirementType,
+        notes: dto.notes,
+        dashboardUrl,
+        organization
+      };
+
+      // 4. Send to Assignee
+      if (assignee) {
+        await this.mailService.sendLeadNotification(assignee.email, {
+          ...emailData,
+          recipientName: assignee.name,
+          isAssignee: true
+        });
+      }
+
+      // 5. Send to Admins (Exclude assignee if they are also an admin to avoid double emails)
+      for (const admin of tenantAdmins) {
+        if (assignee && admin.email === assignee.email) continue;
+        
+        await this.mailService.sendLeadNotification(admin.email, {
+          ...emailData,
+          recipientName: admin.name,
+          isAssignee: false
+        });
+      }
+    } catch (error) {
+      console.error('[sendLeadCaptureEmails Error]', error);
+    }
   }
 
   async updateLead(tenantId: string, leadId: string, dto: UpdateLeadDto) {
