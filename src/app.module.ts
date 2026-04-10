@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import type { MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 
 import { AuthModule } from './auth/auth.module';
 import { CommonModule } from './common/common.module';
@@ -35,6 +36,7 @@ import { ContactsModule } from './contacts/contacts.module';
       load: [configuration],
       envFilePath: ['.env', 'env.example']
     }),
+    ScheduleModule.forRoot(),
     DatabaseModule,
     CommonModule,
     AuthModule,

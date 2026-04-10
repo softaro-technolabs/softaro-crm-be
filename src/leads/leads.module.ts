@@ -14,6 +14,7 @@ import { LeadsController } from './leads.controller';
 import { LeadsService } from './leads.service';
 import { LeadScoringService } from './lead-scoring.service';
 import { LeadTasksService } from './lead-tasks.service';
+import { FollowupsCronService } from './followups-cron.service';
 import { TenantTasksController } from './tenant-tasks.controller';
 import { CalendarSyncModule } from '../calendar-sync/calendar-sync.module';
 import { PublicLeadsController } from './public-leads.controller';
@@ -29,7 +30,7 @@ import { PublicLeadsController } from './public-leads.controller';
     LeadsController,
     PublicLeadsController
   ],
-  providers: [LeadsService, LeadAssignmentService, LeadActivitiesService, LeadTasksService, LeadScoringService],
+  providers: [LeadsService, LeadAssignmentService, LeadActivitiesService, LeadTasksService, LeadScoringService, FollowupsCronService],
   exports: [LeadsService, LeadAssignmentService, LeadActivitiesService, LeadTasksService]
 })
 export class LeadsModule { }

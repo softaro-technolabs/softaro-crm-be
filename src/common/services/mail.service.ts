@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { Resend } from 'resend';
 import { getUserInvitationTemplate } from '../mail-templates/user-invitation.template';
 import { getLeadNotificationTemplate } from '../mail-templates/lead-notification.template';
+import { getFollowupReminderTemplate } from '../mail-templates/followup-reminder.template';
 
 @Injectable()
 export class MailService {
@@ -77,6 +78,16 @@ export class MailService {
   async sendLeadNotification(recipientEmail: string, data: Parameters<typeof getLeadNotificationTemplate>[0]) {
     const subject = data.isAssignee ? `[New Lead] Assigned to you: ${data.leadName}` : `[New Lead] Captured: ${data.leadName}`;
     const html = getLeadNotificationTemplate(data);
+    return this.sendEmail(recipientEmail, subject, html);
+  }
+
+  /**
+   * Send a follow-up reminder email
+   */
+  async sendFollowupReminder(recipientEmail: string, data: Parameters<typeof getFollowupReminderTemplate>[0]) {
+    const prefix = data.isOverdue ? '[OVERDUE REMINDER]' : '[FOLLOW-UP DUE]';
+    const subject = `${prefix} Lead: ${data.leadName}`;
+    const html = getFollowupReminderTemplate(data);
     return this.sendEmail(recipientEmail, subject, html);
   }
 }
