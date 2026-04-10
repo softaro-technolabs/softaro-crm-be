@@ -1,4 +1,10 @@
 import { ValidationPipe } from '@nestjs/common';
+import * as crypto from 'crypto';
+
+// Polyfill for Node.js 18 environments where 'crypto' is not a global variable
+if (!global.crypto) {
+  (global as any).crypto = crypto;
+}
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
