@@ -251,6 +251,13 @@ export class CreatePropertyUnitDto {
   @IsOptional()
   @IsIn(PROPERTY_UNIT_STATUSES)
   unitStatus?: PropertyUnitStatus;
+
+  @ApiPropertyOptional({ description: 'Optional attribute values', type: () => [UpsertAttributeValueItemDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => UpsertAttributeValueItemDto)
+  attributes?: UpsertAttributeValueItemDto[];
 }
 
 export class PropertyUnitListQueryDto extends BaseListQueryDto {
@@ -300,6 +307,13 @@ export class UpdatePropertyUnitDto {
   @IsOptional()
   @IsIn(PROPERTY_UNIT_STATUSES)
   unitStatus?: PropertyUnitStatus;
+
+  @ApiPropertyOptional({ description: 'Optional attribute values', type: () => [UpsertAttributeValueItemDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => UpsertAttributeValueItemDto)
+  attributes?: UpsertAttributeValueItemDto[];
 }
 
 export class UpdatePropertyUnitStatusDto {

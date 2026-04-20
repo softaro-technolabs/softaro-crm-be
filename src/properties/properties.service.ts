@@ -429,25 +429,63 @@ export class PropertiesService {
       .innerJoin(propertyEntities, and(eq(propertyEntities.id, propertyUnits.entityId), eq(propertyEntities.tenantId, tenantId)))
       .where(and(eq(propertyUnits.tenantId, tenantId), eq(propertyUnits.id, unitId)))
       .limit(1);
+
     if (!row) throw new NotFoundException('Property unit not found');
-    return row;
+
+    const [attributes, media] = await Promise.all([
+      this.listUnitAttributeValues(tenantId, unitId),
+      this.listMedia(tenantId, { entityId: row.unit.entityId, unitId })
+    ]);
+
+    return { ...row, attributes, media };
   }
 
   async createUnit(tenantId: string, dto: CreatePropertyUnitDto) {
     await this.ensureEntityExists(tenantId, dto.entityId);
+
+    // Validate attributes if present
+    if (dto.attributes && dto.attributes.length > 0) {
+      const attributeIds = Array.from(new Set(dto.attributes.map((v) => v.attributeId)));
+      const attrs = await this.db
+        .select()
+        .from(propertyAttributes)
+        .where(and(eq(propertyAttributes.tenantId, tenantId), eq(propertyAttributes.scope, 'unit')));
+      const allowed = new Map(attrs.map((a) => [a.id, a]));
+      for (const id of attributeIds) {
+        if (!allowed.has(id)) throw new BadRequestException('One or more attributes are invalid for unit scope');
+      }
+    }
+
     const id = randomUUID();
     const now = new Date();
 
-    await this.db.insert(propertyUnits).values({
-      id,
-      tenantId,
-      entityId: dto.entityId,
-      unitCode: dto.unitCode,
-      price: dto.price !== undefined ? dto.price.toString() : null,
-      pricePerSqft: dto.pricePerSqft !== undefined ? dto.pricePerSqft.toString() : null,
-      unitStatus: dto.unitStatus ?? 'available',
-      createdAt: now,
-      updatedAt: now
+    await this.db.transaction(async (tx) => {
+      await tx.insert(propertyUnits).values({
+        id,
+        tenantId,
+        entityId: dto.entityId,
+        unitCode: dto.unitCode,
+        price: dto.price !== undefined ? dto.price.toString() : null,
+        pricePerSqft: dto.pricePerSqft !== undefined ? dto.pricePerSqft.toString() : null,
+        unitStatus: dto.unitStatus ?? 'available',
+        createdAt: now,
+        updatedAt: now
+      });
+
+      if (dto.attributes && dto.attributes.length > 0) {
+        for (const item of dto.attributes) {
+          if (item.value !== null && item.value !== undefined) {
+            await tx.insert(propertyAttributeValues).values({
+              id: randomUUID(),
+              tenantId,
+              attributeId: item.attributeId,
+              entityId: null,
+              unitId: id,
+              value: item.value
+            });
+          }
+        }
+      }
     });
 
     return this.getUnit(tenantId, id);
@@ -462,12 +500,15 @@ export class PropertiesService {
     if (dto.pricePerSqft !== undefined) updateData.pricePerSqft = dto.pricePerSqft !== null ? dto.pricePerSqft.toString() : null;
     if (dto.unitStatus !== undefined) updateData.unitStatus = dto.unitStatus;
 
-    if (Object.keys(updateData).length === 0) {
-      return this.getUnit(tenantId, unitId);
+    if (Object.keys(updateData).length > 0) {
+      updateData.updatedAt = new Date();
+      await this.db.update(propertyUnits).set(updateData).where(and(eq(propertyUnits.tenantId, tenantId), eq(propertyUnits.id, unitId)));
     }
 
-    updateData.updatedAt = new Date();
-    await this.db.update(propertyUnits).set(updateData).where(and(eq(propertyUnits.tenantId, tenantId), eq(propertyUnits.id, unitId)));
+    if (dto.attributes && dto.attributes.length > 0) {
+      await this.upsertUnitAttributeValues(tenantId, unitId, { values: dto.attributes });
+    }
+
     return this.getUnit(tenantId, unitId);
   }
 
