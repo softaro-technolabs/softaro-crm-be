@@ -1,5 +1,5 @@
 import { BadRequestException, Inject, Injectable } from '@nestjs/common';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, asc } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 
 import { DRIZZLE } from '../database/database.constants';
@@ -18,11 +18,12 @@ export class ModulesService {
         tenantModule: tenantModules
       })
       .from(modules)
-      .leftJoin(tenantModules, and(eq(modules.id, tenantModules.moduleId), eq(tenantModules.tenantId, tenantId)));
+      .leftJoin(tenantModules, and(eq(modules.id, tenantModules.moduleId), eq(tenantModules.tenantId, tenantId)))
+      .orderBy(asc(modules.sequence));
   }
 
   async getAllModules() {
-    const rows = await this.db.select().from(modules);
+    const rows = await this.db.select().from(modules).orderBy(asc(modules.sequence));
     return rows.map((module) => ({
       module,
       tenantModule: {
@@ -56,7 +57,8 @@ export class ModulesService {
       slug: dto.slug,
       name: dto.name,
       defaultRoute: dto.defaultRoute,
-      parentId: dto.parentId ?? null
+      parentId: dto.parentId ?? null,
+      sequence: dto.sequence ?? 0
     });
 
     return this.findById(id);
@@ -72,6 +74,7 @@ export class ModulesService {
     if (dto.name !== undefined) updateData.name = dto.name;
     if (dto.defaultRoute !== undefined) updateData.defaultRoute = dto.defaultRoute;
     if (dto.parentId !== undefined) updateData.parentId = dto.parentId;
+    if (dto.sequence !== undefined) updateData.sequence = dto.sequence;
 
     await this.db.update(modules).set(updateData).where(eq(modules.id, id));
 

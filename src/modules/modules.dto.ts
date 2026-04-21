@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, MinLength, IsOptional } from 'class-validator';
+import { IsString, MinLength, IsOptional, IsInt } from 'class-validator';
 
 export class CreateModuleDto {
   @ApiProperty({ example: 'users', description: 'Unique slug for the module' })
@@ -21,6 +21,11 @@ export class CreateModuleDto {
   @IsOptional()
   @IsString()
   parentId?: string;
+
+  @ApiPropertyOptional({ example: 0, description: 'Display order of the module' })
+  @IsOptional()
+  @IsInt()
+  sequence?: number;
 }
 
 export class UpdateModuleDto {
@@ -40,6 +45,11 @@ export class UpdateModuleDto {
   @IsOptional()
   @IsString()
   parentId?: string;
+
+  @ApiPropertyOptional({ example: 0, description: 'Display order of the module' })
+  @IsOptional()
+  @IsInt()
+  sequence?: number;
 }
 
 

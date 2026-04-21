@@ -34,8 +34,8 @@ export class DatabaseSyncService implements OnApplicationBootstrap {
 
   private async ensureCoreModules() {
     const coreModules = [
-      { slug: 'deals', name: 'Deals', defaultRoute: '/deals' },
-      { slug: 'bookings', name: 'Bookings', defaultRoute: '/bookings' }
+      { slug: 'deals', name: 'Deals', defaultRoute: '/deals', sequence: 1 },
+      { slug: 'bookings', name: 'Bookings', defaultRoute: '/bookings', sequence: 2 }
     ];
 
     for (const module of coreModules) {
@@ -46,7 +46,8 @@ export class DatabaseSyncService implements OnApplicationBootstrap {
           slug: module.slug,
           name: module.name,
           defaultRoute: module.defaultRoute,
-          parentId: null
+          parentId: null,
+          sequence: module.sequence
         });
         this.logger.log(`Seeded core module: ${module.slug}`);
       }
