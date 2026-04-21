@@ -13,6 +13,7 @@ export * from './properties.schema';
 export * from './chat.schema';
 export * from './notifications.schema';
 export * from './whatsapp.schema';
+export * from './site-visits.schema';
 export * from './calendar-sync.schema';
 export * from './push-subscriptions.schema';
 export * from './quotations.schema';

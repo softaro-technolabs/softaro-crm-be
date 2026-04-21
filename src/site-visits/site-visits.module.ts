@@ -1,0 +1,12 @@
+import { Module } from '@nestjs/common';
+import { SiteVisitsController } from './site-visits.controller';
+import { SiteVisitsService } from './site-visits.service';
+import { NotificationsModule } from '../notifications/notifications.module';
+
+@Module({
+  imports: [NotificationsModule],
+  controllers: [SiteVisitsController],
+  providers: [SiteVisitsService],
+  exports: [SiteVisitsService]
+})
+export class SiteVisitsModule {}

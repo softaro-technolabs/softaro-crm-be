@@ -29,6 +29,9 @@ import { MetaAdsModule } from './meta-ads/meta-ads.module';
 import { GoogleAdsModule } from './google-ads/google-ads.module';
 import { ContactsModule } from './contacts/contacts.module';
 
+import { DashboardModule } from './dashboard/dashboard.module';
+import { SiteVisitsModule } from './site-visits/site-visits.module';
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -57,7 +60,9 @@ import { ContactsModule } from './contacts/contacts.module';
     BookingsModule,
     MetaAdsModule,
     GoogleAdsModule,
-    ContactsModule
+    ContactsModule,
+    DashboardModule,
+    SiteVisitsModule
   ],
   providers: [MigrationService, DatabaseSyncService, TenantMiddleware]
 })
