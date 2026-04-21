@@ -1,10 +1,10 @@
-import { Controller, Get, Param, UseGuards, ForbiddenException } from '@nestjs/common';
+import { Controller, Get, Param, Query, UseGuards, ForbiddenException } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RequestContextService } from '../common/utils/request-context.service';
 import { DashboardService } from './dashboard.service';
-import { DashboardResponseDto } from './dashboard.dto';
+import { DashboardResponseDto, DashboardQueryDto } from './dashboard.dto';
 
 @ApiTags('Dashboard')
 @Controller('tenants/:tenantId/dashboard')
@@ -18,9 +18,12 @@ export class DashboardController {
 
   @Get()
   @ApiOperation({ summary: 'Get dashboard summary analytics' })
-  async getSummary(@Param('tenantId') tenantId: string): Promise<DashboardResponseDto> {
+  async getSummary(
+    @Param('tenantId') tenantId: string,
+    @Query() query: DashboardQueryDto
+  ): Promise<DashboardResponseDto> {
     this.verifyTenantAccess(tenantId);
-    return this.dashboardService.getDashboardSummary(tenantId);
+    return this.dashboardService.getDashboardSummary(tenantId, query);
   }
 
   private verifyTenantAccess(tenantId: string) {
