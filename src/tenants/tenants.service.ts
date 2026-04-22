@@ -35,6 +35,15 @@ export class TenantsService {
       id,
       name: dto.name,
       slug: dto.slug,
+      logo: dto.logo ?? null,
+      description: dto.description ?? null,
+      primaryColor: dto.primaryColor ?? null,
+      secondaryColor: dto.secondaryColor ?? null,
+      contactEmail: dto.contactEmail ?? null,
+      contactPhone: dto.contactPhone ?? null,
+      address: dto.address ?? null,
+      socialLinks: dto.socialLinks ?? null,
+      websiteConfig: dto.websiteConfig ?? null,
       plan: dto.plan ?? null,
       status: dto.status ?? 'active'
     });
@@ -81,6 +90,15 @@ export class TenantsService {
     if (dto.name !== undefined) updateData.name = dto.name;
     if (dto.plan !== undefined) updateData.plan = dto.plan;
     if (dto.status !== undefined) updateData.status = dto.status;
+    if (dto.logo !== undefined) updateData.logo = dto.logo;
+    if (dto.description !== undefined) updateData.description = dto.description;
+    if (dto.primaryColor !== undefined) updateData.primaryColor = dto.primaryColor;
+    if (dto.secondaryColor !== undefined) updateData.secondaryColor = dto.secondaryColor;
+    if (dto.contactEmail !== undefined) updateData.contactEmail = dto.contactEmail;
+    if (dto.contactPhone !== undefined) updateData.contactPhone = dto.contactPhone;
+    if (dto.address !== undefined) updateData.address = dto.address;
+    if (dto.socialLinks !== undefined) updateData.socialLinks = dto.socialLinks;
+    if (dto.websiteConfig !== undefined) updateData.websiteConfig = dto.websiteConfig;
 
     await this.db.update(tenants).set(updateData).where(eq(tenants.id, id));
 

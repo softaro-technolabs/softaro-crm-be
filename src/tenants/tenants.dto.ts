@@ -31,6 +31,49 @@ export class CreateTenantDto {
   @IsOptional()
   @IsEnum(['active', 'suspended', 'cancelled'])
   status?: 'active' | 'suspended' | 'cancelled';
+
+  @ApiPropertyOptional({ example: 'https://example.com/logo.png' })
+  @IsOptional()
+  @IsString()
+  logo?: string;
+
+  @ApiPropertyOptional({ example: 'Real estate excellence' })
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @ApiPropertyOptional({ example: '#000000' })
+  @IsOptional()
+  @IsString()
+  primaryColor?: string;
+
+  @ApiPropertyOptional({ example: '#ffffff' })
+  @IsOptional()
+  @IsString()
+  secondaryColor?: string;
+
+  @ApiPropertyOptional({ example: 'contact@example.com' })
+  @IsOptional()
+  @IsEmail()
+  contactEmail?: string;
+
+  @ApiPropertyOptional({ example: '+1234567890' })
+  @IsOptional()
+  @IsString()
+  contactPhone?: string;
+
+  @ApiPropertyOptional({ example: '123 Main St, City' })
+  @IsOptional()
+  @IsString()
+  address?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  socialLinks?: any;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  websiteConfig?: any;
 }
 
 export class UpdateTenantDto {
@@ -49,6 +92,49 @@ export class UpdateTenantDto {
   @IsOptional()
   @IsEnum(['active', 'suspended', 'cancelled'])
   status?: 'active' | 'suspended' | 'cancelled';
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  logo?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  primaryColor?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  secondaryColor?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsEmail()
+  contactEmail?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  contactPhone?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  address?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  socialLinks?: any;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  websiteConfig?: any;
 }
 
 
