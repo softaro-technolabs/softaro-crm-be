@@ -45,20 +45,43 @@ export class PublicTenantsController {
     // Fetch all property entities for this tenant
     const result = await this.propertiesService.listEntities(tenant.id, { limit: 100 });
     
-    // For each entity, we need the location
-    const propertiesWithLocation = await Promise.all(
+    // For each entity, fetch deep details
+    const propertiesWithFullInfo = await Promise.all(
       result.data.map(async (entity: any) => {
-        const location = await this.propertiesService.getEntityLocation(tenant.id, entity.id);
-        const media = await this.propertiesService.listMedia(tenant.id, { entityId: entity.id });
+        const [location, media, attributes, unitsResult] = await Promise.all([
+          this.propertiesService.getEntityLocation(tenant.id, entity.id),
+          this.propertiesService.listMedia(tenant.id, { entityId: entity.id }),
+          this.propertiesService.listEntityAttributeValues(tenant.id, entity.id),
+          this.propertiesService.listUnits(tenant.id, { entityId: entity.id, limit: 100 })
+        ]);
+
+        // Calculate price range from units
+        const units = unitsResult.data || [];
+        const prices = units
+          .map(u => parseFloat(u.unit.price || '0'))
+          .filter(p => !isNaN(p));
         
+        const minPrice = prices.length > 0 ? Math.min(...prices) : null;
+        const maxPrice = prices.length > 0 ? Math.max(...prices) : null;
+
         return {
-          ...entity,
+          id: entity.id,
+          name: entity.name,
+          description: entity.description,
+          entityType: entity.entityType,
+          status: entity.status,
           location,
-          thumbnail: media.find(m => m.mediaType === 'image')?.fileUrl || null
+          media, // Full gallery
+          thumbnail: media.find((m: any) => m.mediaType === 'image')?.fileUrl || null,
+          attributes, // Beds, Baths, etc.
+          price: (minPrice !== null && maxPrice !== null) 
+            ? (minPrice === maxPrice ? `AED ${minPrice.toLocaleString()}` : `AED ${minPrice.toLocaleString()} - ${maxPrice.toLocaleString()}`) 
+            : 'On Request',
+          unitCount: units.length
         };
       })
     );
 
-    return propertiesWithLocation;
+    return propertiesWithFullInfo;
   }
 }
