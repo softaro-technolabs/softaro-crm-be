@@ -70,14 +70,14 @@ export class CreateReviewDto {
   @IsInt()
   @Min(1)
   @Max(5)
-  ratingKidsAttractions?: number;
+  ratingKidsFriendly?: number;
 
   @ApiProperty({ required: false, minimum: 1, maximum: 5 })
   @IsOptional()
   @IsInt()
   @Min(1)
   @Max(5)
-  ratingWaitTimes?: number;
+  ratingWaitTime?: number;
 
   @ApiProperty({ required: false, minimum: 1, maximum: 5 })
   @IsOptional()
@@ -98,7 +98,7 @@ export class CreateReviewDto {
   @IsInt()
   @Min(1)
   @Max(5)
-  ratingFoodQuality?: number;
+  ratingFood?: number;
 
   @ApiProperty({ required: false, minimum: 1, maximum: 5 })
   @IsOptional()
@@ -112,21 +112,21 @@ export class CreateReviewDto {
   @IsInt()
   @Min(1)
   @Max(5)
-  ratingValueForMoney?: number;
+  ratingValue?: number;
 
   @ApiProperty({ required: false, minimum: 1, maximum: 5 })
   @IsOptional()
   @IsInt()
   @Min(1)
   @Max(5)
-  ratingLifeguardSafety?: number;
+  ratingLifeguard?: number;
 
   @ApiProperty({ required: false, minimum: 1, maximum: 5 })
   @IsOptional()
   @IsInt()
   @Min(1)
   @Max(5)
-  ratingStaffBehaviour?: number;
+  ratingStaff?: number;
 
   @ApiProperty({ required: false, minimum: 1, maximum: 5 })
   @IsOptional()
@@ -160,7 +160,7 @@ export class CreateReviewDto {
   @ApiProperty({ required: false })
   @IsOptional()
   @IsString()
-  needsImprovement?: string;
+  improvements?: string;
 
   @ApiProperty({ required: false, enum: ["Definitely Yes", "Probably Yes", "Not Sure", "Probably No"] })
   @IsOptional()

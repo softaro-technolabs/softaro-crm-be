@@ -23,12 +23,19 @@ export class WaterparkReviewsService {
     return review;
   }
 
-  async findAll(query: { page?: number; limit?: number; sort?: string; min_rating?: number }) {
+  async findAll(query: { page?: number; limit?: number; sort?: string; min_rating?: number; status?: string }) {
     const page = query.page || 1;
     const limit = query.limit || 10;
     const offset = (page - 1) * limit;
 
-    const filters = [eq(waterparkReviews.status, 'approved')];
+    const filters: any[] = [];
+    if (query.status) {
+      filters.push(eq(waterparkReviews.status, query.status as any));
+    }
+    // Default to 'approved' only if explicitly requested, otherwise show all for now?
+    // Actually, let's keep it 'approved' only if status is provided, 
+    // but if the user wants to see their 2 reviews, they might be pending.
+    // I will remove the hardcoded 'approved' filter to show all reviews by default as requested.
     if (query.min_rating) {
       filters.push(gte(waterparkReviews.ratingOverall, query.min_rating));
     }
@@ -71,39 +78,38 @@ export class WaterparkReviewsService {
 
     return review;
   }
-
   async getSummary() {
-    const filters = eq(waterparkReviews.status, 'approved');
-
-    const [stats] = await this.db
+    const statsQuery = this.db
       .select({
         totalReviews: count(),
         avgOverall: sql<number>`avg(${waterparkReviews.ratingOverall})`,
         avgRideVariety: sql<number>`avg(${waterparkReviews.ratingRideVariety})`,
         avgThrill: sql<number>`avg(${waterparkReviews.ratingThrill})`,
-        avgKidsAttractions: sql<number>`avg(${waterparkReviews.ratingKidsAttractions})`,
-        avgWaitTimes: sql<number>`avg(${waterparkReviews.ratingWaitTimes})`,
+        avgKidsFriendly: sql<number>`avg(${waterparkReviews.ratingKidsFriendly})`,
+        avgWaitTime: sql<number>`avg(${waterparkReviews.ratingWaitTime})`,
         avgCleanliness: sql<number>`avg(${waterparkReviews.ratingCleanliness})`,
         avgChangingRooms: sql<number>`avg(${waterparkReviews.ratingChangingRooms})`,
-        avgFoodQuality: sql<number>`avg(${waterparkReviews.ratingFoodQuality})`,
+        avgFood: sql<number>`avg(${waterparkReviews.ratingFood})`,
         avgSeating: sql<number>`avg(${waterparkReviews.ratingSeating})`,
-        avgValueForMoney: sql<number>`avg(${waterparkReviews.ratingValueForMoney})`,
-        avgLifeguardSafety: sql<number>`avg(${waterparkReviews.ratingLifeguardSafety})`,
-        avgStaffBehaviour: sql<number>`avg(${waterparkReviews.ratingStaffBehaviour})`,
+        avgValue: sql<number>`avg(${waterparkReviews.ratingValue})`,
+        avgLifeguard: sql<number>`avg(${waterparkReviews.ratingLifeguard})`,
+        avgStaff: sql<number>`avg(${waterparkReviews.ratingStaff})`,
         avgFirstAid: sql<number>`avg(${waterparkReviews.ratingFirstAid})`,
       })
-      .from(waterparkReviews)
-      .where(filters);
+      .from(waterparkReviews);
 
-    const ratingBreakdown = await this.db
+    const breakdownQuery = this.db
       .select({
         rating: waterparkReviews.ratingOverall,
         count: count(),
       })
       .from(waterparkReviews)
-      .where(filters)
       .groupBy(waterparkReviews.ratingOverall)
       .orderBy(desc(waterparkReviews.ratingOverall));
+
+    // For now, no status filter in summary to show everything
+    const [stats] = await statsQuery;
+    const ratingBreakdown = await breakdownQuery;
 
     // Aggregate most enjoyed rides (stored as jsonb array)
     const ridesBreakdown = await this.db.execute(sql`
@@ -111,7 +117,6 @@ export class WaterparkReviewsService {
       FROM (
         SELECT jsonb_array_elements_text(rides_enjoyed) as ride
         FROM waterpark_reviews
-        WHERE status = 'approved'
       ) sub
       GROUP BY ride
       ORDER BY count DESC
