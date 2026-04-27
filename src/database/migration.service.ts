@@ -1146,8 +1146,8 @@ export class MigrationService {
           "rating_staff_behaviour" integer,
           "rating_first_aid" integer,
           "rating_overall" integer NOT NULL,
-          "review_title" varchar(255) NOT NULL,
-          "review_text" text NOT NULL,
+          "review_title" varchar(255),
+          "review_text" text,
           "liked_most" text,
           "needs_improvement" text,
           "would_recommend" "recommendation",
@@ -1158,6 +1158,22 @@ export class MigrationService {
       `);
 
       this.logger.log('✓ waterpark_reviews table created');
+    } else {
+      // Logic for making columns optional in existing table
+      const manualColumns = ['review_title', 'review_text'];
+      for (const col of manualColumns) {
+        const colCheck = await client.query(`
+          SELECT is_nullable 
+          FROM information_schema.columns 
+          WHERE table_name = 'waterpark_reviews' 
+          AND column_name = '${col}'
+          AND table_schema = 'public'
+        `);
+        if (colCheck.rows.length > 0 && colCheck.rows[0].is_nullable === 'NO') {
+          this.logger.log(`Altering waterpark_reviews.${col} to be optional...`);
+          await client.query(`ALTER TABLE "waterpark_reviews" ALTER COLUMN "${col}" DROP NOT NULL`);
+        }
+      }
     }
   }
 }

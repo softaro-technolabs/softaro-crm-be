@@ -103,8 +103,8 @@ export const waterparkReviews = pgTable('waterpark_reviews', {
   ratingOverall: integer('rating_overall').notNull(),
 
   // Written Feedback
-  reviewTitle: varchar('review_title', { length: 255 }).notNull(),
-  reviewText: text('review_text').notNull(),
+  reviewTitle: varchar('review_title', { length: 255 }),
+  reviewText: text('review_text'),
   likedMost: text('liked_most'),
   needsImprovement: text('needs_improvement'),
   wouldRecommend: recommendationEnum('would_recommend'),

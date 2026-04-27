@@ -142,14 +142,15 @@ export class CreateReviewDto {
   ratingOverall!: number;
 
   // Feedback
-  @ApiProperty()
+  @ApiProperty({ required: false })
+  @IsOptional()
   @IsString()
-  reviewTitle!: string;
+  reviewTitle?: string;
 
-  @ApiProperty()
+  @ApiProperty({ required: false })
+  @IsOptional()
   @IsString()
-  @MinLength(20)
-  reviewText!: string;
+  reviewText?: string;
 
   @ApiProperty({ required: false })
   @IsOptional()
