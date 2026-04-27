@@ -1159,6 +1159,31 @@ export class MigrationService {
 
       this.logger.log('✓ waterpark_reviews table created');
     } else {
+      // Logic for renaming columns if they exist under old names
+      const renames = [
+        { old: 'rating_kids_attractions', new: 'rating_kids_friendly' },
+        { old: 'rating_wait_times', new: 'rating_wait_time' },
+        { old: 'rating_food_quality', new: 'rating_food' },
+        { old: 'rating_value_for_money', new: 'rating_value' },
+        { old: 'rating_lifeguard_safety', new: 'rating_lifeguard' },
+        { old: 'rating_staff_behaviour', new: 'rating_staff' },
+        { old: 'needs_improvement', new: 'improvements' },
+      ];
+
+      for (const rename of renames) {
+        const colCheck = await client.query(`
+          SELECT column_name 
+          FROM information_schema.columns 
+          WHERE table_name = 'waterpark_reviews' 
+          AND column_name = '${rename.old}'
+          AND table_schema = 'public'
+        `);
+        if (colCheck.rows.length > 0) {
+          this.logger.log(`Renaming waterpark_reviews.${rename.old} to ${rename.new}...`);
+          await client.query(`ALTER TABLE "waterpark_reviews" RENAME COLUMN "${rename.old}" TO "${rename.new}"`);
+        }
+      }
+
       // Logic for making columns optional in existing table
       const manualColumns = ['review_title', 'review_text'];
       for (const col of manualColumns) {
