@@ -4,7 +4,8 @@ import { randomUUID } from 'crypto';
 
 import { DRIZZLE } from '../database/database.constants';
 import type { DrizzleDatabase } from '../database/database.types';
-import { tenants, userTenants } from '../database/schema';
+import { tenants, userTenants, leads } from '../database/schema';
+import { desc } from 'drizzle-orm';
 import { CreateTenantDto, UpdateTenantDto, TenantListQueryDto } from './tenants.dto';
 import { PaginationUtil } from '../common/utils/pagination.util';
 import { UsersService } from '../users/users.service';
@@ -163,6 +164,22 @@ export class TenantsService {
 
     const total = totalRows.length ? Number(totalRows[0].count) : 0;
     return PaginationUtil.buildPaginatedResult(results, total, page, limit);
+  }
+
+  async getPublicProspects(tenantId: string) {
+    return await this.db
+      .select({
+        id: leads.id,
+        name: leads.name,
+        budget: leads.budget,
+        propertyType: leads.propertyType,
+        locationPreference: leads.locationPreference,
+        bhkType: leads.bhkType,
+      })
+      .from(leads)
+      .where(eq(leads.tenantId, tenantId))
+      .orderBy(desc(leads.createdAt))
+      .limit(50);
   }
 }
 

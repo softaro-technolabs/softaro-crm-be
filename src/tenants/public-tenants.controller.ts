@@ -1,4 +1,4 @@
-import { Controller, Get, Param, NotFoundException } from '@nestjs/common';
+import { Controller, Get, Param, NotFoundException, Headers, BadRequestException } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { TenantsService } from './tenants.service';
 import { PropertiesService } from '../properties/properties.service';
@@ -83,5 +83,14 @@ export class PublicTenantsController {
     );
 
     return propertiesWithFullInfo;
+  }
+
+  @Get(':slug/prospects')
+  @ApiOperation({ summary: 'Get public prospects for smart matching' })
+  async getPublicProspects(@Param('slug') slug: string) {
+    const tenant = await this.tenantsService.findBySlug(slug);
+    if (!tenant) throw new NotFoundException('Agent not found');
+    
+    return this.tenantsService.getPublicProspects(tenant.id);
   }
 }
