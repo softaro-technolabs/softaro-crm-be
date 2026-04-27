@@ -493,6 +493,10 @@ export class MigrationService {
         // ─── Booking Tables (New) ──────────────────────────────────
         await this.runBookingMigrations(client);
         // ─────────────────────────────────────────────────────────────
+
+        // ─── Waterpark Reviews (New) ──────────────────────────────────
+        await this.runWaterparkMigrations(client);
+        // ─────────────────────────────────────────────────────────────
       } finally {
         client.release();
       }
@@ -1072,6 +1076,88 @@ export class MigrationService {
       await client.query('CREATE INDEX IF NOT EXISTS "bookings_property_unit_idx" ON "bookings" ("property_unit_id");');
       await client.query('CREATE INDEX IF NOT EXISTS "bookings_status_idx" ON "bookings" ("status");');
       this.logger.log('✓ bookings table created');
+    }
+  }
+
+  /**
+   * Create Waterpark Review tables and enums if they don't exist.
+   */
+  private async runWaterparkMigrations(client: any) {
+    const tableCheck = await client.query(`SELECT to_regclass('public.waterpark_reviews') as t`);
+    if (tableCheck.rows[0]?.t === null) {
+      this.logger.log('Creating waterpark_reviews table and enums...');
+
+      // Create Enums
+      await client.query(`
+        DO $$
+        BEGIN
+          IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'age_group') THEN
+            CREATE TYPE "age_group" AS ENUM ('Under 18', '18–25', '26–35', '36–45', '46–60', '60+');
+          END IF;
+          IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'visit_type') THEN
+            CREATE TYPE "visit_type" AS ENUM ('Family Trip', 'Friends Group', 'Couple', 'School / College Trip', 'Corporate Outing', 'Solo Visit');
+          END IF;
+          IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'group_size') THEN
+            CREATE TYPE "group_size" AS ENUM ('1–2 persons', '3–5 persons', '6–10 persons', '11–20 persons', 'More than 20');
+          END IF;
+          IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'time_spent') THEN
+            CREATE TYPE "time_spent" AS ENUM ('Less than 2 hours', '2–4 hours', '4–6 hours', 'Full day (6+ hours)');
+          END IF;
+          IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'child_status') THEN
+            CREATE TYPE "child_status" AS ENUM ('Yes, with kids under 10', 'Yes, with kids 10-15', 'No children');
+          END IF;
+          IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'recommendation') THEN
+            CREATE TYPE "recommendation" AS ENUM ('Definitely Yes', 'Probably Yes', 'Not Sure', 'Probably No');
+          END IF;
+          IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'heard_from') THEN
+            CREATE TYPE "heard_from" AS ENUM ('Google', 'Instagram', 'Facebook', 'Friend / Family', 'YouTube', 'Roadside Board');
+          END IF;
+          IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'review_status') THEN
+            CREATE TYPE "review_status" AS ENUM ('pending', 'approved', 'rejected');
+          END IF;
+        END $$;
+      `);
+
+      // Create Table
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS "waterpark_reviews" (
+          "id" varchar(36) PRIMARY KEY,
+          "name" varchar(255) NOT NULL,
+          "phone" varchar(50) NOT NULL,
+          "email" varchar(255),
+          "city" varchar(255) NOT NULL,
+          "age_group" "age_group" NOT NULL,
+          "visit_date" timestamptz NOT NULL,
+          "visit_type" "visit_type" NOT NULL,
+          "group_size" "group_size" NOT NULL,
+          "time_spent" "time_spent",
+          "rides_enjoyed" jsonb NOT NULL,
+          "visited_with_children" "child_status",
+          "rating_ride_variety" integer,
+          "rating_thrill" integer,
+          "rating_kids_attractions" integer,
+          "rating_wait_times" integer,
+          "rating_cleanliness" integer,
+          "rating_changing_rooms" integer,
+          "rating_food_quality" integer,
+          "rating_seating" integer,
+          "rating_value_for_money" integer,
+          "rating_lifeguard_safety" integer,
+          "rating_staff_behaviour" integer,
+          "rating_first_aid" integer,
+          "rating_overall" integer NOT NULL,
+          "review_title" varchar(255) NOT NULL,
+          "review_text" text NOT NULL,
+          "liked_most" text,
+          "needs_improvement" text,
+          "would_recommend" "recommendation",
+          "heard_from" "heard_from",
+          "submitted_at" timestamptz NOT NULL DEFAULT now(),
+          "status" "review_status" NOT NULL DEFAULT 'pending'
+        );
+      `);
+
+      this.logger.log('✓ waterpark_reviews table created');
     }
   }
 }

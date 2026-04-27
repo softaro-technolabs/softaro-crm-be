@@ -31,6 +31,7 @@ import { ContactsModule } from './contacts/contacts.module';
 
 import { DashboardModule } from './dashboard/dashboard.module';
 import { SiteVisitsModule } from './site-visits/site-visits.module';
+import { WaterparkReviewsModule } from './waterpark-reviews/waterpark-reviews.module';
 
 @Module({
   imports: [
@@ -62,7 +63,8 @@ import { SiteVisitsModule } from './site-visits/site-visits.module';
     GoogleAdsModule,
     ContactsModule,
     DashboardModule,
-    SiteVisitsModule
+    SiteVisitsModule,
+    WaterparkReviewsModule
   ],
   providers: [MigrationService, DatabaseSyncService, TenantMiddleware]
 })

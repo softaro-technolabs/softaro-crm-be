@@ -73,7 +73,8 @@ export default defineConfig({
     'lead_property_interests',
     'property_pricing_breakups',
     'quotations',
-    'quotation_items'
+    'quotation_items',
+    'waterpark_reviews'
   ],
 });
 
