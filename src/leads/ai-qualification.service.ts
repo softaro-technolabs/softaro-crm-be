@@ -12,6 +12,8 @@ export type AiQualificationResult = {
   reasoning: string[];
   ruleScore: number;       // NEW: rule-based anchor score
   finalScore: number;      // NEW: blended final score
+  suggestedNextAction: string; // NEW: human work easy
+  agentScript: string;         // NEW: human work easy
   modelUsed: string;       // NEW: audit trail
   promptVersion: string;   // NEW: prompt versioning
   qualifiedAt: string;     // NEW: timestamp
@@ -85,6 +87,8 @@ export class AiQualificationService {
       label,
       summary: aiResult.summary,
       reasoning: aiResult.reasoning,
+      suggestedNextAction: aiResult.suggestedNextAction,
+      agentScript: aiResult.agentScript,
       ruleScore,
       finalScore,
       modelUsed: MODEL,
@@ -134,7 +138,7 @@ export class AiQualificationService {
   private async callGroqWithRetry(
     leadData: LeadQualificationInput,
     retries = 3,
-  ): Promise<Pick<AiQualificationResult, 'score' | 'summary' | 'reasoning'> | null> {
+  ): Promise<Pick<AiQualificationResult, 'score' | 'summary' | 'reasoning' | 'suggestedNextAction' | 'agentScript'> | null> {
     for (let attempt = 1; attempt <= retries; attempt++) {
       try {
         return await this.callGroq(leadData);
@@ -161,7 +165,7 @@ export class AiQualificationService {
 
   private async callGroq(
     leadData: LeadQualificationInput,
-  ): Promise<Pick<AiQualificationResult, 'score' | 'summary' | 'reasoning'> | null> {
+  ): Promise<Pick<AiQualificationResult, 'score' | 'summary' | 'reasoning' | 'suggestedNextAction' | 'agentScript'> | null> {
     const prompt = this.buildPrompt(leadData);
 
     const response = await axios.post(
@@ -230,7 +234,9 @@ Return ONLY this JSON (no markdown, no extra text):
 {
   "score": <number 0-100>,
   "summary": "<1-2 sentence quality summary>",
-  "reasoning": ["<point1>", "<point2>", "<point3>"]
+  "reasoning": ["<point1>", "<point2>", "<point3>"],
+  "suggestedNextAction": "<Specific action for the agent to take>",
+  "agentScript": "<A short WhatsApp/Call script for the agent>"
 }
 `.trim();
   }
@@ -239,7 +245,7 @@ Return ONLY this JSON (no markdown, no extra text):
 
   private validateAiOutput(
     obj: unknown,
-  ): Pick<AiQualificationResult, 'score' | 'summary' | 'reasoning'> | null {
+  ): Pick<AiQualificationResult, 'score' | 'summary' | 'reasoning' | 'suggestedNextAction' | 'agentScript'> | null {
     if (!obj || typeof obj !== 'object') return null;
     const o = obj as Record<string, unknown>;
 
@@ -257,7 +263,10 @@ Return ONLY this JSON (no markdown, no extra text):
       ? (o['reasoning'] as unknown[]).filter((r): r is string => typeof r === 'string').slice(0, 5)
       : [];
 
-    return { score, summary, reasoning };
+    const agentScript = typeof o['agentScript'] === 'string' ? o['agentScript'] : 'No script provided.';
+    const suggestedNextAction = typeof o['suggestedNextAction'] === 'string' ? o['suggestedNextAction'] : 'Follow up with lead.';
+
+    return { score, summary, reasoning, suggestedNextAction, agentScript };
   }
 
   // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -269,6 +278,8 @@ Return ONLY this JSON (no markdown, no extra text):
       label,
       summary: 'Scored using rule-based engine (AI unavailable).',
       reasoning: ['AI qualification was skipped — rule-based score applied as fallback.'],
+      suggestedNextAction: 'Check lead details manually.',
+      agentScript: 'Hi, I saw your inquiry about properties. Would you like more details?',
       ruleScore,
       finalScore: ruleScore,
       modelUsed: 'rule-engine',

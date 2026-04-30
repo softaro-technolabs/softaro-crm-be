@@ -8,7 +8,7 @@ import {
   Logger
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { and, desc, eq, ilike, or, sql } from 'drizzle-orm';
+import { and, desc, eq, ilike, or, sql, count } from 'drizzle-orm';
 import type { SQL } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 import type { Express } from 'express';
@@ -23,7 +23,8 @@ import {
   tenants,
   users,
   userTenants,
-  roles
+  roles,
+  siteVisits
 } from '../database/schema';
 import { MailService } from '../common/services/mail.service';
 import {
@@ -41,7 +42,7 @@ import {
 import { LeadAssignmentService } from './lead-assignment.service';
 import { PhoneUtil } from '../common/utils/phone.util';
 import { PaginationUtil } from '../common/utils/pagination.util';
-import { AiQualificationService } from './ai-qualification.service';
+import { AiQualificationService, LeadQualificationInput } from './ai-qualification.service';
 
 type CreateLeadOptions = {
   createdByUserId?: string | null;
@@ -1009,7 +1010,19 @@ export class LeadsService {
 
   async qualifyLeadWithAi(tenantId: string, leadId: string) {
     const lead = await this.getLead(tenantId, leadId);
-    const dto: CreateLeadDto = {
+
+    // Fetch robust scoring signals
+    const [visitCountResult] = await this.db
+      .select({ val: count() })
+      .from(siteVisits)
+      .where(and(eq(siteVisits.leadId, leadId), eq(siteVisits.status, 'completed')));
+    
+    const [activityCountResult] = await this.db
+      .select({ val: count() })
+      .from(leadActivities)
+      .where(eq(leadActivities.leadId, leadId));
+
+    const dto: LeadQualificationInput = {
       name: lead.lead.name,
       phone: lead.lead.phone ?? '',
       email: lead.lead.email ?? undefined,
@@ -1021,6 +1034,9 @@ export class LeadsService {
       locationPreference: lead.lead.locationPreference as any,
       notes: lead.lead.notes ?? undefined,
       leadSource: lead.lead.leadSource,
+      siteVisitCount: Number(visitCountResult?.val || 0),
+      followUpCount: Number(activityCountResult?.val || 0),
+      timeline: (lead.lead.metadata as any)?.timeline || 'exploring'
     };
 
     const aiResult = await this.aiQualificationService.qualifyLead(dto);
