@@ -406,6 +406,17 @@ export class LeadsService {
     updateData.updatedAt = new Date();
     await this.db.update(leads).set(updateData).where(eq(leads.id, leadId));
 
+    // Re-qualify with AI if key fields changed
+    const qualificationFields = ['budget', 'requirementType', 'propertyType', 'propertyCategory', 'bhkType', 'locationPreference', 'notes'];
+    const shouldRequalify = Object.keys(updateData).some(key => qualificationFields.includes(key));
+    
+    if (shouldRequalify) {
+      // Run qualification in background to avoid delaying the response
+      this.qualifyLeadWithAi(tenantId, leadId).catch(err => {
+        console.error('[AI Re-qualification Failed]', err);
+      });
+    }
+
     if (dto.assignedToUserId && dto.assignedToUserId !== existing.lead.assignedToUserId) {
       await this.assignmentService.recordAssignmentLog(
         tenantId,
