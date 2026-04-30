@@ -474,7 +474,8 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
                 .from(propertyMedia)
                 .where(and(
                     eq(propertyMedia.entityId, p.id),
-                    eq(propertyMedia.mediaType, 'image')
+                    eq(propertyMedia.mediaType, 'image'),
+                    eq(propertyMedia.isPublic, true)
                 ))
                 .limit(5);
 
