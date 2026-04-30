@@ -476,7 +476,7 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
                     eq(propertyMedia.entityId, p.id),
                     eq(propertyMedia.mediaType, 'image')
                 ))
-                .limit(3);
+                .limit(5);
 
             const imageUrls = media.map(m => m.fileUrl);
 
@@ -520,7 +520,7 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
 
         if (aiResult) {
             this.logger.log(`[AI Chat] Response Text: "${aiResult.text.substring(0, 50)}..."`);
-            this.logger.log(`[AI Chat] Image URL Selected: ${aiResult.imageUrl || 'NONE'}`);
+            this.logger.log(`[AI Chat] Image URLs Selected: ${aiResult.imageUrls?.length || 0}`);
 
             // 1. Send Text Response
             await this.sendMessage(tenantId, leadId, contactPhone, {
@@ -531,19 +531,21 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
                 text: { body: aiResult.text }
             }, false, true);
 
-            // 2. Send Image if selected by AI
-            if (aiResult.imageUrl) {
-                try {
-                    const imgRes = await this.sendMessage(tenantId, leadId, contactPhone, {
-                        messaging_product: 'whatsapp',
-                        recipient_type: 'individual',
-                        to: contactPhone,
-                        type: 'image',
-                        image: { link: aiResult.imageUrl }
-                    }, false, true);
-                    this.logger.log(`[AI Chat] Image message queued: ${JSON.stringify(imgRes)}`);
-                } catch (imgErr: any) {
-                    this.logger.error(`[AI Chat] Failed to send image: ${imgErr.message}`);
+            // 2. Send Multiple Images if selected by AI
+            if (aiResult.imageUrls && aiResult.imageUrls.length > 0) {
+                for (const url of aiResult.imageUrls) {
+                    try {
+                        const imgRes = await this.sendMessage(tenantId, leadId, contactPhone, {
+                            messaging_product: 'whatsapp',
+                            recipient_type: 'individual',
+                            to: contactPhone,
+                            type: 'image',
+                            image: { link: url }
+                        }, false, true);
+                        this.logger.log(`[AI Chat] Image message queued: ${url}`);
+                    } catch (imgErr: any) {
+                        this.logger.error(`[AI Chat] Failed to send image ${url}: ${imgErr.message}`);
+                    }
                 }
             }
         }

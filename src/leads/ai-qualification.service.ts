@@ -111,7 +111,7 @@ export class AiQualificationService {
     message: string,
     leadData: LeadQualificationInput,
     history: string[]
-  ): Promise<{ text: string; imageUrl?: string } | null> {
+  ): Promise<{ text: string; imageUrls?: string[] } | null> {
     if (!this.apiKey) return null;
 
     const prompt = `
@@ -146,7 +146,7 @@ Instructions for Output:
 YOU MUST RESPOND ONLY WITH A VALID JSON OBJECT. DO NOT INCLUDE ANY TEXT OUTSIDE THE JSON.
 {
   "text": "Your human-like response text here",
-  "imageUrl": "Choose the most relevant image URL from the 'Available Images' list above IF the customer asked for photos or if you want to showcase a specific property. Leave null if not sending an image."
+  "imageUrls": ["List of relevant image URLs from the 'Available Images' section above. Send 1-3 images if the customer asks for photos or if showing a project."]
 }
 
 Response:`.trim();
@@ -182,9 +182,16 @@ Response:`.trim();
 
       try {
         const parsed = JSON.parse(content);
+        let imageUrls: string[] | undefined = undefined;
+        if (Array.isArray(parsed.imageUrls)) {
+          imageUrls = parsed.imageUrls.filter((url: any) => typeof url === 'string' && url.startsWith('http'));
+        } else if (typeof parsed.imageUrl === 'string' && parsed.imageUrl.startsWith('http')) {
+          imageUrls = [parsed.imageUrl];
+        }
+
         return {
           text: typeof parsed.text === 'string' ? parsed.text : content,
-          imageUrl: (typeof parsed.imageUrl === 'string' && parsed.imageUrl.startsWith('http')) ? parsed.imageUrl : undefined
+          imageUrls
         };
       } catch (e) {
         this.logger.warn('AI Chat Response was not valid JSON, falling back to raw text', content);
