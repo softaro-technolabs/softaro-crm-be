@@ -14,7 +14,13 @@ import { WhatsappGateway } from './whatsapp.gateway';
 import { PaginationUtil } from '../common/utils/pagination.util';
 import { MessageListQueryDto } from './whatsapp.dto';
 import { AiQualificationService, LeadQualificationInput } from '../leads/ai-qualification.service';
-import { propertyEntities, propertyLocations } from '../database/schema';
+import { 
+    propertyEntities, 
+    propertyLocations, 
+    propertyUnits, 
+    propertyAttributeValues, 
+    propertyAttributes 
+} from '../database/schema';
 
 @Injectable()
 export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy {
@@ -415,8 +421,8 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
         
         if (!lead) return;
 
-        // 2. Fetch Available Properties (for AI context)
-        const availableProperties = await this.db
+        // 2. Fetch Available Properties with Unit and Attribute details
+        const properties = await this.db
             .select({
                 id: propertyEntities.id,
                 name: propertyEntities.name,
@@ -425,8 +431,46 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
             })
             .from(propertyEntities)
             .leftJoin(propertyLocations, eq(propertyEntities.id, propertyLocations.entityId))
-            .where(eq(propertyEntities.status, 'active'))
-            .limit(10);
+            .where(and(eq(propertyEntities.tenantId, tenantId), eq(propertyEntities.status, 'active')))
+            .limit(5); // Fetch top 5 properties for depth
+
+        const propertyDetails = await Promise.all(properties.map(async (p) => {
+            // Fetch Units summary (Price Range, BHKs)
+            const units = await this.db
+                .select({
+                    price: propertyUnits.price,
+                    unitCode: propertyUnits.unitCode,
+                })
+                .from(propertyUnits)
+                .where(eq(propertyUnits.entityId, p.id))
+                .limit(20);
+
+            const prices = units.map(u => Number(u.price)).filter(pr => pr > 0);
+            const minPrice = prices.length ? Math.min(...prices) : 'N/A';
+            const maxPrice = prices.length ? Math.max(...prices) : 'N/A';
+            const unitSummary = prices.length 
+                ? `Price range: ${minPrice.toLocaleString('en-IN')} - ${maxPrice.toLocaleString('en-IN')} INR. Units: ${units.map(u => u.unitCode).join(', ')}`
+                : 'Prices on request.';
+
+            // Fetch Attributes (Amenities/Features)
+            const attrs = await this.db
+                .select({
+                    name: propertyAttributes.name,
+                    value: propertyAttributeValues.value,
+                })
+                .from(propertyAttributeValues)
+                .innerJoin(propertyAttributes, eq(propertyAttributeValues.attributeId, propertyAttributes.id))
+                .where(eq(propertyAttributeValues.entityId, p.id))
+                .limit(10);
+            
+            const attributes = attrs.map(a => `${a.name}: ${a.value}`).join(', ') || 'Standard amenities.';
+
+            return {
+                ...p,
+                unitSummary,
+                attributes
+            };
+        }));
 
         // 3. Fetch Recent Message History (last 5 messages)
         const recentMessages = await this.db
@@ -452,12 +496,7 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
             propertyCategory: lead.propertyCategory,
             bhkType: lead.bhkType,
             locationPreference: lead.locationPreference as any,
-            availableProperties: availableProperties.map(p => ({
-                id: p.id,
-                name: p.name,
-                type: p.type,
-                location: p.location || undefined
-            }))
+            availableProperties: propertyDetails as any
         };
 
         const aiResponse = await this.aiService.generateChatResponse(tenantId, message, input, history);
