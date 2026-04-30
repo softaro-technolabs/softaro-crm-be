@@ -19,7 +19,8 @@ import {
     propertyLocations, 
     propertyUnits, 
     propertyAttributeValues, 
-    propertyAttributes 
+    propertyAttributes,
+    propertyMedia
 } from '../database/schema';
 
 @Injectable()
@@ -465,10 +466,25 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
             
             const attributes = attrs.map(a => `${a.name}: ${a.value}`).join(', ') || 'Standard amenities.';
 
+            // Fetch Media (Images)
+            const media = await this.db
+                .select({
+                    fileUrl: propertyMedia.fileUrl,
+                })
+                .from(propertyMedia)
+                .where(and(
+                    eq(propertyMedia.entityId, p.id),
+                    eq(propertyMedia.mediaType, 'image')
+                ))
+                .limit(3);
+
+            const imageUrls = media.map(m => m.fileUrl);
+
             return {
                 ...p,
                 unitSummary,
-                attributes
+                attributes,
+                imageUrls
             };
         }));
 
@@ -499,17 +515,30 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
             availableProperties: propertyDetails as any
         };
 
-        const aiResponse = await this.aiService.generateChatResponse(tenantId, message, input, history);
+        const aiResult = await this.aiService.generateChatResponse(tenantId, message, input, history);
 
-        if (aiResponse) {
+        if (aiResult) {
+            // 1. Send Text Response
             await this.sendMessage(tenantId, leadId, contactPhone, {
                 messaging_product: 'whatsapp',
                 recipient_type: 'individual',
                 to: contactPhone,
                 type: 'text',
-                text: { body: aiResponse }
+                text: { body: aiResult.text }
             }, false, true);
-            this.logger.log(`AI Auto-Reply sent to ${contactPhone}: ${aiResponse.substring(0, 50)}...`);
+
+            // 2. Send Image if selected by AI
+            if (aiResult.imageUrl) {
+                await this.sendMessage(tenantId, leadId, contactPhone, {
+                    messaging_product: 'whatsapp',
+                    recipient_type: 'individual',
+                    to: contactPhone,
+                    type: 'image',
+                    image: { link: aiResult.imageUrl }
+                }, false, true);
+            }
+            
+            this.logger.log(`AI Auto-Reply sent to ${contactPhone}. Image: ${!!aiResult.imageUrl}`);
         }
     }
 

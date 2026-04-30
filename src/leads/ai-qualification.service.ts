@@ -111,7 +111,7 @@ export class AiQualificationService {
     message: string,
     leadData: LeadQualificationInput,
     history: string[]
-  ): Promise<string | null> {
+  ): Promise<{ text: string; imageUrl?: string } | null> {
     if (!this.apiKey) return null;
 
     const prompt = `
@@ -136,10 +136,18 @@ Our Available Properties & Details:
 ${leadData.availableProperties?.map(p => `- [${p.name} in ${p.location}]
   Type: ${p.type}
   Details: ${(p as any).unitSummary || 'Contact for details'}
-  Amenities: ${(p as any).attributes || 'Standard amenities'}`).join('\n') || 'N/A'}
+  Amenities: ${(p as any).attributes || 'Standard amenities'}
+  Available Images: ${(p as any).imageUrls?.join(', ') || 'No images available'}`).join('\n') || 'N/A'}
 
 The Customer's Message:
 "${message}"
+
+Instructions for Output:
+Return a JSON object in this format:
+{
+  "text": "Your human-like response text here",
+  "imageUrl": "Choose the most relevant image URL from the 'Available Images' list above IF the customer asked for photos or if you want to showcase a specific property. Leave null if not sending an image."
+}
 
 Response:`.trim();
 
@@ -164,7 +172,18 @@ Response:`.trim();
         },
       );
 
-      return response.data?.choices?.[0]?.message?.content?.trim() || null;
+      const content = response.data?.choices?.[0]?.message?.content?.trim();
+      if (!content) return null;
+
+      try {
+        const parsed = JSON.parse(content);
+        return {
+          text: typeof parsed.text === 'string' ? parsed.text : content,
+          imageUrl: typeof parsed.imageUrl === 'string' ? parsed.imageUrl : undefined
+        };
+      } catch (e) {
+        return { text: content };
+      }
     } catch (error) {
       this.logger.error('Failed to generate AI chat response', error);
       return null;
