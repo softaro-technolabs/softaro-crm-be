@@ -143,7 +143,7 @@ The Customer's Message:
 "${message}"
 
 Instructions for Output:
-Return a JSON object in this format:
+YOU MUST RESPOND ONLY WITH A VALID JSON OBJECT. DO NOT INCLUDE ANY TEXT OUTSIDE THE JSON.
 {
   "text": "Your human-like response text here",
   "imageUrl": "Choose the most relevant image URL from the 'Available Images' list above IF the customer asked for photos or if you want to showcase a specific property. Leave null if not sending an image."
@@ -172,16 +172,22 @@ Response:`.trim();
         },
       );
 
-      const content = response.data?.choices?.[0]?.message?.content?.trim();
+      let content = response.data?.choices?.[0]?.message?.content?.trim();
       if (!content) return null;
+
+      // Clean up markdown code blocks if AI included them
+      if (content.startsWith('```')) {
+        content = content.replace(/^```json\n?/, '').replace(/```$/, '').trim();
+      }
 
       try {
         const parsed = JSON.parse(content);
         return {
           text: typeof parsed.text === 'string' ? parsed.text : content,
-          imageUrl: typeof parsed.imageUrl === 'string' ? parsed.imageUrl : undefined
+          imageUrl: (typeof parsed.imageUrl === 'string' && parsed.imageUrl.startsWith('http')) ? parsed.imageUrl : undefined
         };
       } catch (e) {
+        this.logger.warn('AI Chat Response was not valid JSON, falling back to raw text', content);
         return { text: content };
       }
     } catch (error) {
