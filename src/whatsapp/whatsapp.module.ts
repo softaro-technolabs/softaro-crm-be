@@ -5,9 +5,10 @@ import { WhatsappWebhookController } from './whatsapp-webhook.controller';
 import { WhatsappController } from './whatsapp.controller';
 import { WhatsappGateway } from './whatsapp.gateway';
 import { AuthModule } from '../auth/auth.module';
+import { LeadsModule } from '../leads/leads.module';
 
 @Module({
-    imports: [AuthModule],
+    imports: [AuthModule, LeadsModule],
     controllers: [WhatsappAuthController, WhatsappWebhookController, WhatsappController],
     providers: [WhatsappService, WhatsappGateway],
     exports: [WhatsappService, WhatsappGateway]

@@ -3,7 +3,7 @@ import { randomUUID } from 'crypto';
 import { Injectable, Inject, NotFoundException, BadRequestException, Logger, OnApplicationBootstrap, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
-import { eq, and, lte, sql, SQL } from 'drizzle-orm';
+import { eq, and, lte, sql, SQL, desc } from 'drizzle-orm';
 
 import { EncryptionService } from '../common/services/encryption.service';
 import { DRIZZLE } from '../database/database.constants';
@@ -13,6 +13,8 @@ import { PhoneUtil } from '../common/utils/phone.util';
 import { WhatsappGateway } from './whatsapp.gateway';
 import { PaginationUtil } from '../common/utils/pagination.util';
 import { MessageListQueryDto } from './whatsapp.dto';
+import { AiQualificationService, LeadQualificationInput } from '../leads/ai-qualification.service';
+import { propertyEntities, propertyLocations } from '../database/schema';
 
 @Injectable()
 export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy {
@@ -26,7 +28,8 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
         @Inject(DRIZZLE) private readonly db: DrizzleDatabase,
         private readonly configService: ConfigService,
         private readonly encryptionService: EncryptionService,
-        private readonly whatsappGateway: WhatsappGateway
+        private readonly whatsappGateway: WhatsappGateway,
+        private readonly aiService: AiQualificationService
     ) { }
 
     onApplicationBootstrap() {
@@ -389,6 +392,85 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
 
         // Trigger Automation Engine (Conceptual)
         this.logger.log(`Received incoming meta message ${messageId} mapped to lead: ${leadId}`);
+
+        // AI Auto-Reply Logic
+        if (leadId && rawMessage.type === 'text') {
+            const customerText = rawMessage.text?.body;
+            if (customerText) {
+                this.triggerAiAutoReply(tenantId, leadId, contactPhone, customerText).catch(err => {
+                    this.logger.error('[AI Auto-Reply Failed]', err);
+                });
+            }
+        }
+    }
+
+    private async triggerAiAutoReply(tenantId: string, leadId: string, contactPhone: string, message: string) {
+        // 1. Fetch Lead Details
+        const [lead] = await this.db
+            .select()
+            .from(leads)
+            .where(eq(leads.id, leadId))
+            .limit(1);
+        
+        if (!lead) return;
+
+        // 2. Fetch Available Properties (for AI context)
+        const availableProperties = await this.db
+            .select({
+                id: propertyEntities.id,
+                name: propertyEntities.name,
+                type: propertyEntities.entityType,
+                location: propertyLocations.area,
+            })
+            .from(propertyEntities)
+            .leftJoin(propertyLocations, eq(propertyEntities.id, propertyLocations.entityId))
+            .where(eq(propertyEntities.status, 'active'))
+            .limit(10);
+
+        // 3. Fetch Recent Message History (last 5 messages)
+        const recentMessages = await this.db
+            .select()
+            .from(whatsappMessages)
+            .where(and(eq(whatsappMessages.tenantId, tenantId), eq(whatsappMessages.leadId, leadId)))
+            .orderBy(desc(whatsappMessages.createdAt))
+            .limit(5);
+
+        const history = recentMessages.reverse().map(m => {
+            const content = m.content as any;
+            const text = content.text?.body || '[Non-text message]';
+            return `${m.direction === 'inbound' ? 'Customer' : 'Assistant'}: ${text}`;
+        });
+
+        const input: LeadQualificationInput = {
+            name: lead.name,
+            phone: lead.phone,
+            email: lead.email,
+            budget: lead.budget ? Number(lead.budget) : undefined,
+            requirementType: lead.requirementType,
+            propertyType: lead.propertyType,
+            propertyCategory: lead.propertyCategory,
+            bhkType: lead.bhkType,
+            locationPreference: lead.locationPreference as any,
+            availableProperties: availableProperties.map(p => ({
+                id: p.id,
+                name: p.name,
+                type: p.type,
+                location: p.location || undefined
+            }))
+        };
+
+        const aiResponse = await this.aiService.generateChatResponse(tenantId, message, input, history);
+
+        if (aiResponse) {
+            await this.sendMessage(tenantId, leadId, contactPhone, {
+                messaging_product: 'whatsapp',
+                recipient_type: 'individual',
+                to: contactPhone,
+                type: 'text',
+                text: { body: aiResponse }
+            }, false);
+            this.logger.log(`AI Auto-Reply sent to ${contactPhone}: ${aiResponse.substring(0, 50)}...`);
+        }
     }
 
     async sendMessage(tenantId: string, leadId: string | null, contactPhone: string, payload: any, isTemplate: boolean) {

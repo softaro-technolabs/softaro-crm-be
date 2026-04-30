@@ -104,6 +104,70 @@ export class AiQualificationService {
     };
   }
 
+  // ── AI WhatsApp Chatbot ───────────────────────────────────────────────────
+
+  async generateChatResponse(
+    tenantId: string,
+    message: string,
+    leadData: LeadQualificationInput,
+    history: string[]
+  ): Promise<string | null> {
+    if (!this.apiKey) return null;
+
+    const prompt = `
+You are a helpful, professional, and friendly real estate sales assistant in India.
+Your goal is to answer the customer's question on WhatsApp naturally and guide them towards a site visit or a call.
+
+Context:
+- Customer Name: ${leadData.name}
+- Their Requirements: ${leadData.requirementType} ${leadData.propertyType || ''}
+- Their Budget: ${leadData.budget || 'N/A'}
+- Recent Conversation History:
+${history.map(h => `- ${h}`).join('\n')}
+
+Our Available Properties:
+${leadData.availableProperties?.map(p => `- ${p.name} in ${p.location} (${p.type})`).join('\n') || 'N/A'}
+
+The Customer's Message:
+"${message}"
+
+Instructions:
+1. Be concise (WhatsApp style).
+2. Answer their question directly based on our properties.
+3. If you don't know something, be honest and offer to have an agent call them.
+4. Always be polite and human-like. No robot talk.
+5. Use emojis sparingly.
+
+Response:`.trim();
+
+    try {
+      const response = await axios.post(
+        API_URL,
+        {
+          model: MODEL,
+          messages: [
+            { role: 'system', content: 'You are a professional real estate assistant. Reply naturally and helpfully.' },
+            { role: 'user', content: prompt },
+          ],
+          temperature: 0.7,
+          max_tokens: 256,
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${this.apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          timeout: 10000,
+        },
+      );
+
+      return response.data?.choices?.[0]?.message?.content?.trim() || null;
+    } catch (error) {
+      this.logger.error('Failed to generate AI chat response', error);
+      return null;
+    }
+  }
+
   // ── Rule-Based Scoring ──────────────────────────────────────────────────────
 
   private computeRuleScore(lead: LeadQualificationInput): number {
