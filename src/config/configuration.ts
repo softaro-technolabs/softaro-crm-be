@@ -32,6 +32,8 @@ export default () => ({
     apiKey: env.RESEND_API_KEY ?? 're_6cXV4SsM_3nfgU8WzA2Lq2sypNeFg6hpr',
     from: "EstateOS <no-reply@estateos.softarotechnolabs.com>",
     frontendUrl: env.FRONTEND_URL ?? 'https://estateos.softarotechnolabs.com'
+  },
+  groq: {
+    apiKey: env.GROQ_API_KEY
   }
 });
-

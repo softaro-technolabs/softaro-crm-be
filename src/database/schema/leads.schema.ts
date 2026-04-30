@@ -72,6 +72,7 @@ export const leads = pgTable(
     nextFollowUpAt: timestamp('next_follow_up_at', { withTimezone: true }),
     kanbanPosition: bigint('kanban_position', { mode: 'number' }).default(0).notNull(),
     lastFollowupNotifiedAt: timestamp('last_followup_notified_at', { withTimezone: true }),
+    aiQualification: jsonb('ai_qualification'),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull()
   },

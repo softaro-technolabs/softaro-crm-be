@@ -95,6 +95,13 @@ export class LeadsController {
     return this.leadsService.transferLead(tenantId, leadId, dto);
   }
 
+  @Post(':leadId/ai-qualify')
+  @ApiOperation({ summary: 'Trigger AI qualification for a lead using Groq' })
+  async aiQualify(@Param('tenantId') tenantId: string, @Param('leadId') leadId: string) {
+    this.verifyTenantAccess(tenantId);
+    return this.leadsService.qualifyLeadWithAi(tenantId, leadId);
+  }
+
   @Get('pipeline/statuses')
   @ApiOperation({ summary: 'Fetch pipeline/kanban statuses with counts' })
   async pipeline(@Param('tenantId') tenantId: string) {

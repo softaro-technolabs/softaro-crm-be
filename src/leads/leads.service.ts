@@ -40,6 +40,7 @@ import {
 import { LeadAssignmentService } from './lead-assignment.service';
 import { PhoneUtil } from '../common/utils/phone.util';
 import { PaginationUtil } from '../common/utils/pagination.util';
+import { AiQualificationService } from './ai-qualification.service';
 
 type CreateLeadOptions = {
   createdByUserId?: string | null;
@@ -65,7 +66,8 @@ export class LeadsService {
     private readonly assignmentService: LeadAssignmentService,
     private readonly notificationGateway: NotificationGateway,
     private readonly mailService: MailService,
-    private readonly configService: ConfigService
+    private readonly configService: ConfigService,
+    private readonly aiQualificationService: AiQualificationService
   ) { }
 
   async listLeads(tenantId: string, query: LeadListQueryDto) {
@@ -129,7 +131,8 @@ export class LeadsService {
           assignedTo: users.name,
           propertyMatchScore: leads.propertyMatchScore,
           leadScore: leads.leadScore,
-          leadLabel: leads.leadLabel
+          leadLabel: leads.leadLabel,
+          aiQualification: leads.aiQualification
         })
         .from(leads)
         .leftJoin(leadStatuses, eq(leads.statusId, leadStatuses.id))
@@ -156,7 +159,8 @@ export class LeadsService {
       assignedTo: row.assignedTo ?? null,
       propertyMatchScore: row.propertyMatchScore ?? 0,
       leadScore: row.leadScore ?? 0,
-      leadLabel: row.leadLabel ?? null
+      leadLabel: row.leadLabel ?? null,
+      aiQualification: row.aiQualification ?? null
     }));
 
     return PaginationUtil.buildPaginatedResult(mappedResults, total, page, limit);
@@ -225,6 +229,8 @@ export class LeadsService {
       label = autoResult.label;
     }
 
+    const aiResult = await this.aiQualificationService.qualifyLead(dto);
+
     await this.db.insert(leads).values({
       id,
       tenantId,
@@ -239,8 +245,9 @@ export class LeadsService {
       bhkType: dto.bhkType ?? null,
       locationPreference: dto.locationPreference ?? null,
       propertyMatchScore: dto.propertyMatchScore ?? 0,
-      leadScore: score,
-      leadLabel: label,
+      leadScore: aiResult?.score ?? score,
+      leadLabel: aiResult?.label ?? label,
+      aiQualification: aiResult ?? null,
       leadSource: dto.leadSource ?? 'website',
       captureChannel: dto.captureChannel ?? null,
       notes: dto.notes ?? null,
@@ -978,6 +985,35 @@ export class LeadsService {
 
     return this.getLead(tenantId, leadId);
   }
+
+  async qualifyLeadWithAi(tenantId: string, leadId: string) {
+    const lead = await this.getLead(tenantId, leadId);
+    const dto: CreateLeadDto = {
+      name: lead.lead.name,
+      phone: lead.lead.phone ?? '',
+      email: lead.lead.email ?? undefined,
+      budget: lead.lead.budget ? Number(lead.lead.budget) : undefined,
+      requirementType: lead.lead.requirementType,
+      propertyType: lead.lead.propertyType ?? undefined,
+      propertyCategory: lead.lead.propertyCategory ?? undefined,
+      bhkType: lead.lead.bhkType ?? undefined,
+      locationPreference: lead.lead.locationPreference as any,
+      notes: lead.lead.notes ?? undefined,
+      leadSource: lead.lead.leadSource,
+    };
+
+    const aiResult = await this.aiQualificationService.qualifyLead(dto);
+    if (!aiResult) {
+      throw new InternalServerErrorException('AI qualification failed');
+    }
+
+    await this.db.update(leads).set({
+      leadScore: aiResult?.score ?? 0,
+      leadLabel: aiResult?.label ?? 'cold',
+      aiQualification: aiResult,
+      updatedAt: new Date()
+    }).where(and(eq(leads.id, leadId), eq(leads.tenantId, tenantId)));
+
+    return this.getLead(tenantId, leadId);
+  }
 }
-
-
