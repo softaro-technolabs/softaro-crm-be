@@ -4,7 +4,8 @@ import {
   Inject,
   Injectable,
   InternalServerErrorException,
-  NotFoundException
+  NotFoundException,
+  Logger
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { and, desc, eq, ilike, or, sql } from 'drizzle-orm';
@@ -61,6 +62,7 @@ import { NotificationGateway } from '../notifications/notification.gateway';
 
 @Injectable()
 export class LeadsService {
+  private readonly logger = new Logger(LeadsService.name);
   constructor(
     @Inject(DRIZZLE) private readonly db: DrizzleDatabase,
     private readonly assignmentService: LeadAssignmentService,
@@ -229,8 +231,6 @@ export class LeadsService {
       label = autoResult.label;
     }
 
-    const aiResult = await this.aiQualificationService.qualifyLead(dto);
-
     await this.db.insert(leads).values({
       id,
       tenantId,
@@ -245,9 +245,9 @@ export class LeadsService {
       bhkType: dto.bhkType ?? null,
       locationPreference: dto.locationPreference ?? null,
       propertyMatchScore: dto.propertyMatchScore ?? 0,
-      leadScore: aiResult?.score ?? score,
-      leadLabel: aiResult?.label ?? label,
-      aiQualification: aiResult ?? null,
+      leadScore: score,
+      leadLabel: label,
+      aiQualification: null,
       leadSource: dto.leadSource ?? 'website',
       captureChannel: dto.captureChannel ?? null,
       notes: dto.notes ?? null,
@@ -257,6 +257,11 @@ export class LeadsService {
       kanbanPosition: now.getTime(),
       createdAt: now,
       updatedAt: now
+    });
+
+    // Fire-and-forget AI qualification in the background
+    this.qualifyLeadWithAi(tenantId, id).catch((err) => {
+      this.logger.error('[AI Qualification Background Failed]', err);
     });
 
     if (assignedToUserId) {
@@ -991,7 +996,12 @@ export class LeadsService {
 
     // Trigger emails for re-capture as well
     this.sendLeadCaptureEmails(tenantId, leadId, dto, existing.lead.assignedToUserId, true).catch((err) => {
-      console.error('[Recapture Email Notification Failed]', err);
+      this.logger.error('[Recapture Email Notification Failed]', err);
+    });
+
+    // Re-qualify with AI on re-capture
+    this.qualifyLeadWithAi(tenantId, leadId).catch((err) => {
+      this.logger.error('[AI Re-qualification Background Failed on Duplicate]', err);
     });
 
     return this.getLead(tenantId, leadId);
@@ -1019,7 +1029,7 @@ export class LeadsService {
     }
 
     await this.db.update(leads).set({
-      leadScore: aiResult?.score ?? 0,
+      leadScore: aiResult?.finalScore ?? aiResult?.score ?? 0,
       leadLabel: aiResult?.label ?? 'cold',
       aiQualification: aiResult,
       updatedAt: new Date()
