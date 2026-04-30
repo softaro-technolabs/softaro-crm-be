@@ -24,7 +24,9 @@ import {
   users,
   userTenants,
   roles,
-  siteVisits
+  siteVisits,
+  propertyEntities,
+  propertyLocations
 } from '../database/schema';
 import { MailService } from '../common/services/mail.service';
 import {
@@ -1022,6 +1024,19 @@ export class LeadsService {
       .from(leadActivities)
       .where(eq(leadActivities.leadId, leadId));
 
+    // Fetch available properties for AI matching
+    const availableProperties = await this.db
+      .select({
+        id: propertyEntities.id,
+        name: propertyEntities.name,
+        type: propertyEntities.entityType,
+        location: propertyLocations.area,
+      })
+      .from(propertyEntities)
+      .leftJoin(propertyLocations, eq(propertyEntities.id, propertyLocations.entityId))
+      .where(eq(propertyEntities.status, 'active'))
+      .limit(15); // Limit to top 15 projects to keep prompt concise
+
     const dto: LeadQualificationInput = {
       name: lead.lead.name,
       phone: lead.lead.phone ?? '',
@@ -1036,7 +1051,13 @@ export class LeadsService {
       leadSource: lead.lead.leadSource,
       siteVisitCount: Number(visitCountResult?.val || 0),
       followUpCount: Number(activityCountResult?.val || 0),
-      timeline: (lead.lead.metadata as any)?.timeline || 'exploring'
+      timeline: (lead.lead.metadata as any)?.timeline || 'exploring',
+      availableProperties: availableProperties.map(p => ({
+        id: p.id,
+        name: p.name,
+        type: p.type,
+        location: p.location ?? undefined
+      }))
     };
 
     const aiResult = await this.aiQualificationService.qualifyLead(dto);
@@ -1047,6 +1068,7 @@ export class LeadsService {
     await this.db.update(leads).set({
       leadScore: aiResult?.finalScore ?? aiResult?.score ?? 0,
       leadLabel: aiResult?.label ?? 'cold',
+      propertyMatchScore: aiResult?.propertyMatchScore ?? lead.lead.propertyMatchScore ?? 0,
       aiQualification: aiResult,
       updatedAt: new Date()
     }).where(and(eq(leads.id, leadId), eq(leads.tenantId, tenantId)));

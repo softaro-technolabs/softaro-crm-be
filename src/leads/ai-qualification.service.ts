@@ -14,6 +14,8 @@ export type AiQualificationResult = {
   finalScore: number;      // NEW: blended final score
   suggestedNextAction: string; // NEW: human work easy
   agentScript: string;         // NEW: human work easy
+  propertyMatchScore: number;  // NEW: AI match
+  matchedPropertyId?: string;  // NEW: AI match
   modelUsed: string;       // NEW: audit trail
   promptVersion: string;   // NEW: prompt versioning
   qualifiedAt: string;     // NEW: timestamp
@@ -36,6 +38,7 @@ export interface LeadQualificationInput {
   followUpCount?: number;
   loanPreApproved?: boolean;
   timeline?: 'immediate' | '1-3months' | '3-6months' | '6months+' | 'exploring';
+  availableProperties?: Array<{ id: string; name: string; type: string; category?: string; location?: string; budget_min?: number }>;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -89,6 +92,8 @@ export class AiQualificationService {
       reasoning: aiResult.reasoning,
       suggestedNextAction: aiResult.suggestedNextAction,
       agentScript: aiResult.agentScript,
+      propertyMatchScore: aiResult.propertyMatchScore,
+      matchedPropertyId: aiResult.matchedPropertyId,
       ruleScore,
       finalScore,
       modelUsed: MODEL,
@@ -138,7 +143,7 @@ export class AiQualificationService {
   private async callGroqWithRetry(
     leadData: LeadQualificationInput,
     retries = 3,
-  ): Promise<Pick<AiQualificationResult, 'score' | 'summary' | 'reasoning' | 'suggestedNextAction' | 'agentScript'> | null> {
+  ): Promise<Pick<AiQualificationResult, 'score' | 'summary' | 'reasoning' | 'suggestedNextAction' | 'agentScript' | 'propertyMatchScore' | 'matchedPropertyId'> | null> {
     for (let attempt = 1; attempt <= retries; attempt++) {
       try {
         return await this.callGroq(leadData);
@@ -165,7 +170,7 @@ export class AiQualificationService {
 
   private async callGroq(
     leadData: LeadQualificationInput,
-  ): Promise<Pick<AiQualificationResult, 'score' | 'summary' | 'reasoning' | 'suggestedNextAction' | 'agentScript'> | null> {
+  ): Promise<Pick<AiQualificationResult, 'score' | 'summary' | 'reasoning' | 'suggestedNextAction' | 'agentScript' | 'propertyMatchScore' | 'matchedPropertyId'> | null> {
     const prompt = this.buildPrompt(leadData);
 
     const response = await axios.post(
@@ -225,6 +230,9 @@ Lead Details:
 - Lead Source: ${lead.leadSource || 'N/A'}
 - Notes: ${lead.notes || 'N/A'}
 
+Available Properties to Match:
+${lead.availableProperties?.map(p => `- [ID: ${p.id}] Name: ${p.name}, Type: ${p.type}, Category: ${p.category || 'N/A'}, Location: ${p.location || 'N/A'}`).join('\n') || 'No properties available.'}
+
 Scoring Criteria:
 - "hot" (70-100): Clear budget, specific requirements, immediate/near-term timeline, or site visits done
 - "warm" (40-69): Has some details but early stage or vague requirements
@@ -236,7 +244,9 @@ Return ONLY this JSON (no markdown, no extra text):
   "summary": "<1-2 sentence quality summary>",
   "reasoning": ["<point1>", "<point2>", "<point3>"],
   "suggestedNextAction": "<Specific action for the agent to take>",
-  "agentScript": "<A short WhatsApp/Call script for the agent>"
+  "agentScript": "<A short WhatsApp/Call script for the agent>",
+  "propertyMatchScore": <number 0-100 matching lead to best available property>,
+  "matchedPropertyId": "<ID of the best matching property from the list>"
 }
 `.trim();
   }
@@ -245,7 +255,7 @@ Return ONLY this JSON (no markdown, no extra text):
 
   private validateAiOutput(
     obj: unknown,
-  ): Pick<AiQualificationResult, 'score' | 'summary' | 'reasoning' | 'suggestedNextAction' | 'agentScript'> | null {
+  ): Pick<AiQualificationResult, 'score' | 'summary' | 'reasoning' | 'suggestedNextAction' | 'agentScript' | 'propertyMatchScore' | 'matchedPropertyId'> | null {
     if (!obj || typeof obj !== 'object') return null;
     const o = obj as Record<string, unknown>;
 
@@ -265,8 +275,10 @@ Return ONLY this JSON (no markdown, no extra text):
 
     const agentScript = typeof o['agentScript'] === 'string' ? o['agentScript'] : 'No script provided.';
     const suggestedNextAction = typeof o['suggestedNextAction'] === 'string' ? o['suggestedNextAction'] : 'Follow up with lead.';
+    const propertyMatchScore = typeof o['propertyMatchScore'] === 'number' ? o['propertyMatchScore'] : 0;
+    const matchedPropertyId = typeof o['matchedPropertyId'] === 'string' ? o['matchedPropertyId'] : undefined;
 
-    return { score, summary, reasoning, suggestedNextAction, agentScript };
+    return { score, summary, reasoning, suggestedNextAction, agentScript, propertyMatchScore, matchedPropertyId };
   }
 
   // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -280,6 +292,7 @@ Return ONLY this JSON (no markdown, no extra text):
       reasoning: ['AI qualification was skipped — rule-based score applied as fallback.'],
       suggestedNextAction: 'Check lead details manually.',
       agentScript: 'Hi, I saw your inquiry about properties. Would you like more details?',
+      propertyMatchScore: 0,
       ruleScore,
       finalScore: ruleScore,
       modelUsed: 'rule-engine',
