@@ -16,6 +16,7 @@ export type AiQualificationResult = {
   agentScript: string;         // NEW: human work easy
   propertyMatchScore: number;  // NEW: AI match
   matchedPropertyId?: string;  // NEW: AI match
+  matchedPropertyName?: string; // NEW: AI match
   modelUsed: string;       // NEW: audit trail
   promptVersion: string;   // NEW: prompt versioning
   qualifiedAt: string;     // NEW: timestamp
@@ -94,6 +95,7 @@ export class AiQualificationService {
       agentScript: aiResult.agentScript,
       propertyMatchScore: aiResult.propertyMatchScore,
       matchedPropertyId: aiResult.matchedPropertyId,
+      matchedPropertyName: aiResult.matchedPropertyName,
       ruleScore,
       finalScore,
       modelUsed: MODEL,
@@ -143,7 +145,7 @@ export class AiQualificationService {
   private async callGroqWithRetry(
     leadData: LeadQualificationInput,
     retries = 3,
-  ): Promise<Pick<AiQualificationResult, 'score' | 'summary' | 'reasoning' | 'suggestedNextAction' | 'agentScript' | 'propertyMatchScore' | 'matchedPropertyId'> | null> {
+  ): Promise<Pick<AiQualificationResult, 'score' | 'summary' | 'reasoning' | 'suggestedNextAction' | 'agentScript' | 'propertyMatchScore' | 'matchedPropertyId' | 'matchedPropertyName'> | null> {
     for (let attempt = 1; attempt <= retries; attempt++) {
       try {
         return await this.callGroq(leadData);
@@ -170,7 +172,7 @@ export class AiQualificationService {
 
   private async callGroq(
     leadData: LeadQualificationInput,
-  ): Promise<Pick<AiQualificationResult, 'score' | 'summary' | 'reasoning' | 'suggestedNextAction' | 'agentScript' | 'propertyMatchScore' | 'matchedPropertyId'> | null> {
+  ): Promise<Pick<AiQualificationResult, 'score' | 'summary' | 'reasoning' | 'suggestedNextAction' | 'agentScript' | 'propertyMatchScore' | 'matchedPropertyId' | 'matchedPropertyName'> | null> {
     const prompt = this.buildPrompt(leadData);
 
     const response = await axios.post(
@@ -246,7 +248,8 @@ Return ONLY this JSON (no markdown, no extra text):
   "suggestedNextAction": "<Specific action for the agent to take>",
   "agentScript": "<A short WhatsApp/Call script for the agent>",
   "propertyMatchScore": <number 0-100 matching lead to best available property>,
-  "matchedPropertyId": "<ID of the best matching property from the list>"
+  "matchedPropertyId": "<ID of the best matching property from the list>",
+  "matchedPropertyName": "<Name of the best matching property>"
 }
 `.trim();
   }
@@ -255,7 +258,7 @@ Return ONLY this JSON (no markdown, no extra text):
 
   private validateAiOutput(
     obj: unknown,
-  ): Pick<AiQualificationResult, 'score' | 'summary' | 'reasoning' | 'suggestedNextAction' | 'agentScript' | 'propertyMatchScore' | 'matchedPropertyId'> | null {
+  ): Pick<AiQualificationResult, 'score' | 'summary' | 'reasoning' | 'suggestedNextAction' | 'agentScript' | 'propertyMatchScore' | 'matchedPropertyId' | 'matchedPropertyName'> | null {
     if (!obj || typeof obj !== 'object') return null;
     const o = obj as Record<string, unknown>;
 
@@ -277,8 +280,9 @@ Return ONLY this JSON (no markdown, no extra text):
     const suggestedNextAction = typeof o['suggestedNextAction'] === 'string' ? o['suggestedNextAction'] : 'Follow up with lead.';
     const propertyMatchScore = typeof o['propertyMatchScore'] === 'number' ? o['propertyMatchScore'] : 0;
     const matchedPropertyId = typeof o['matchedPropertyId'] === 'string' ? o['matchedPropertyId'] : undefined;
+    const matchedPropertyName = typeof o['matchedPropertyName'] === 'string' ? o['matchedPropertyName'] : undefined;
 
-    return { score, summary, reasoning, suggestedNextAction, agentScript, propertyMatchScore, matchedPropertyId };
+    return { score, summary, reasoning, suggestedNextAction, agentScript, propertyMatchScore, matchedPropertyId, matchedPropertyName };
   }
 
   // ── Helpers ─────────────────────────────────────────────────────────────────
