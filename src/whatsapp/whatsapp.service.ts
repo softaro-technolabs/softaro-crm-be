@@ -515,9 +515,13 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
             availableProperties: propertyDetails as any
         };
 
+        this.logger.log(`[AI Chat] Input: "${message}" | History: ${history.length} msgs | Props: ${input.availableProperties?.length}`);
         const aiResult = await this.aiService.generateChatResponse(tenantId, message, input, history);
 
         if (aiResult) {
+            this.logger.log(`[AI Chat] Response Text: "${aiResult.text.substring(0, 50)}..."`);
+            this.logger.log(`[AI Chat] Image URL Selected: ${aiResult.imageUrl || 'NONE'}`);
+
             // 1. Send Text Response
             await this.sendMessage(tenantId, leadId, contactPhone, {
                 messaging_product: 'whatsapp',
@@ -529,16 +533,19 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
 
             // 2. Send Image if selected by AI
             if (aiResult.imageUrl) {
-                await this.sendMessage(tenantId, leadId, contactPhone, {
-                    messaging_product: 'whatsapp',
-                    recipient_type: 'individual',
-                    to: contactPhone,
-                    type: 'image',
-                    image: { link: aiResult.imageUrl }
-                }, false, true);
+                try {
+                    const imgRes = await this.sendMessage(tenantId, leadId, contactPhone, {
+                        messaging_product: 'whatsapp',
+                        recipient_type: 'individual',
+                        to: contactPhone,
+                        type: 'image',
+                        image: { link: aiResult.imageUrl }
+                    }, false, true);
+                    this.logger.log(`[AI Chat] Image message queued: ${JSON.stringify(imgRes)}`);
+                } catch (imgErr: any) {
+                    this.logger.error(`[AI Chat] Failed to send image: ${imgErr.message}`);
+                }
             }
-            
-            this.logger.log(`AI Auto-Reply sent to ${contactPhone}. Image: ${!!aiResult.imageUrl}`);
         }
     }
 
