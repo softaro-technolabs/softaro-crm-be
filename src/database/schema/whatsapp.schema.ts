@@ -47,6 +47,7 @@ export const whatsappMessages = pgTable(
         status: whatsappMessageStatusEnum('status').notNull(),
         content: jsonb('content').notNull(),
         isTemplate: boolean('is_template').default(false).notNull(),
+        isAiGenerated: boolean('is_ai_generated').default(false).notNull(),
         createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
         updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull()
     },
@@ -82,6 +83,7 @@ export const whatsappMessageQueue = pgTable(
         payload: jsonb('payload').notNull(),
         attempts: varchar('attempts', { length: 10 }).default('0').notNull(), // Smallint could be better, but varchar works for simplicity given project standards
         isProcessing: boolean('is_processing').default(false).notNull(),
+        isAiGenerated: boolean('is_ai_generated').default(false).notNull(),
         lastAttemptAt: timestamp('last_attempt_at', { withTimezone: true }),
         nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }).defaultNow().notNull(),
         errorLog: text('error_log'),

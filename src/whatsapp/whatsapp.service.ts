@@ -115,6 +115,7 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
                     status: 'sent' as const,
                     content: cleanPayload,
                     isTemplate: cleanPayload.type === 'template',
+                    isAiGenerated: msg.isAiGenerated,
                     createdAt: new Date(),
                     updatedAt: new Date()
                 };
@@ -468,12 +469,12 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
                 to: contactPhone,
                 type: 'text',
                 text: { body: aiResponse }
-            }, false);
+            }, false, true);
             this.logger.log(`AI Auto-Reply sent to ${contactPhone}: ${aiResponse.substring(0, 50)}...`);
         }
     }
 
-    async sendMessage(tenantId: string, leadId: string | null, contactPhone: string, payload: any, isTemplate: boolean) {
+    async sendMessage(tenantId: string, leadId: string | null, contactPhone: string, payload: any, isTemplate: boolean, isAiGenerated = false) {
         // 1. Fetch Tenant WhatsApp Credentials
         const [account] = await this.db
             .select()
@@ -513,7 +514,8 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
             leadId,
             contactPhone,
             payload: { ...payload, phone_number_id: account.phoneNumberId, token: decryptedToken },
-            isProcessing: false
+            isProcessing: false,
+            isAiGenerated
         });
 
         return { success: true, queueId, status: 'queued' };
@@ -559,7 +561,8 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
                     leadId: scheduled.leadId,
                     contactPhone: scheduled.contactPhone,
                     payload: { ...payload, phone_number_id: account.phoneNumberId, token: decryptedToken },
-                    isProcessing: false
+                    isProcessing: false,
+                    isAiGenerated: false
                 });
 
                 // Update scheduled message status
