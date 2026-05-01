@@ -447,12 +447,16 @@ export class PropertiesService {
 
     if (!row) throw new NotFoundException('Property unit not found');
 
-    const [attributes, media] = await Promise.all([
+    const [attributes, media, pricingBreakups] = await Promise.all([
       this.listUnitAttributeValues(tenantId, unitId),
-      this.listMedia(tenantId, { entityId: row.unit.entityId, unitId })
+      this.listMedia(tenantId, { entityId: row.unit.entityId, unitId }),
+      this.getUnitPricingBreakups(tenantId, unitId)
     ]);
 
-    return { ...row, attributes, media };
+    const breakupsTotal = pricingBreakups.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+    const totalPrice = Number(row.unit.price || 0) + breakupsTotal;
+
+    return { ...row, attributes, media, pricingBreakups, totalPrice };
   }
 
   async createUnit(tenantId: string, dto: CreatePropertyUnitDto) {
