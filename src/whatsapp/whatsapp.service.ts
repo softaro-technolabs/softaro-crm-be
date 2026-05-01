@@ -20,7 +20,8 @@ import {
     propertyUnits, 
     propertyAttributeValues, 
     propertyAttributes,
-    propertyMedia
+    propertyMedia,
+    propertyPricingBreakups
 } from '../database/schema';
 
 @Injectable()
@@ -439,6 +440,7 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
             // Fetch Units summary (Price Range, BHKs)
             const units = await this.db
                 .select({
+                    id: propertyUnits.id,
                     price: propertyUnits.price,
                     unitCode: propertyUnits.unitCode,
                 })
@@ -446,12 +448,37 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
                 .where(eq(propertyUnits.entityId, p.id))
                 .limit(20);
 
-            const prices = units.map(u => Number(u.price)).filter(pr => pr > 0);
-            const minPrice = prices.length ? Math.min(...prices) : 'N/A';
-            const maxPrice = prices.length ? Math.max(...prices) : 'N/A';
-            const unitSummary = prices.length 
-                ? `Price range: ${minPrice.toLocaleString('en-IN')} - ${maxPrice.toLocaleString('en-IN')} INR. Units: ${units.map(u => u.unitCode).join(', ')}`
-                : 'Prices on request.';
+            // Fetch breakups for all units in this project
+            const unitDetailsWithBreakups = await Promise.all(units.map(async (u) => {
+                const breakups = await this.db
+                    .select({ label: propertyPricingBreakups.label, amount: propertyPricingBreakups.amount })
+                    .from(propertyPricingBreakups)
+                    .where(eq(propertyPricingBreakups.unitId, u.id));
+                
+                const breakupsSum = breakups.reduce((sum, b) => sum + Number(b.amount || 0), 0);
+                const total = Number(u.price || 0) + breakupsSum;
+
+                return {
+                    ...u,
+                    breakups,
+                    total
+                };
+            }));
+
+            const totals = unitDetailsWithBreakups.map(u => u.total).filter(t => t > 0);
+            const minPrice = totals.length ? Math.min(...totals) : 'N/A';
+            const maxPrice = totals.length ? Math.max(...totals) : 'N/A';
+            
+            const unitSummary = unitDetailsWithBreakups.length 
+                ? `Available Units & Pricing:
+${unitDetailsWithBreakups.map(u => {
+    let text = `- Unit ${u.unitCode}: Total Price ₹${u.total.toLocaleString('en-IN')} (Base: ₹${Number(u.price).toLocaleString('en-IN')})`;
+    if (u.breakups.length > 0) {
+        text += `\n    Breakup: ${u.breakups.map(b => `${b.label}: ₹${Number(b.amount).toLocaleString('en-IN')}`).join(', ')}`;
+    }
+    return text;
+}).join('\n')}`
+                : 'Pricing details available on request.';
 
             // Fetch Attributes (Amenities/Features)
             const attrs = await this.db
