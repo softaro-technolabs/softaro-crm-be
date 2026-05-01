@@ -25,7 +25,17 @@ export class AppwriteStorageService {
     async uploadFile(file: Express.Multer.File): Promise<{ fileIds: string; url: string }> {
         try {
             const formData = new FormData();
-            formData.append('fileId', 'unique()');
+            
+            // Create a unique but readable file ID that includes the extension
+            const extension = file.originalname.split('.').pop() || 'file';
+            const sanitizedName = file.originalname
+                .split('.')[0]
+                .replace(/[^a-zA-Z0-9]/g, '')
+                .substring(0, 15);
+            const uniquePart = Math.random().toString(36).substring(2, 10);
+            const fileId = `${uniquePart}_${sanitizedName}.${extension}`.substring(0, 36);
+            
+            formData.append('fileId', fileId);
 
             // Convert buffer to stream for form-data
             const stream = Readable.from(file.buffer);
@@ -43,13 +53,32 @@ export class AppwriteStorageService {
                 },
             );
 
-            const fileId = response.data.$id;
-            const url = `${this.endpoint}/storage/buckets/${this.bucketId}/files/${fileId}/view?project=${this.projectId}`;
+            const finalFileId = response.data.$id;
+            // Append the original name to the URL as a query param to help with previews/identification
+            const url = `${this.endpoint}/storage/buckets/${this.bucketId}/files/${finalFileId}/view?project=${this.projectId}&name=${encodeURIComponent(file.originalname)}`;
 
-            return { fileIds: fileId, url };
+            return { fileIds: finalFileId, url };
         } catch (error) {
             this.logger.error('Appwrite upload failed', error);
             throw new InternalServerErrorException('Failed to upload file to storage');
+        }
+    }
+
+    getFileViewUrl(fileId: string): string {
+        return `${this.endpoint}/storage/buckets/${this.bucketId}/files/${fileId}/view?project=${this.projectId}`;
+    }
+
+    async getFileStream(fileId: string): Promise<{ stream: Readable; contentType: string }> {
+        const url = this.getFileViewUrl(fileId);
+        try {
+            const response = await axios.get(url, { responseType: 'stream' });
+            return {
+                stream: response.data,
+                contentType: response.headers['content-type'] || 'application/octet-stream',
+            };
+        } catch (error) {
+            this.logger.error(`Failed to stream file ${fileId}`, error);
+            throw new InternalServerErrorException('Failed to fetch file from storage');
         }
     }
 }
