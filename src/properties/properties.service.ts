@@ -248,37 +248,52 @@ export class PropertiesService {
       await this.upsertEntityAttributeValues(tenantId, entityId, { values: dto.attributes });
     }
 
-    if (dto.media && dto.media.length > 0) {
-      for (const item of dto.media) {
-        if (item.id) {
-          // Update existing media (Only metadata, not fileUrl usually, but allowing fileUrl for flexibility)
-          const mediaUpdate: any = {};
-          if (item.mediaType) mediaUpdate.mediaType = item.mediaType;
-          if (item.fileUrl) mediaUpdate.fileUrl = item.fileUrl;
-          if (item.isPublic !== undefined) mediaUpdate.isPublic = item.isPublic;
-          if (item.sortOrder !== undefined) mediaUpdate.sortOrder = item.sortOrder;
+    if (dto.media !== undefined) {
+      const currentMedia = await this.listMedia(tenantId, { entityId });
+      const incomingMedia = dto.media;
+      
+      const incomingIds = incomingMedia.map(m => m.id).filter(Boolean) as string[];
+      const mediaToDelete = currentMedia.filter(m => !incomingIds.includes(m.id));
 
-          if (Object.keys(mediaUpdate).length > 0) {
-            await this.db.update(propertyMedia)
-              .set(mediaUpdate)
-              .where(and(eq(propertyMedia.tenantId, tenantId), eq(propertyMedia.id, item.id), eq(propertyMedia.entityId, entityId)));
+      await this.db.transaction(async (tx) => {
+        // Delete removed media
+        if (mediaToDelete.length > 0) {
+          for (const m of mediaToDelete) {
+            await tx.delete(propertyMedia)
+              .where(and(eq(propertyMedia.tenantId, tenantId), eq(propertyMedia.id, m.id)));
           }
-        } else {
-          // Create new media
-          if (!item.mediaType || !item.fileUrl) continue; // Skip invalid new items
-          await this.db.insert(propertyMedia).values({
-            id: randomUUID(),
-            tenantId,
-            entityId,
-            unitId: null,
-            mediaType: item.mediaType,
-            fileUrl: item.fileUrl,
-            isPublic: item.isPublic ?? false,
-            sortOrder: item.sortOrder ?? 0,
-            createdAt: new Date()
-          });
         }
-      }
+
+        // Update or Create
+        for (const item of incomingMedia) {
+          if (item.id) {
+            const mediaUpdate: any = {};
+            if (item.mediaType) mediaUpdate.mediaType = item.mediaType;
+            if (item.fileUrl) mediaUpdate.fileUrl = item.fileUrl;
+            if (item.isPublic !== undefined) mediaUpdate.isPublic = item.isPublic;
+            if (item.sortOrder !== undefined) mediaUpdate.sortOrder = item.sortOrder;
+
+            if (Object.keys(mediaUpdate).length > 0) {
+              await tx.update(propertyMedia)
+                .set(mediaUpdate)
+                .where(and(eq(propertyMedia.tenantId, tenantId), eq(propertyMedia.id, item.id), eq(propertyMedia.entityId, entityId)));
+            }
+          } else {
+            if (!item.mediaType || !item.fileUrl) continue;
+            await tx.insert(propertyMedia).values({
+              id: randomUUID(),
+              tenantId,
+              entityId,
+              unitId: null,
+              mediaType: item.mediaType,
+              fileUrl: item.fileUrl,
+              isPublic: item.isPublic ?? false,
+              sortOrder: item.sortOrder ?? 0,
+              createdAt: new Date()
+            });
+          }
+        }
+      });
     }
 
     return this.getEntity(tenantId, entityId);
