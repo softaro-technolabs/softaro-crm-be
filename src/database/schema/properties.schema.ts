@@ -60,6 +60,9 @@ export const propertyEntities = pgTable(
     description: varchar('description', { length: 2000 }),
     reraNumber: varchar('rera_number', { length: 100 }),
     reraExpiry: timestamp('rera_expiry', { withTimezone: true }),
+    defaultGstPercentage: numeric('default_gst_percentage', { precision: 5, scale: 2 }).default('5'),
+    defaultStampDutyPercentage: numeric('default_stamp_duty_percentage', { precision: 5, scale: 2 }).default('6'),
+    defaultRegistrationCharges: numeric('default_registration_charges', { precision: 15, scale: 2 }).default('30000'),
     createdByUserId: varchar('created_by_user_id', { length: 36 }),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull()

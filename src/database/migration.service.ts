@@ -1029,7 +1029,10 @@ export class MigrationService {
     if (entitiesCheck.rows[0]?.t !== null) {
       const entityColumns = [
         { name: 'rera_number', type: 'varchar(100)' },
-        { name: 'rera_expiry', type: 'timestamptz' }
+        { name: 'rera_expiry', type: 'timestamptz' },
+        { name: 'default_gst_percentage', type: 'numeric(5,2) DEFAULT 5' },
+        { name: 'default_stamp_duty_percentage', type: 'numeric(5,2) DEFAULT 6' },
+        { name: 'default_registration_charges', type: 'numeric(15,2) DEFAULT 30000' }
       ];
 
       for (const col of entityColumns) {

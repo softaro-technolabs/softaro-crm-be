@@ -168,6 +168,24 @@ export class CreatePropertyEntityDto {
   @Type(() => Date)
   reraExpiry?: Date;
 
+  @ApiPropertyOptional({ description: 'Default GST percentage for this project', example: 5 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  defaultGstPercentage?: number;
+
+  @ApiPropertyOptional({ description: 'Default Stamp Duty percentage for this project', example: 6 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  defaultStampDutyPercentage?: number;
+
+  @ApiPropertyOptional({ description: 'Default Registration Charges for this project', example: 30000 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  defaultRegistrationCharges?: number;
+
   @ApiPropertyOptional({ description: 'Optional location info to create with entity', type: () => UpsertPropertyLocationDto })
   @IsOptional()
   @ValidateNested()
@@ -217,6 +235,24 @@ export class UpdatePropertyEntityDto {
   @IsOptional()
   @Type(() => Date)
   reraExpiry?: Date;
+
+  @ApiPropertyOptional({ description: 'Default GST percentage for this project', example: 5 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  defaultGstPercentage?: number;
+
+  @ApiPropertyOptional({ description: 'Default Stamp Duty percentage for this project', example: 6 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  defaultStampDutyPercentage?: number;
+
+  @ApiPropertyOptional({ description: 'Default Registration Charges for this project', example: 30000 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  defaultRegistrationCharges?: number;
 
   @ApiPropertyOptional({ format: 'uuid', description: 'Re-parent entity (optional)' })
   @IsOptional()
@@ -691,5 +727,89 @@ export class ReplacePricingBreakupsDto {
   @ValidateNested({ each: true })
   @Type(() => PricingBreakupItemDto)
   items!: PricingBreakupItemDto[];
+}
+
+export class ProjectPricingConfigDto {
+  @ApiProperty({ description: 'GST percentage', example: 5 })
+  @IsNumber()
+  @Min(0)
+  gstPercentage!: number;
+
+  @ApiProperty({ description: 'Stamp Duty percentage', example: 6 })
+  @IsNumber()
+  @Min(0)
+  stampDutyPercentage!: number;
+
+  @ApiProperty({ description: 'Registration Charges (Fixed)', example: 30000 })
+  @IsNumber()
+  @Min(0)
+  registrationCharges!: number;
+
+  @ApiPropertyOptional({ description: 'Other fixed charges like Clubhouse, Electricity, etc.', example: 200000 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  otherFixedCharges?: number;
+}
+
+export class GenerateCostSheetDto {
+  @ApiProperty({ format: 'uuid' })
+  @IsUUID(4)
+  unitId!: string;
+
+  @ApiPropertyOptional({ description: 'Discount per sqft', example: 100 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  discountPerSqft?: number;
+
+  @ApiPropertyOptional({ description: 'Lumpsum discount', example: 50000 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  lumpsumDiscount?: number;
+
+  @ApiProperty({ type: ProjectPricingConfigDto })
+  @ValidateNested()
+  @Type(() => ProjectPricingConfigDto)
+  config!: ProjectPricingConfigDto;
+}
+
+export class CostSheetResponseDto {
+  @ApiProperty()
+  unitId!: string;
+  
+  @ApiProperty()
+  unitCode!: string;
+
+  @ApiProperty()
+  basePrice!: number;
+
+  @ApiProperty()
+  plcAmount!: number;
+
+  @ApiProperty()
+  agreementValue!: number;
+
+  @ApiProperty()
+  gstAmount!: number;
+
+  @ApiProperty()
+  stampDutyAmount!: number;
+
+  @ApiProperty()
+  registrationCharges!: number;
+
+  @ApiProperty()
+  otherFixedCharges!: number;
+
+  @ApiProperty()
+  totalTax!: number;
+
+  @ApiProperty()
+  grandTotal!: number;
+
+  @ApiProperty()
+  areaUsed!: number; // Carpet or RERA area used for calculation
 }
 

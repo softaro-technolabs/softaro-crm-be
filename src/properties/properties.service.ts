@@ -39,7 +39,9 @@ import type {
   UpdatePropertyUnitDto,
   UpdatePropertyUnitStatusDto,
   UpsertAttributeValuesDto,
-  UpsertPropertyLocationDto
+  UpsertPropertyLocationDto,
+  GenerateCostSheetDto,
+  CostSheetResponseDto
 } from './properties.dto';
 
 @Injectable()
@@ -164,6 +166,9 @@ export class PropertiesService {
         description: dto.description ?? null,
         reraNumber: dto.reraNumber ?? null,
         reraExpiry: dto.reraExpiry ?? null,
+        defaultGstPercentage: dto.defaultGstPercentage !== undefined ? dto.defaultGstPercentage.toString() : null,
+        defaultStampDutyPercentage: dto.defaultStampDutyPercentage !== undefined ? dto.defaultStampDutyPercentage.toString() : null,
+        defaultRegistrationCharges: dto.defaultRegistrationCharges !== undefined ? dto.defaultRegistrationCharges.toString() : null,
         createdByUserId: options?.createdByUserId ?? null,
         createdAt: now,
         updatedAt: now
@@ -237,6 +242,9 @@ export class PropertiesService {
     if (dto.description !== undefined) updateData.description = dto.description ?? null;
     if (dto.reraNumber !== undefined) updateData.reraNumber = dto.reraNumber ?? null;
     if (dto.reraExpiry !== undefined) updateData.reraExpiry = dto.reraExpiry ?? null;
+    if (dto.defaultGstPercentage !== undefined) updateData.defaultGstPercentage = dto.defaultGstPercentage !== null ? dto.defaultGstPercentage.toString() : null;
+    if (dto.defaultStampDutyPercentage !== undefined) updateData.defaultStampDutyPercentage = dto.defaultStampDutyPercentage !== null ? dto.defaultStampDutyPercentage.toString() : null;
+    if (dto.defaultRegistrationCharges !== undefined) updateData.defaultRegistrationCharges = dto.defaultRegistrationCharges !== null ? dto.defaultRegistrationCharges.toString() : null;
     if (dto.parentId !== undefined) updateData.parentId = dto.parentId ?? null;
 
     if (Object.keys(updateData).length > 0) {
@@ -1069,6 +1077,74 @@ export class PropertiesService {
       .limit(1);
     if (!row) throw new NotFoundException('Lead not found');
     return row;
+  }
+
+  async generateCostSheet(tenantId: string, dto: GenerateCostSheetDto): Promise<CostSheetResponseDto> {
+    const [unit] = await this.db
+      .select({
+        id: propertyUnits.id,
+        unitCode: propertyUnits.unitCode,
+        price: propertyUnits.price,
+        carpetArea: propertyUnits.carpetArea,
+        reraArea: propertyUnits.reraArea,
+        entityGst: propertyEntities.defaultGstPercentage,
+        entityStampDuty: propertyEntities.defaultStampDutyPercentage,
+        entityRegistration: propertyEntities.defaultRegistrationCharges,
+      })
+      .from(propertyUnits)
+      .leftJoin(propertyEntities, eq(propertyUnits.entityId, propertyEntities.id))
+      .where(and(eq(propertyUnits.tenantId, tenantId), eq(propertyUnits.id, dto.unitId)))
+      .limit(1);
+
+    if (!unit) throw new NotFoundException('Property unit not found');
+
+    const breakups = await this.db
+      .select()
+      .from(propertyPricingBreakups)
+      .where(and(eq(propertyPricingBreakups.tenantId, tenantId), eq(propertyPricingBreakups.unitId, dto.unitId)));
+
+    // Use RERA area if available, else Carpet Area
+    const area = Number(unit.reraArea || unit.carpetArea || 0);
+    const basePricePerSqft = Number(unit.price || 0);
+    
+    // Apply discount per sqft
+    const effectiveBaseRate = Math.max(0, basePricePerSqft - (dto.discountPerSqft || 0));
+    let basePrice = effectiveBaseRate * area;
+
+    // Apply lumpsum discount
+    basePrice = Math.max(0, basePrice - (dto.lumpsumDiscount || 0));
+
+    const plcAmount = breakups.reduce((sum, b) => sum + Number(b.amount || 0), 0);
+    const agreementValue = basePrice + plcAmount;
+
+    // Use entity defaults if not provided in dto
+    const gstPct = dto.config.gstPercentage ?? Number(unit.entityGst || 5);
+    const sdPct = dto.config.stampDutyPercentage ?? Number(unit.entityStampDuty || 6);
+    const regCharges = dto.config.registrationCharges ?? Number(unit.entityRegistration || 30000);
+    const otherCharges = dto.config.otherFixedCharges ?? 0;
+
+    const gstAmount = (agreementValue * gstPct) / 100;
+    const stampDutyAmount = (agreementValue * sdPct) / 100;
+    const registrationCharges = regCharges;
+    const otherFixedCharges = otherCharges;
+
+    const totalTax = gstAmount + stampDutyAmount + registrationCharges;
+    const grandTotal = agreementValue + totalTax + otherFixedCharges;
+
+    return {
+      unitId: unit.id,
+      unitCode: unit.unitCode,
+      basePrice,
+      plcAmount,
+      agreementValue,
+      gstAmount,
+      stampDutyAmount,
+      registrationCharges,
+      otherFixedCharges,
+      totalTax,
+      grandTotal,
+      areaUsed: area
+    };
   }
 }
 
