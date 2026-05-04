@@ -162,6 +162,8 @@ export class PropertiesService {
         name: dto.name,
         status: dto.status ?? 'active',
         description: dto.description ?? null,
+        reraNumber: dto.reraNumber ?? null,
+        reraExpiry: dto.reraExpiry ?? null,
         createdByUserId: options?.createdByUserId ?? null,
         createdAt: now,
         updatedAt: now
@@ -233,6 +235,8 @@ export class PropertiesService {
     if (dto.name !== undefined) updateData.name = dto.name;
     if (dto.status !== undefined) updateData.status = dto.status;
     if (dto.description !== undefined) updateData.description = dto.description ?? null;
+    if (dto.reraNumber !== undefined) updateData.reraNumber = dto.reraNumber ?? null;
+    if (dto.reraExpiry !== undefined) updateData.reraExpiry = dto.reraExpiry ?? null;
     if (dto.parentId !== undefined) updateData.parentId = dto.parentId ?? null;
 
     if (Object.keys(updateData).length > 0) {
@@ -486,6 +490,9 @@ export class PropertiesService {
         unitCode: dto.unitCode,
         price: dto.price !== undefined ? dto.price.toString() : null,
         pricePerSqft: dto.pricePerSqft !== undefined ? dto.pricePerSqft.toString() : null,
+        carpetArea: dto.carpetArea !== undefined ? dto.carpetArea.toString() : null,
+        balconyArea: dto.balconyArea !== undefined ? dto.balconyArea.toString() : null,
+        reraArea: dto.reraArea !== undefined ? dto.reraArea.toString() : null,
         unitStatus: dto.unitStatus ?? 'available',
         createdAt: now,
         updatedAt: now
@@ -517,6 +524,9 @@ export class PropertiesService {
     if (dto.unitCode !== undefined) updateData.unitCode = dto.unitCode;
     if (dto.price !== undefined) updateData.price = dto.price !== null ? dto.price.toString() : null;
     if (dto.pricePerSqft !== undefined) updateData.pricePerSqft = dto.pricePerSqft !== null ? dto.pricePerSqft.toString() : null;
+    if (dto.carpetArea !== undefined) updateData.carpetArea = dto.carpetArea !== null ? dto.carpetArea.toString() : null;
+    if (dto.balconyArea !== undefined) updateData.balconyArea = dto.balconyArea !== null ? dto.balconyArea.toString() : null;
+    if (dto.reraArea !== undefined) updateData.reraArea = dto.reraArea !== null ? dto.reraArea.toString() : null;
     if (dto.unitStatus !== undefined) updateData.unitStatus = dto.unitStatus;
 
     if (Object.keys(updateData).length > 0) {

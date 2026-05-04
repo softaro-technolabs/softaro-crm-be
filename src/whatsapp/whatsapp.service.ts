@@ -429,6 +429,7 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
                 id: propertyEntities.id,
                 name: propertyEntities.name,
                 type: propertyEntities.entityType,
+                reraNumber: propertyEntities.reraNumber,
                 location: propertyLocations.area,
             })
             .from(propertyEntities)
@@ -443,6 +444,9 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
                     id: propertyUnits.id,
                     price: propertyUnits.price,
                     unitCode: propertyUnits.unitCode,
+                    carpetArea: propertyUnits.carpetArea,
+                    balconyArea: propertyUnits.balconyArea,
+                    reraArea: propertyUnits.reraArea,
                 })
                 .from(propertyUnits)
                 .where(eq(propertyUnits.entityId, p.id))
@@ -473,6 +477,8 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
                 ? `Available Units & Pricing:
 ${unitDetailsWithBreakups.map(u => {
     let text = `- Unit ${u.unitCode}: Total Price ₹${u.total.toLocaleString('en-IN')} (Base: ₹${Number(u.price).toLocaleString('en-IN')})`;
+    if (u.carpetArea) text += `\n    Carpet Area: ${u.carpetArea} sqft`;
+    if (u.reraArea) text += ` | RERA Area: ${u.reraArea} sqft`;
     if (u.breakups.length > 0) {
         text += `\n    Breakup: ${u.breakups.map(b => `${b.label}: ₹${Number(b.amount).toLocaleString('en-IN')}`).join(', ')}`;
     }

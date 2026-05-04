@@ -1030,6 +1030,7 @@ export class LeadsService {
         id: propertyEntities.id,
         name: propertyEntities.name,
         type: propertyEntities.entityType,
+        reraNumber: propertyEntities.reraNumber,
         location: propertyLocations.area,
       })
       .from(propertyEntities)
@@ -1056,6 +1057,7 @@ export class LeadsService {
         id: p.id,
         name: p.name,
         type: p.type,
+        reraNumber: p.reraNumber ?? undefined,
         location: p.location ?? undefined
       }))
     };

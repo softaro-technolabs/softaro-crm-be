@@ -26,6 +26,8 @@ export const contacts = pgTable(
     company: varchar('company', { length: 255 }),
     panNumber: varchar('pan_number', { length: 20 }),
     aadhaarNumber: varchar('aadhaar_number', { length: 20 }),
+    reraNumber: varchar('rera_number', { length: 100 }),
+    reraExpiry: timestamp('rera_expiry', { withTimezone: true }),
     metadata: jsonb('metadata'),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull()

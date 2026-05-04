@@ -478,6 +478,10 @@ export class MigrationService {
         await this.runWhatsappMigrations(client);
         // ─────────────────────────────────────────────────────────────
 
+        // ─── Property Tables (New) ──────────────────────────────────
+        await this.runPropertyMigrations(client);
+        // ─────────────────────────────────────────────────────────────
+
         // ─── Contact Tables (New) ──────────────────────────────────
         await this.runContactMigrations(client);
         // ─────────────────────────────────────────────────────────────
@@ -985,6 +989,8 @@ export class MigrationService {
           "company"           varchar(255),
           "pan_number"        varchar(20),
           "aadhaar_number"    varchar(20),
+          "rera_number"       varchar(100),
+          "rera_expiry"       timestamptz,
           "metadata"          jsonb,
           "created_at"        timestamptz NOT NULL DEFAULT now(),
           "updated_at"        timestamptz NOT NULL DEFAULT now()
@@ -994,6 +1000,69 @@ export class MigrationService {
       await client.query('CREATE INDEX IF NOT EXISTS "contacts_email_idx" ON "contacts" ("email");');
       await client.query('CREATE INDEX IF NOT EXISTS "contacts_phone_idx" ON "contacts" ("phone");');
       this.logger.log('✓ contacts table created');
+    } else {
+      // Logic for adding missing columns to existing table
+      const columns = [
+        { name: 'rera_number', type: 'varchar(100)' },
+        { name: 'rera_expiry', type: 'timestamptz' }
+      ];
+
+      for (const col of columns) {
+        const colCheck = await client.query(`
+          SELECT 1 FROM information_schema.columns 
+          WHERE table_schema = 'public' AND table_name = 'contacts' AND column_name = '${col.name}'
+        `);
+        if (colCheck.rows.length === 0) {
+          this.logger.log(`Adding missing column "${col.name}" to contacts table...`);
+          await client.query(`ALTER TABLE "contacts" ADD COLUMN "${col.name}" ${col.type}`);
+        }
+      }
+    }
+  }
+
+  /**
+   * Create or update Property tables for RERA compliance.
+   */
+  private async runPropertyMigrations(client: any) {
+    // 1. property_entities
+    const entitiesCheck = await client.query("SELECT to_regclass('public.property_entities') as t");
+    if (entitiesCheck.rows[0]?.t !== null) {
+      const entityColumns = [
+        { name: 'rera_number', type: 'varchar(100)' },
+        { name: 'rera_expiry', type: 'timestamptz' }
+      ];
+
+      for (const col of entityColumns) {
+        const colCheck = await client.query(`
+          SELECT 1 FROM information_schema.columns 
+          WHERE table_schema = 'public' AND table_name = 'property_entities' AND column_name = '${col.name}'
+        `);
+        if (colCheck.rows.length === 0) {
+          this.logger.log(`Adding missing column "${col.name}" to property_entities table...`);
+          await client.query(`ALTER TABLE "property_entities" ADD COLUMN "${col.name}" ${col.type}`);
+        }
+      }
+    }
+
+    // 2. property_units
+    const unitsCheck = await client.query("SELECT to_regclass('public.property_units') as t");
+    if (unitsCheck.rows[0]?.t !== null) {
+      const unitColumns = [
+        { name: 'carpet_area', type: 'numeric(10,2)' },
+        { name: 'balcony_area', type: 'numeric(10,2)' },
+        { name: 'rera_area', type: 'numeric(10,2)' }
+      ];
+
+      for (const col of unitColumns) {
+        const colCheck = await client.query(`
+          SELECT 1 FROM information_schema.columns 
+          WHERE table_schema = 'public' AND table_name = 'property_units' AND column_name = '${col.name}'
+        `);
+        if (colCheck.rows.length === 0) {
+          this.logger.log(`Adding missing column "${col.name}" to property_units table...`);
+          await client.query(`ALTER TABLE "property_units" ADD COLUMN "${col.name}" ${col.type}`);
+        }
+      }
     }
   }
 

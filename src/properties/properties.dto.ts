@@ -157,6 +157,17 @@ export class CreatePropertyEntityDto {
   @MaxLength(2000)
   description?: string;
 
+  @ApiPropertyOptional({ maxLength: 100, example: 'PRM/KA/RERA/1234/567' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  reraNumber?: string;
+
+  @ApiPropertyOptional({ type: String, format: 'date-time' })
+  @IsOptional()
+  @Type(() => Date)
+  reraExpiry?: Date;
+
   @ApiPropertyOptional({ description: 'Optional location info to create with entity', type: () => UpsertPropertyLocationDto })
   @IsOptional()
   @ValidateNested()
@@ -195,6 +206,17 @@ export class UpdatePropertyEntityDto {
   @IsString()
   @MaxLength(2000)
   description?: string;
+
+  @ApiPropertyOptional({ maxLength: 100, example: 'PRM/KA/RERA/1234/567' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  reraNumber?: string;
+
+  @ApiPropertyOptional({ type: String, format: 'date-time' })
+  @IsOptional()
+  @Type(() => Date)
+  reraExpiry?: Date;
 
   @ApiPropertyOptional({ format: 'uuid', description: 'Re-parent entity (optional)' })
   @IsOptional()
@@ -246,6 +268,27 @@ export class CreatePropertyUnitDto {
   @IsNumber()
   @Min(0)
   pricePerSqft?: number;
+
+  @ApiPropertyOptional({ minimum: 0, type: Number, example: 1250 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  carpetArea?: number;
+
+  @ApiPropertyOptional({ minimum: 0, type: Number, example: 100 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  balconyArea?: number;
+
+  @ApiPropertyOptional({ minimum: 0, type: Number, example: 1350 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  reraArea?: number;
 
   @ApiPropertyOptional({ enum: PROPERTY_UNIT_STATUSES, default: 'available' })
   @IsOptional()
@@ -302,6 +345,27 @@ export class UpdatePropertyUnitDto {
   @IsNumber()
   @Min(0)
   pricePerSqft?: number;
+
+  @ApiPropertyOptional({ minimum: 0, type: Number })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  carpetArea?: number;
+
+  @ApiPropertyOptional({ minimum: 0, type: Number })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  balconyArea?: number;
+
+  @ApiPropertyOptional({ minimum: 0, type: Number })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  reraArea?: number;
 
   @ApiPropertyOptional({ enum: PROPERTY_UNIT_STATUSES })
   @IsOptional()

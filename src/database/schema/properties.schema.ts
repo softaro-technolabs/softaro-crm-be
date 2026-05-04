@@ -58,6 +58,8 @@ export const propertyEntities = pgTable(
     name: varchar('name', { length: 255 }).notNull(),
     status: propertyEntityStatusEnum('status').default('active').notNull(),
     description: varchar('description', { length: 2000 }),
+    reraNumber: varchar('rera_number', { length: 100 }),
+    reraExpiry: timestamp('rera_expiry', { withTimezone: true }),
     createdByUserId: varchar('created_by_user_id', { length: 36 }),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull()
@@ -79,6 +81,9 @@ export const propertyUnits = pgTable(
     unitCode: varchar('unit_code', { length: 80 }).notNull(),
     price: numeric('price', { precision: 15, scale: 2 }),
     pricePerSqft: numeric('price_per_sqft', { precision: 15, scale: 2 }),
+    carpetArea: numeric('carpet_area', { precision: 10, scale: 2 }),
+    balconyArea: numeric('balcony_area', { precision: 10, scale: 2 }),
+    reraArea: numeric('rera_area', { precision: 10, scale: 2 }),
     unitStatus: propertyUnitStatusEnum('unit_status').default('available').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull()
