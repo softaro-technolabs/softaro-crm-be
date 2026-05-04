@@ -1131,6 +1131,7 @@ export class MigrationService {
           "deal_id"           varchar(36),
           "lead_id"           varchar(36),
           "property_unit_id"  varchar(36),
+          "quotation_id"      varchar(36),
           "booking_number"    varchar(50) NOT NULL,
           "booking_date"      timestamptz NOT NULL,
           "booking_amount"    numeric(15,2) NOT NULL DEFAULT 0,
@@ -1148,6 +1149,63 @@ export class MigrationService {
       await client.query('CREATE INDEX IF NOT EXISTS "bookings_property_unit_idx" ON "bookings" ("property_unit_id");');
       await client.query('CREATE INDEX IF NOT EXISTS "bookings_status_idx" ON "bookings" ("status");');
       this.logger.log('✓ bookings table created');
+    } else {
+      // Add missing columns to bookings
+      const colCheck = await client.query(`
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_schema = 'public' AND table_name = 'bookings' AND column_name = 'quotation_id'
+      `);
+      if (colCheck.rows.length === 0) {
+        this.logger.log('Adding missing column "quotation_id" to bookings table...');
+        await client.query('ALTER TABLE "bookings" ADD COLUMN "quotation_id" varchar(36)');
+      }
+    }
+
+    // 2. booking_milestones
+    const milestonesCheck = await client.query('SELECT to_regclass(\'public.booking_milestones\') as t');
+    if (milestonesCheck.rows[0]?.t === null) {
+      this.logger.log('Creating booking_milestones table...');
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS "booking_milestones" (
+          "id"          varchar(36) PRIMARY KEY,
+          "tenant_id"   varchar(36) NOT NULL,
+          "booking_id"  varchar(36) NOT NULL REFERENCES bookings(id) ON DELETE CASCADE,
+          "label"       varchar(120) NOT NULL,
+          "percentage"  numeric(5,2),
+          "amount"      numeric(15,2) NOT NULL,
+          "due_date"    timestamptz,
+          "status"      varchar(20) NOT NULL DEFAULT 'pending',
+          "sort_order"  integer NOT NULL DEFAULT 0
+        );
+      `);
+      await client.query('CREATE INDEX IF NOT EXISTS "booking_milestones_tenant_idx" ON "booking_milestones" ("tenant_id");');
+      await client.query('CREATE INDEX IF NOT EXISTS "booking_milestones_booking_idx" ON "booking_milestones" ("booking_id");');
+      this.logger.log('✓ booking_milestones table created');
+    }
+
+    // 3. booking_payments
+    const paymentsCheck = await client.query('SELECT to_regclass(\'public.booking_payments\') as t');
+    if (paymentsCheck.rows[0]?.t === null) {
+      this.logger.log('Creating booking_payments table...');
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS "booking_payments" (
+          "id"                    varchar(36) PRIMARY KEY,
+          "tenant_id"             varchar(36) NOT NULL,
+          "booking_id"            varchar(36) NOT NULL REFERENCES bookings(id) ON DELETE CASCADE,
+          "milestone_id"          varchar(36) REFERENCES booking_milestones(id) ON DELETE SET NULL,
+          "amount"                numeric(15,2) NOT NULL,
+          "payment_date"          timestamptz NOT NULL,
+          "payment_method"        varchar(50) NOT NULL,
+          "transaction_reference" varchar(120),
+          "status"                varchar(20) NOT NULL DEFAULT 'cleared',
+          "receipt_number"        varchar(50),
+          "notes"                 text,
+          "created_at"            timestamptz NOT NULL DEFAULT now()
+        );
+      `);
+      await client.query('CREATE INDEX IF NOT EXISTS "booking_payments_tenant_idx" ON "booking_payments" ("tenant_id");');
+      await client.query('CREATE INDEX IF NOT EXISTS "booking_payments_booking_idx" ON "booking_payments" ("booking_id");');
+      this.logger.log('✓ booking_payments table created');
     }
   }
 

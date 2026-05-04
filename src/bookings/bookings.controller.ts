@@ -17,7 +17,9 @@ import { RequestContextService } from '../common/utils/request-context.service';
 import {
   BookingListQueryDto,
   CreateBookingDto,
-  UpdateBookingDto
+  UpdateBookingDto,
+  CreateBookingPaymentDto,
+  BookingPaymentQueryDto
 } from './bookings.dto';
 import { BookingsService } from './bookings.service';
 
@@ -68,6 +70,31 @@ export class BookingsController {
   async delete(@Param('tenantId') tenantId: string, @Param('bookingId') bookingId: string) {
     this.verifyTenantAccess(tenantId);
     return this.bookingsService.deleteBooking(tenantId, bookingId, this.requestContext.getUserId());
+  }
+
+  @Get(':bookingId/milestones')
+  @ApiOperation({ summary: 'List payment milestones for a booking' })
+  async listMilestones(@Param('tenantId') tenantId: string, @Param('bookingId') bookingId: string) {
+    this.verifyTenantAccess(tenantId);
+    return this.bookingsService.getMilestones(tenantId, bookingId);
+  }
+
+  @Post(':bookingId/payments')
+  @ApiOperation({ summary: 'Record a payment for a booking' })
+  async addPayment(
+    @Param('tenantId') tenantId: string,
+    @Param('bookingId') bookingId: string,
+    @Body() dto: CreateBookingPaymentDto
+  ) {
+    this.verifyTenantAccess(tenantId);
+    return this.bookingsService.addPayment(tenantId, bookingId, dto);
+  }
+
+  @Get('payments')
+  @ApiOperation({ summary: 'List all booking payments' })
+  async listPayments(@Param('tenantId') tenantId: string, @Query() query: BookingPaymentQueryDto) {
+    this.verifyTenantAccess(tenantId);
+    return this.bookingsService.listPayments(tenantId, query);
   }
 
   private verifyTenantAccess(tenantId: string) {

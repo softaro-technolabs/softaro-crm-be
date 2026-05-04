@@ -11,6 +11,8 @@ import { DRIZZLE } from '../database/database.constants';
 import type { DrizzleDatabase } from '../database/database.types';
 import {
   bookings,
+  bookingMilestones,
+  bookingPayments,
   deals,
   leadActivities,
   leads,
@@ -24,7 +26,9 @@ import {
   type BookingStatus,
   BookingListQueryDto,
   CreateBookingDto,
-  UpdateBookingDto
+  UpdateBookingDto,
+  CreateBookingPaymentDto,
+  BookingPaymentQueryDto
 } from './bookings.dto';
 
 @Injectable()
@@ -175,6 +179,7 @@ export class BookingsService {
         dealId: resolved.deal?.id ?? null,
         leadId: resolved.leadId,
         propertyUnitId: resolved.propertyUnitId,
+        quotationId: dto.quotationId ?? null,
         bookingNumber,
         bookingDate: new Date(dto.bookingDate),
         bookingAmount: bookingAmount.toFixed(2),
@@ -185,6 +190,21 @@ export class BookingsService {
         createdAt: now,
         updatedAt: now
       });
+
+      if (dto.milestones?.length) {
+        const milestoneValues = dto.milestones.map((m, idx) => ({
+          id: randomUUID(),
+          tenantId,
+          bookingId,
+          label: m.label,
+          percentage: m.percentage?.toString() || null,
+          amount: m.amount.toString(),
+          dueDate: m.dueDate ? new Date(m.dueDate) : null,
+          sortOrder: m.sortOrder ?? idx,
+          status: 'pending'
+        }));
+        await tx.insert(bookingMilestones).values(milestoneValues as any);
+      }
 
       if (resolved.deal?.id) {
         await this.syncDealFromBooking(tx, tenantId, resolved.deal.id, {
@@ -275,6 +295,70 @@ export class BookingsService {
     });
 
     return { success: true };
+  }
+
+  async getMilestones(tenantId: string, bookingId: string) {
+    return this.db
+      .select()
+      .from(bookingMilestones)
+      .where(and(eq(bookingMilestones.tenantId, tenantId), eq(bookingMilestones.bookingId, bookingId)))
+      .orderBy(bookingMilestones.sortOrder);
+  }
+
+  async addPayment(tenantId: string, bookingId: string, dto: CreateBookingPaymentDto) {
+    const booking = await this.getBooking(tenantId, bookingId);
+    const paymentId = randomUUID();
+    const now = new Date();
+
+    await this.db.transaction(async (tx) => {
+      await tx.insert(bookingPayments).values({
+        id: paymentId,
+        tenantId,
+        bookingId,
+        milestoneId: dto.milestoneId || null,
+        amount: dto.amount.toString(),
+        paymentDate: new Date(dto.paymentDate),
+        paymentMethod: dto.paymentMethod,
+        transactionReference: dto.transactionReference || null,
+        receiptNumber: dto.receiptNumber || null,
+        notes: dto.notes || null,
+        status: 'cleared',
+        createdAt: now
+      });
+
+      // Recalculate total paid amount for the booking
+      const [sumResult] = await tx
+        .select({ total: sql<number>`sum(${bookingPayments.amount})` })
+        .from(bookingPayments)
+        .where(and(eq(bookingPayments.tenantId, tenantId), eq(bookingPayments.bookingId, bookingId), eq(bookingPayments.status, 'cleared')));
+
+      const totalPaid = Number(sumResult?.total || 0);
+
+      await tx.update(bookings)
+        .set({ paidAmount: totalPaid.toFixed(2), updatedAt: now })
+        .where(eq(bookings.id, bookingId));
+
+      if (booking.booking.dealId) {
+        await this.syncDealFromBooking(tx, tenantId, booking.booking.dealId, {
+          bookingStatus: booking.booking.status,
+          paidAmount: totalPaid,
+          bookingAmount: Number(booking.booking.bookingAmount)
+        });
+      }
+    });
+
+    return { id: paymentId, success: true };
+  }
+
+  async listPayments(tenantId: string, query: BookingPaymentQueryDto) {
+    const filters = [eq(bookingPayments.tenantId, tenantId)];
+    if (query.bookingId) filters.push(eq(bookingPayments.bookingId, query.bookingId));
+
+    return this.db
+      .select()
+      .from(bookingPayments)
+      .where(and(...filters))
+      .orderBy(desc(bookingPayments.paymentDate));
   }
 
   private async resolveBookingRelations(tenantId: string, dto: CreateBookingDto) {
