@@ -2,7 +2,7 @@ import { Injectable, NotFoundException, Inject, BadRequestException } from '@nes
 import { eq, and, desc, sql, or, ilike, SQL, inArray } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { DrizzleDatabase } from '../database/database.types';
-import { quotations, quotationItems, leads, tenants, contacts, deals, leadActivities, propertyUnits } from '../database/schema';
+import { quotations, quotationItems, leads, tenants, contacts, deals, leadActivities, propertyUnits, propertyDocuments } from '../database/schema';
 import { CreateQuotationDto, UpdateQuotationDto, QuotationListQueryDto, ConvertToDealDto } from './quotations.dto';
 import { DRIZZLE } from '../database/database.constants';
 import { MailService } from '../common/services/mail.service';
@@ -175,6 +175,19 @@ export class QuotationsService {
           }))
         );
       }
+
+      // Record in Property Documents
+      await tx.insert(propertyDocuments).values({
+        id: uuidv4(),
+        tenantId,
+        leadId,
+        propertyUnitId: dto.propertyUnitId,
+        type: 'quotation',
+        title: `Quotation: ${quotationNumber}`,
+        metadata: JSON.stringify({ quotationId, quotationNumber, grandTotal: calculatedGrand }),
+        createdAt: new Date(),
+        updatedAt: new Date()
+      });
     });
 
     return this.getQuotation(tenantId, quotationId);

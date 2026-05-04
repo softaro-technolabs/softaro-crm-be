@@ -383,6 +383,22 @@ export class MigrationService {
               ) THEN
                 ALTER TYPE "lead_activity_type" ADD VALUE 'quotation';
               END IF;
+              IF NOT EXISTS (
+                SELECT 1
+                FROM pg_enum e
+                JOIN pg_type t ON t.oid = e.enumtypid
+                WHERE t.typname = 'lead_activity_type' AND e.enumlabel = 'booking'
+              ) THEN
+                ALTER TYPE "lead_activity_type" ADD VALUE 'booking';
+              END IF;
+              IF NOT EXISTS (
+                SELECT 1
+                FROM pg_enum e
+                JOIN pg_type t ON t.oid = e.enumtypid
+                WHERE t.typname = 'lead_activity_type' AND e.enumlabel = 'payment'
+              ) THEN
+                ALTER TYPE "lead_activity_type" ADD VALUE 'payment';
+              END IF;
             END IF;
           END $$;
         `);
@@ -478,24 +494,13 @@ export class MigrationService {
         await this.runWhatsappMigrations(client);
         // ─────────────────────────────────────────────────────────────
 
-        // ─── Property Tables (New) ──────────────────────────────────
+        // ─── Real Estate Sales Module (New) ──────────────────────────
         await this.runPropertyMigrations(client);
-        // ─────────────────────────────────────────────────────────────
-
-        // ─── Contact Tables (New) ──────────────────────────────────
         await this.runContactMigrations(client);
-        // ─────────────────────────────────────────────────────────────
-
-        // ─── Quotation Tables (New) ──────────────────────────────────
         await this.runQuotationMigrations(client);
-        // ─────────────────────────────────────────────────────────────
-
-        // ─── Deal Tables (New) ──────────────────────────────────
         await this.runDealMigrations(client);
-        // ─────────────────────────────────────────────────────────────
-
-        // ─── Booking Tables (New) ──────────────────────────────────
         await this.runBookingMigrations(client);
+        await this.runDocumentMigrations(client);
         // ─────────────────────────────────────────────────────────────
 
         // ─── Waterpark Reviews (New) ──────────────────────────────────
@@ -1206,6 +1211,41 @@ export class MigrationService {
       await client.query('CREATE INDEX IF NOT EXISTS "booking_payments_tenant_idx" ON "booking_payments" ("tenant_id");');
       await client.query('CREATE INDEX IF NOT EXISTS "booking_payments_booking_idx" ON "booking_payments" ("booking_id");');
       this.logger.log('✓ booking_payments table created');
+    }
+  }
+
+  private async runDocumentMigrations(client: any) {
+    await client.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'property_document_type') THEN
+          CREATE TYPE "property_document_type" AS ENUM ('cost_sheet', 'quotation', 'booking_form', 'allotment_letter', 'payment_receipt');
+        END IF;
+      END $$;
+    `);
+
+    const docsCheck = await client.query('SELECT to_regclass(\'public.property_documents\') as t');
+    if (docsCheck.rows[0]?.t === null) {
+      this.logger.log('Creating property_documents table...');
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS "property_documents" (
+          "id"                varchar(36) PRIMARY KEY,
+          "tenant_id"         varchar(36) NOT NULL,
+          "lead_id"           varchar(36) NOT NULL,
+          "property_unit_id"  varchar(36),
+          "type"              "property_document_type" NOT NULL,
+          "title"             varchar(255) NOT NULL,
+          "file_url"          varchar(2000),
+          "content"           text,
+          "metadata"          text,
+          "created_at"        timestamptz NOT NULL DEFAULT now(),
+          "updated_at"        timestamptz NOT NULL DEFAULT now()
+        );
+      `);
+      await client.query('CREATE INDEX IF NOT EXISTS "property_docs_tenant_idx" ON "property_documents" ("tenant_id");');
+      await client.query('CREATE INDEX IF NOT EXISTS "property_docs_lead_idx" ON "property_documents" ("lead_id");');
+      await client.query('CREATE INDEX IF NOT EXISTS "property_docs_unit_idx" ON "property_documents" ("property_unit_id");');
+      this.logger.log('✓ property_documents table created');
     }
   }
 

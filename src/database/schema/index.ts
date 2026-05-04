@@ -20,5 +20,6 @@ export * from './quotations.schema';
 export * from './contacts.schema';
 export * from './deals.schema';
 export * from './bookings.schema';
+export * from './property-documents.schema';
 export * from './meta-ads.schema';
 export * from './waterpark-reviews.schema';

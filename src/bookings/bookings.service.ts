@@ -19,6 +19,7 @@ import {
   propertyEntities,
   propertyStatusLogs,
   propertyUnits,
+  propertyDocuments,
   users
 } from '../database/schema';
 import { PaginationUtil } from '../common/utils/pagination.util';
@@ -233,6 +234,31 @@ export class BookingsService {
           createdAt: now
         });
       }
+
+      // 4. Log Activity
+      await tx.insert(leadActivities).values({
+        id: randomUUID(),
+        tenantId,
+        leadId: resolved.leadId,
+        type: 'booking',
+        title: `Unit Booked: ${resolved.propertyUnitId}`,
+        note: `Booking #${bookingNumber} for ₹${bookingAmount}`,
+        metadata: { bookingId, bookingNumber, unitId: resolved.propertyUnitId, amount: bookingAmount },
+        happenedAt: now
+      });
+
+      // 5. Create Document Record
+      await tx.insert(propertyDocuments).values({
+        id: randomUUID(),
+        tenantId,
+        leadId: resolved.leadId,
+        propertyUnitId: resolved.propertyUnitId,
+        type: 'booking_form',
+        title: `Booking Confirmation: ${bookingNumber}`,
+        metadata: JSON.stringify({ bookingId, bookingNumber, amount: bookingAmount }),
+        createdAt: now,
+        updatedAt: now
+      });
     });
 
     return this.getBooking(tenantId, bookingId);
@@ -345,6 +371,31 @@ export class BookingsService {
           bookingAmount: Number(booking.booking.bookingAmount)
         });
       }
+
+      // 5. Log Activity
+      await tx.insert(leadActivities).values({
+        id: randomUUID(),
+        tenantId,
+        leadId: booking.booking.leadId!,
+        type: 'payment',
+        title: `Payment Received: ₹${dto.amount}`,
+        note: `Method: ${dto.paymentMethod} | Ref: ${dto.transactionReference || 'N/A'}`,
+        metadata: { paymentId, bookingId, amount: dto.amount, method: dto.paymentMethod },
+        happenedAt: now
+      });
+
+      // 6. Create Receipt Document
+      await tx.insert(propertyDocuments).values({
+        id: randomUUID(),
+        tenantId,
+        leadId: booking.booking.leadId!,
+        propertyUnitId: booking.booking.propertyUnitId!,
+        type: 'payment_receipt',
+        title: `Payment Receipt: ${dto.receiptNumber || paymentId.substring(0, 8)}`,
+        metadata: JSON.stringify({ paymentId, bookingId, amount: dto.amount, method: dto.paymentMethod }),
+        createdAt: now,
+        updatedAt: now
+      });
     });
 
     return { id: paymentId, success: true };
