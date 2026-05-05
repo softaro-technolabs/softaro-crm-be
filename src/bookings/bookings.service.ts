@@ -20,6 +20,7 @@ import {
   propertyStatusLogs,
   propertyUnits,
   propertyDocuments,
+  leadStatuses,
   users
 } from '../database/schema';
 import { PaginationUtil } from '../common/utils/pagination.util';
@@ -159,6 +160,15 @@ export class BookingsService {
     return row;
   }
 
+  private async resolveStatusIdBySlug(tenantId: string, slug: string): Promise<string | null> {
+    const [status] = await this.db
+      .select({ id: leadStatuses.id })
+      .from(leadStatuses)
+      .where(and(eq(leadStatuses.tenantId, tenantId), eq(leadStatuses.slug, slug)))
+      .limit(1);
+    return status?.id ?? null;
+  }
+
   async createBooking(tenantId: string, dto: CreateBookingDto, createdByUserId?: string | null) {
     const resolved = await this.resolveBookingRelations(tenantId, dto);
 
@@ -225,7 +235,7 @@ export class BookingsService {
           id: randomUUID(),
           tenantId,
           leadId: resolved.leadId,
-          type: 'note',
+          type: 'booking',
           title: `Booking created: ${bookingNumber}`,
           note: dto.notes ?? `Booking status: ${status}`,
           metadata: { bookingId, bookingNumber, dealId: resolved.deal?.id ?? null },
@@ -233,19 +243,17 @@ export class BookingsService {
           createdByUserId: createdByUserId ?? null,
           createdAt: now
         });
-      }
 
-      // 4. Log Activity
-      await tx.insert(leadActivities).values({
-        id: randomUUID(),
-        tenantId,
-        leadId: resolved.leadId,
-        type: 'booking',
-        title: `Unit Booked: ${resolved.propertyUnitId}`,
-        note: `Booking #${bookingNumber} for ₹${bookingAmount}`,
-        metadata: { bookingId, bookingNumber, unitId: resolved.propertyUnitId, amount: bookingAmount },
-        happenedAt: now
-      });
+        // Automated Status Transition to 'Booking Done'
+        if (status !== 'cancelled') {
+          const statusId = await this.resolveStatusIdBySlug(tenantId, 'booking_done');
+          if (statusId) {
+            await tx.update(leads)
+              .set({ statusId, updatedAt: now })
+              .where(and(eq(leads.id, resolved.leadId), eq(leads.tenantId, tenantId)));
+          }
+        }
+      }
 
       // 5. Create Document Record
       await tx.insert(propertyDocuments).values({

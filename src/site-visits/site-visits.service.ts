@@ -4,7 +4,7 @@ import { randomUUID } from 'crypto';
 
 import { DRIZZLE } from '../database/database.constants';
 import type { DrizzleDatabase } from '../database/database.types';
-import { siteVisits, leadActivities } from '../database/schema';
+import { siteVisits, leadActivities, leads, leadStatuses } from '../database/schema';
 import { CreateSiteVisitDto, UpdateSiteVisitDto } from './site-visits.dto';
 import { NotificationGateway } from '../notifications/notification.gateway';
 
@@ -14,6 +14,15 @@ export class SiteVisitsService {
     @Inject(DRIZZLE) private readonly db: DrizzleDatabase,
     private readonly notificationGateway: NotificationGateway
   ) {}
+
+  private async resolveStatusIdBySlug(tenantId: string, slug: string): Promise<string | null> {
+    const [status] = await this.db
+      .select({ id: leadStatuses.id })
+      .from(leadStatuses)
+      .where(and(eq(leadStatuses.tenantId, tenantId), eq(leadStatuses.slug, slug)))
+      .limit(1);
+    return status?.id ?? null;
+  }
 
   async list(tenantId: string, leadId?: string) {
     const filters = [eq(siteVisits.tenantId, tenantId)];
@@ -75,6 +84,14 @@ export class SiteVisitsService {
         createdByUserId: dto.assignedToUserId || null,
         createdAt: now
       });
+
+      // 3. Update Lead Status to 'Site Visit Scheduled'
+      const statusId = await this.resolveStatusIdBySlug(tenantId, 'site_visit_scheduled');
+      if (statusId) {
+        await tx.update(leads)
+          .set({ statusId, updatedAt: now })
+          .where(and(eq(leads.id, dto.leadId), eq(leads.tenantId, tenantId)));
+      }
     });
 
     this.notificationGateway.sendNotificationToTenant(tenantId, 'site_visit_scheduled', {
@@ -110,15 +127,17 @@ export class SiteVisitsService {
       let activityTitle = '';
       let activityNote = '';
       let activityType: any = 'meeting';
+      let nextStatusSlug = '';
 
       if (dto.status && dto.status !== existing.status) {
         if (dto.status === 'completed') {
           activityTitle = 'Site Visit Completed';
           activityNote = dto.feedback || 'The property tour has been successfully completed.';
+          nextStatusSlug = 'site_visit_done';
         } else if (dto.status === 'cancelled') {
           activityTitle = 'Site Visit Cancelled';
           activityNote = dto.notes || 'The scheduled property tour was cancelled.';
-          activityType = 'note'; // Use note for cancellation to distinguish
+          activityType = 'note';
         } else if (dto.status === 'no_show') {
           activityTitle = 'Site Visit: No Show';
           activityNote = 'Lead did not show up for the scheduled tour.';
@@ -127,6 +146,7 @@ export class SiteVisitsService {
       } else if (dto.visitDate && new Date(dto.visitDate).getTime() !== new Date(existing.visitDate).getTime()) {
         activityTitle = 'Site Visit Rescheduled';
         activityNote = `Date changed from ${new Date(existing.visitDate).toLocaleString()} to ${new Date(dto.visitDate).toLocaleString()}`;
+        nextStatusSlug = 'site_visit_scheduled';
       }
 
       if (activityTitle) {
@@ -146,6 +166,16 @@ export class SiteVisitsService {
           happenedAt: now,
           createdAt: now
         });
+      }
+
+      // 3. Automated Status Transition
+      if (nextStatusSlug) {
+        const statusId = await this.resolveStatusIdBySlug(tenantId, nextStatusSlug);
+        if (statusId) {
+          await tx.update(leads)
+            .set({ statusId, updatedAt: now })
+            .where(and(eq(leads.id, existing.leadId), eq(leads.tenantId, tenantId)));
+        }
       }
     });
 
