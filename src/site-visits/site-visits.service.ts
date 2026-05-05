@@ -4,7 +4,7 @@ import { randomUUID } from 'crypto';
 
 import { DRIZZLE } from '../database/database.constants';
 import type { DrizzleDatabase } from '../database/database.types';
-import { siteVisits } from '../database/schema/site-visits.schema';
+import { siteVisits, leadActivities } from '../database/schema';
 import { CreateSiteVisitDto, UpdateSiteVisitDto } from './site-visits.dto';
 import { NotificationGateway } from '../notifications/notification.gateway';
 
@@ -45,16 +45,36 @@ export class SiteVisitsService {
     const id = randomUUID();
     const now = new Date();
 
-    await this.db.insert(siteVisits).values({
-      id,
-      tenantId,
-      leadId: dto.leadId,
-      propertyId: dto.propertyId,
-      assignedToUserId: dto.assignedToUserId,
-      visitDate: new Date(dto.visitDate),
-      notes: dto.notes,
-      createdAt: now,
-      updatedAt: now
+    await this.db.transaction(async (tx) => {
+      // 1. Insert Site Visit
+      await tx.insert(siteVisits).values({
+        id,
+        tenantId,
+        leadId: dto.leadId,
+        propertyId: dto.propertyId,
+        assignedToUserId: dto.assignedToUserId,
+        visitDate: new Date(dto.visitDate),
+        notes: dto.notes,
+        createdAt: now,
+        updatedAt: now
+      });
+
+      // 2. Record in Lead Timeline
+      await tx.insert(leadActivities).values({
+        id: randomUUID(),
+        tenantId,
+        leadId: dto.leadId,
+        type: 'meeting',
+        title: 'Site Visit Scheduled',
+        note: dto.notes || 'A site visit has been scheduled.',
+        metadata: {
+          siteVisitId: id,
+          visitDate: dto.visitDate
+        },
+        happenedAt: now,
+        createdByUserId: dto.assignedToUserId || null,
+        createdAt: now
+      });
     });
 
     this.notificationGateway.sendNotificationToTenant(tenantId, 'site_visit_scheduled', {
@@ -68,8 +88,9 @@ export class SiteVisitsService {
 
   async update(tenantId: string, visitId: string, dto: UpdateSiteVisitDto) {
     const existing = await this.findOne(tenantId, visitId);
+    const now = new Date();
     const updateData: Partial<typeof siteVisits.$inferInsert> = {
-      updatedAt: new Date()
+      updatedAt: now
     };
 
     if (dto.status) updateData.status = dto.status;
@@ -78,10 +99,55 @@ export class SiteVisitsService {
     if (dto.visitDate) updateData.visitDate = new Date(dto.visitDate);
     if (dto.notes !== undefined) updateData.notes = dto.notes;
 
-    await this.db
-      .update(siteVisits)
-      .set(updateData)
-      .where(and(eq(siteVisits.tenantId, tenantId), eq(siteVisits.id, visitId)));
+    await this.db.transaction(async (tx) => {
+      // 1. Update Site Visit
+      await tx
+        .update(siteVisits)
+        .set(updateData)
+        .where(and(eq(siteVisits.tenantId, tenantId), eq(siteVisits.id, visitId)));
+
+      // 2. Log Activity based on what changed
+      let activityTitle = '';
+      let activityNote = '';
+      let activityType: any = 'meeting';
+
+      if (dto.status && dto.status !== existing.status) {
+        if (dto.status === 'completed') {
+          activityTitle = 'Site Visit Completed';
+          activityNote = dto.feedback || 'The property tour has been successfully completed.';
+        } else if (dto.status === 'cancelled') {
+          activityTitle = 'Site Visit Cancelled';
+          activityNote = dto.notes || 'The scheduled property tour was cancelled.';
+          activityType = 'note'; // Use note for cancellation to distinguish
+        } else if (dto.status === 'no_show') {
+          activityTitle = 'Site Visit: No Show';
+          activityNote = 'Lead did not show up for the scheduled tour.';
+          activityType = 'note';
+        }
+      } else if (dto.visitDate && new Date(dto.visitDate).getTime() !== new Date(existing.visitDate).getTime()) {
+        activityTitle = 'Site Visit Rescheduled';
+        activityNote = `Date changed from ${new Date(existing.visitDate).toLocaleString()} to ${new Date(dto.visitDate).toLocaleString()}`;
+      }
+
+      if (activityTitle) {
+        await tx.insert(leadActivities).values({
+          id: randomUUID(),
+          tenantId,
+          leadId: existing.leadId,
+          type: activityType,
+          title: activityTitle,
+          note: activityNote,
+          metadata: {
+            siteVisitId: visitId,
+            prevStatus: existing.status,
+            newStatus: dto.status || existing.status,
+            newDate: dto.visitDate || existing.visitDate
+          },
+          happenedAt: now,
+          createdAt: now
+        });
+      }
+    });
 
     return this.findOne(tenantId, visitId);
   }
