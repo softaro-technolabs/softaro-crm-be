@@ -35,7 +35,8 @@ export class DatabaseSyncService implements OnApplicationBootstrap {
   private async ensureCoreModules() {
     const coreModules = [
       { slug: 'deals', name: 'Deals', defaultRoute: '/deals', sequence: 1 },
-      { slug: 'bookings', name: 'Bookings', defaultRoute: '/bookings', sequence: 2 }
+      { slug: 'bookings', name: 'Bookings', defaultRoute: '/bookings', sequence: 2 },
+      { slug: 'automation', name: 'Automation', defaultRoute: '/automation', sequence: 3 }
     ];
 
     for (const module of coreModules) {

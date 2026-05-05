@@ -19,9 +19,10 @@ import { AiQualificationService } from './ai-qualification.service';
 import { TenantTasksController } from './tenant-tasks.controller';
 import { CalendarSyncModule } from '../calendar-sync/calendar-sync.module';
 import { PublicLeadsController } from './public-leads.controller';
+import { AutomationModule } from '../automation/automation.module';
 
 @Module({
-  imports: [DatabaseModule, CommonModule, UsersModule, NotificationsModule, CalendarSyncModule],
+  imports: [DatabaseModule, CommonModule, UsersModule, NotificationsModule, CalendarSyncModule, AutomationModule],
   controllers: [
     LeadAssignmentController,
     LeadPublicController,

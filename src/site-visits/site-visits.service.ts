@@ -7,12 +7,14 @@ import type { DrizzleDatabase } from '../database/database.types';
 import { siteVisits, leadActivities, leads, leadStatuses } from '../database/schema';
 import { CreateSiteVisitDto, UpdateSiteVisitDto } from './site-visits.dto';
 import { NotificationGateway } from '../notifications/notification.gateway';
+import { AutomationService } from '../automation/automation.service';
 
 @Injectable()
 export class SiteVisitsService {
   constructor(
     @Inject(DRIZZLE) private readonly db: DrizzleDatabase,
-    private readonly notificationGateway: NotificationGateway
+    private readonly notificationGateway: NotificationGateway,
+    private readonly automationService: AutomationService
   ) {}
 
   private async resolveStatusIdBySlug(tenantId: string, slug: string): Promise<string | null> {
@@ -100,6 +102,9 @@ export class SiteVisitsService {
       visitDate: dto.visitDate
     });
 
+    // Fire automation event (fire-and-forget)
+    this.automationService.fireEvent(tenantId, 'site_visit_scheduled', { leadId: dto.leadId }).catch(() => {});
+
     return this.findOne(tenantId, id);
   }
 
@@ -178,6 +183,15 @@ export class SiteVisitsService {
         }
       }
     });
+
+    // Fire automation events based on new status (fire-and-forget)
+    if (dto.status && dto.status !== existing.status) {
+      if (dto.status === 'completed') {
+        this.automationService.fireEvent(tenantId, 'site_visit_done', { leadId: existing.leadId }).catch(() => {});
+      } else if (dto.status === 'no_show') {
+        this.automationService.fireEvent(tenantId, 'site_visit_no_show', { leadId: existing.leadId }).catch(() => {});
+      }
+    }
 
     return this.findOne(tenantId, visitId);
   }

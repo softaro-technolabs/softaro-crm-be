@@ -23,3 +23,4 @@ export * from './bookings.schema';
 export * from './property-documents.schema';
 export * from './meta-ads.schema';
 export * from './waterpark-reviews.schema';
+export * from './automation.schema';

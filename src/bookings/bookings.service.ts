@@ -32,10 +32,14 @@ import {
   CreateBookingPaymentDto,
   BookingPaymentQueryDto
 } from './bookings.dto';
+import { AutomationService } from '../automation/automation.service';
 
 @Injectable()
 export class BookingsService {
-  constructor(@Inject(DRIZZLE) private readonly db: DrizzleDatabase) {}
+  constructor(
+    @Inject(DRIZZLE) private readonly db: DrizzleDatabase,
+    private readonly automationService: AutomationService
+  ) {}
 
   async listBookings(tenantId: string, query: BookingListQueryDto) {
     const limit = query.limit ?? 50;
@@ -268,8 +272,14 @@ export class BookingsService {
         updatedAt: now
       });
     });
+    const bookingResult = await this.getBooking(tenantId, bookingId);
 
-    return this.getBooking(tenantId, bookingId);
+    // Fire automation event (fire-and-forget)
+    if (resolved.leadId) {
+      this.automationService.fireEvent(tenantId, 'booking_created', { leadId: resolved.leadId }).catch(() => {});
+    }
+
+    return bookingResult;
   }
 
   async updateBooking(tenantId: string, bookingId: string, dto: UpdateBookingDto, updatedByUserId?: string | null) {
@@ -378,6 +388,14 @@ export class BookingsService {
           paidAmount: totalPaid,
           bookingAmount: Number(booking.booking.bookingAmount)
         });
+      }
+
+      // Fire automation event (fire-and-forget)
+      if (booking.booking.leadId) {
+        this.automationService.fireEvent(tenantId, 'payment_received', {
+          leadId: booking.booking.leadId,
+          metadata: { amount: dto.amount, paymentMethod: dto.paymentMethod }
+        }).catch(() => {});
       }
 
       // 5. Log Activity

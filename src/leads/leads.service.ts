@@ -45,6 +45,7 @@ import { LeadAssignmentService } from './lead-assignment.service';
 import { PhoneUtil } from '../common/utils/phone.util';
 import { PaginationUtil } from '../common/utils/pagination.util';
 import { AiQualificationService, LeadQualificationInput } from './ai-qualification.service';
+import { AutomationService } from '../automation/automation.service';
 
 type CreateLeadOptions = {
   createdByUserId?: string | null;
@@ -72,7 +73,8 @@ export class LeadsService {
     private readonly notificationGateway: NotificationGateway,
     private readonly mailService: MailService,
     private readonly configService: ConfigService,
-    private readonly aiQualificationService: AiQualificationService
+    private readonly aiQualificationService: AiQualificationService,
+    private readonly automationService: AutomationService
   ) { }
 
   async listLeads(tenantId: string, query: LeadListQueryDto) {
@@ -290,6 +292,11 @@ export class LeadsService {
       phone: dto.phone
     });
 
+    // Fire automation event (fire-and-forget)
+    this.automationService.fireEvent(tenantId, 'lead_created', { leadId: id }).catch((err) => {
+      this.logger.error('[Automation] lead_created event failed', err);
+    });
+
     // Send Email Notifications (Background process)
     this.sendLeadCaptureEmails(tenantId, id, dto, assignedToUserId).catch((err) => {
       console.error('[Email Notification Failed]', err);
@@ -481,6 +488,14 @@ export class LeadsService {
           nextFollowUpAt: null,
           createdByUserId: null,
           createdAt: now
+        });
+
+        // Fire automation event for status change (fire-and-forget)
+        this.automationService.fireEvent(tenantId, 'lead_status_changed', {
+          leadId,
+          metadata: { fromStatusId: existing.statusId, toStatusId: statusId }
+        }).catch((err) => {
+          this.logger.error('[Automation] lead_status_changed event failed', err);
         });
       }
     });
