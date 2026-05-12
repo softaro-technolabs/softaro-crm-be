@@ -28,20 +28,20 @@ async function bootstrap() {
       crossOriginEmbedderPolicy: false,
       contentSecurityPolicy: isProduction
         ? {
-            directives: {
-              defaultSrc: ["'self'"],
-              styleSrc: ["'self'", "'unsafe-inline'"],
-              imgSrc: ["'self'", 'data:', 'https:'],
-              scriptSrc: ["'self'"],
-            },
-          }
+          directives: {
+            defaultSrc: ["'self'"],
+            styleSrc: ["'self'", "'unsafe-inline'"],
+            imgSrc: ["'self'", 'data:', 'https:'],
+            scriptSrc: ["'self'"],
+          },
+        }
         : false,
     })
   );
 
   // ─── CORS (origin-scoped) ────────────────────────────────────────────────────
   const allowedOrigins = configService
-    .get<string>('ALLOWED_ORIGINS', 'http://localhost:5173,http://localhost:3000')
+    .get<string>('ALLOWED_ORIGINS', 'http://localhost:5174,http://localhost:3000')
     .split(',')
     .map((o) => o.trim());
 
