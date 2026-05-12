@@ -23,7 +23,25 @@ import { LocationPointDto } from './location-preference.dto';
 export const LEAD_REQUIREMENT_TYPES = ['buy', 'rent', 'investment'] as const;
 export type LeadRequirementType = (typeof LEAD_REQUIREMENT_TYPES)[number];
 
-export const LEAD_SOURCES = ['facebook', 'google', 'referral', 'website', 'walk_in', 'other'] as const;
+export const LEAD_SOURCES = [
+  'facebook',
+  'instagram',
+  'google',
+  'youtube',
+  'linkedin',
+  'whatsapp',
+  'referral',
+  'website',
+  'walk_in',
+  '99acres',
+  'magicbricks',
+  'housing_com',
+  'indiamart',
+  'sulekha',
+  'ivr_call',
+  'chatbot',
+  'other',
+] as const;
 export type LeadSource = (typeof LEAD_SOURCES)[number];
 
 export const LEAD_ASSIGNMENT_STRATEGIES = ['round_robin', 'property_category', 'availability', 'location'] as const;

@@ -209,14 +209,38 @@ export class UsersService {
     return row ?? null;
   }
 
-  async updatePassword(userId: string, password: string) {
+  async updatePassword(userId: string, passwordOrHash: string) {
+    // If caller passes a raw password (no $2b$ prefix), hash it; otherwise treat as pre-hashed
+    const isAlreadyHashed = passwordOrHash.startsWith('$2b$') || passwordOrHash.startsWith('$2a$');
     const saltRounds = this.configService.get<number>('security.hashRounds', 12);
-    const passwordHash = await bcrypt.hash(password, saltRounds);
-    await this.db.update(users).set({ passwordHash }).where(eq(users.id, userId));
+    const passwordHash = isAlreadyHashed
+      ? passwordOrHash
+      : await bcrypt.hash(passwordOrHash, saltRounds);
+
+    await this.db
+      .update(users)
+      .set({ passwordHash, passwordResetToken: null, passwordResetExpiry: null, updatedAt: new Date() })
+      .where(eq(users.id, userId));
+  }
+
+  async setPasswordResetToken(userId: string, token: string, expiry: Date) {
+    await this.db
+      .update(users)
+      .set({ passwordResetToken: token, passwordResetExpiry: expiry, updatedAt: new Date() })
+      .where(eq(users.id, userId));
+  }
+
+  async findByResetToken(token: string) {
+    const [row] = await this.db
+      .select()
+      .from(users)
+      .where(eq(users.passwordResetToken, token))
+      .limit(1);
+    return row ?? null;
   }
 
   async updateLastLogin(userId: string) {
-    await this.db.update(users).set({ updatedAt: new Date() }).where(eq(users.id, userId));
+    await this.db.update(users).set({ lastLoginAt: new Date(), updatedAt: new Date() }).where(eq(users.id, userId));
   }
 
   async findUserWithTenant(userIdOrEmail: string, tenantSlugOrId?: string) {

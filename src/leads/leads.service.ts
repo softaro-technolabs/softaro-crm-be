@@ -1092,4 +1092,56 @@ export class LeadsService {
 
     return this.getLead(tenantId, leadId);
   }
+
+  // ─── Export Leads to Excel ───────────────────────────────────────────────────
+
+  async exportLeadsToXlsx(tenantId: string, query: LeadListQueryDto): Promise<Buffer> {
+    // Fetch up to 5000 leads for export
+    const exportQuery: LeadListQueryDto = { ...query, limit: 5000, page: 1 };
+    const { data: leadRows } = await this.listLeads(tenantId, exportQuery);
+
+    let XLSX: typeof import('xlsx');
+    try {
+      XLSX = await import('xlsx');
+    } catch {
+      throw new InternalServerErrorException('Spreadsheet library not available.');
+    }
+
+    const rows = leadRows.map((row: any) => ({
+      'ID': row.lead?.id ?? row.id ?? '',
+      'Name': row.lead?.name ?? row.name ?? '',
+      'Phone': row.lead?.phone ?? row.phone ?? '',
+      'Email': row.lead?.email ?? row.email ?? '',
+      'Requirement': row.lead?.requirementType ?? row.requirementType ?? '',
+      'Property Type': row.lead?.propertyType ?? row.propertyType ?? '',
+      'Category': row.lead?.propertyCategory ?? row.propertyCategory ?? '',
+      'BHK': row.lead?.bhkType ?? row.bhkType ?? '',
+      'Budget': row.lead?.budget ?? row.budget ?? '',
+      'Lead Source': row.lead?.leadSource ?? row.leadSource ?? '',
+      'Capture Channel': row.lead?.captureChannel ?? row.captureChannel ?? '',
+      'Lead Score': row.lead?.leadScore ?? row.leadScore ?? 0,
+      'Lead Label': row.lead?.leadLabel ?? row.leadLabel ?? '',
+      'Status': row.status?.name ?? '',
+      'Assigned To': row.assignee?.name ?? '',
+      'Last Contacted': row.lead?.lastContactedAt ?? row.lastContactedAt ?? '',
+      'Next Follow Up': row.lead?.nextFollowUpAt ?? row.nextFollowUpAt ?? '',
+      'Notes': row.lead?.notes ?? row.notes ?? '',
+      'Created At': row.lead?.createdAt ?? row.createdAt ?? '',
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Leads');
+
+    // Set column widths
+    worksheet['!cols'] = [
+      { wch: 36 }, { wch: 25 }, { wch: 18 }, { wch: 30 },
+      { wch: 12 }, { wch: 15 }, { wch: 15 }, { wch: 8 },
+      { wch: 15 }, { wch: 15 }, { wch: 18 }, { wch: 12 },
+      { wch: 10 }, { wch: 20 }, { wch: 25 }, { wch: 20 },
+      { wch: 20 }, { wch: 40 }, { wch: 22 },
+    ];
+
+    return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
+  }
 }

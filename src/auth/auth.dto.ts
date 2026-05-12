@@ -26,6 +26,31 @@ export class RefreshTokenDto {
   refreshToken!: string;
 }
 
+export class ForgotPasswordDto {
+  @ApiProperty({ example: 'agent@realty.com' })
+  @IsEmail()
+  email!: string;
+
+  @ApiPropertyOptional({
+    description: 'Tenant slug — required for non-super-admin accounts',
+    example: 'akshar-realty'
+  })
+  @IsOptional()
+  @IsString()
+  tenantSlug?: string;
+}
+
+export class ResetPasswordDto {
+  @ApiProperty({ description: 'Token received in the reset-password email' })
+  @IsString()
+  token!: string;
+
+  @ApiProperty({ minLength: 8, example: 'NewPass@123' })
+  @IsString()
+  @MinLength(8)
+  newPassword!: string;
+}
+
 export class CreateSuperAdminDto {
   @ApiProperty({ example: 'admin@example.com' })
   @IsEmail()

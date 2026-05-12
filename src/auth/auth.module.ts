@@ -10,6 +10,7 @@ import { JwtAuthGuard } from './jwt-auth.guard';
 import { SuperAdminGuard } from './super-admin.guard';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { DatabaseModule } from '../database/database.module';
+import { CommonModule } from '../common/common.module';
 import { ModulesModule } from '../modules/modules.module';
 import { PermissionsModule } from '../permissions/permissions.module';
 import { RolesModule } from '../roles/roles.module';
@@ -20,6 +21,7 @@ import { UsersModule } from '../users/users.module';
   imports: [
     ConfigModule,
     DatabaseModule,
+    CommonModule,
     UsersModule,
     TenantsModule,
     RolesModule,

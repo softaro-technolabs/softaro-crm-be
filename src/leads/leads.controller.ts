@@ -8,10 +8,12 @@ import {
   Post,
   Put,
   Query,
+  Res,
   UploadedFile,
   UseGuards,
   UseInterceptors
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Express } from 'express';
@@ -121,6 +123,21 @@ export class LeadsController {
   async reorderStatuses(@Param('tenantId') tenantId: string, @Body() dto: ReorderLeadStatusesDto) {
     this.verifyTenantAccess(tenantId);
     return this.leadsService.reorderPipeline(tenantId, dto);
+  }
+
+  @Get('export')
+  @ApiOperation({ summary: 'Export all leads to Excel (.xlsx)' })
+  async exportLeads(
+    @Param('tenantId') tenantId: string,
+    @Query() query: LeadListQueryDto,
+    @Res() res: Response
+  ) {
+    this.verifyTenantAccess(tenantId);
+    const buffer = await this.leadsService.exportLeadsToXlsx(tenantId, query);
+    const filename = `leads_${tenantId}_${Date.now()}.xlsx`;
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(buffer);
   }
 
   @Post('import')

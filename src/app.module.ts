@@ -1,7 +1,10 @@
 import { Module } from '@nestjs/common';
 import type { MiddlewareConsumer, NestModule } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { TerminusModule } from '@nestjs/terminus';
 
 import { AuthModule } from './auth/auth.module';
 import { CommonModule } from './common/common.module';
@@ -33,6 +36,10 @@ import { DashboardModule } from './dashboard/dashboard.module';
 import { SiteVisitsModule } from './site-visits/site-visits.module';
 import { WaterparkReviewsModule } from './waterpark-reviews/waterpark-reviews.module';
 import { AutomationModule } from './automation/automation.module';
+import { HealthController } from './health/health.controller';
+import { CommissionsModule } from './commissions/commissions.module';
+import { AuditLogsModule } from './audit-logs/audit-logs.module';
+import { CallLogsModule } from './call-logs/call-logs.module';
 
 @Module({
   imports: [
@@ -42,6 +49,20 @@ import { AutomationModule } from './automation/automation.module';
       envFilePath: ['.env', 'env.example']
     }),
     ScheduleModule.forRoot(),
+    // Rate limiting: global guard applied, public endpoints get stricter via @Throttle()
+    ThrottlerModule.forRoot([
+      {
+        name: 'short',
+        ttl: 1000,
+        limit: 20, // 20 req/s burst
+      },
+      {
+        name: 'medium',
+        ttl: 60000,
+        limit: 300, // 300 req/min
+      },
+    ]),
+    TerminusModule,
     DatabaseModule,
     CommonModule,
     AuthModule,
@@ -66,9 +87,19 @@ import { AutomationModule } from './automation/automation.module';
     DashboardModule,
     SiteVisitsModule,
     WaterparkReviewsModule,
-    AutomationModule
+    AutomationModule,
+    CommissionsModule,
+    AuditLogsModule,
+    CallLogsModule,
   ],
-  providers: [MigrationService, DatabaseSyncService, TenantMiddleware]
+  providers: [
+    MigrationService,
+    DatabaseSyncService,
+    TenantMiddleware,
+    // Apply rate-limiting globally; individual controllers can override with @SkipThrottle
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+  ],
+  controllers: [HealthController],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {

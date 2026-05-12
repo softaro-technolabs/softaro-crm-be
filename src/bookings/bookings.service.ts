@@ -21,6 +21,7 @@ import {
   propertyUnits,
   propertyDocuments,
   leadStatuses,
+  tenants,
   users
 } from '../database/schema';
 import { PaginationUtil } from '../common/utils/pagination.util';
@@ -33,6 +34,8 @@ import {
   BookingPaymentQueryDto
 } from './bookings.dto';
 import { AutomationService } from '../automation/automation.service';
+import { generateDemandLetterPdf } from '../common/pdf-templates/demand-letter.template';
+import { generateAllotmentLetterPdf } from '../common/pdf-templates/allotment-letter.template';
 
 @Injectable()
 export class BookingsService {
@@ -436,6 +439,143 @@ export class BookingsService {
       .from(bookingPayments)
       .where(and(...filters))
       .orderBy(desc(bookingPayments.paymentDate));
+  }
+
+  async generateDemandLetter(
+    tenantId: string,
+    bookingId: string,
+    milestoneId?: string
+  ): Promise<{ buffer: Buffer; filename: string }> {
+    const bookingRow = await this.getBooking(tenantId, bookingId);
+
+    // Fetch tenant for developer details
+    const [tenant] = await this.db
+      .select({ name: tenants.name, address: tenants.address })
+      .from(tenants)
+      .where(eq(tenants.id, tenantId))
+      .limit(1);
+
+    // Resolve milestone
+    let milestone: typeof bookingMilestones.$inferSelect | null = null;
+    if (milestoneId) {
+      const [ms] = await this.db
+        .select()
+        .from(bookingMilestones)
+        .where(and(eq(bookingMilestones.tenantId, tenantId), eq(bookingMilestones.id, milestoneId)))
+        .limit(1);
+      milestone = ms ?? null;
+    } else {
+      // Pick the first pending milestone
+      const [ms] = await this.db
+        .select()
+        .from(bookingMilestones)
+        .where(
+          and(
+            eq(bookingMilestones.tenantId, tenantId),
+            eq(bookingMilestones.bookingId, bookingId),
+            eq(bookingMilestones.status, 'pending')
+          )
+        )
+        .orderBy(bookingMilestones.sortOrder)
+        .limit(1);
+      milestone = ms ?? null;
+    }
+
+    const fmtDate = (d: Date | string | null | undefined): string =>
+      d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' }) : '';
+
+    const totalAmount = Number(bookingRow.booking.bookingAmount ?? 0);
+    const amountDue = milestone ? Number(milestone.amount) : totalAmount;
+    const dueDate = milestone?.dueDate ? fmtDate(milestone.dueDate) : fmtDate(new Date());
+    const milestoneLabel = milestone?.label ?? 'As per Agreement';
+
+    const letterNumber = `DL-${bookingRow.booking.bookingNumber}`;
+
+    const buffer = await generateDemandLetterPdf({
+      letterNumber,
+      date: fmtDate(new Date()),
+      buyerName: bookingRow.lead?.name ?? 'Buyer',
+      projectName: bookingRow.propertyEntity?.name ?? 'Project',
+      unitNumber: bookingRow.propertyUnit?.unitCode ?? bookingRow.booking.id,
+      totalAmount,
+      amountDue,
+      dueDate,
+      milestoneLabel,
+      developerName: tenant?.name ?? 'Developer',
+      developerAddress: tenant?.address ?? undefined,
+    });
+
+    return {
+      buffer,
+      filename: `demand-letter-${bookingRow.booking.bookingNumber}.pdf`,
+    };
+  }
+
+  async generateAllotmentLetter(
+    tenantId: string,
+    bookingId: string
+  ): Promise<{ buffer: Buffer; filename: string }> {
+    const bookingRow = await this.getBooking(tenantId, bookingId);
+
+    const [tenant] = await this.db
+      .select({ name: tenants.name, address: tenants.address })
+      .from(tenants)
+      .where(eq(tenants.id, tenantId))
+      .limit(1);
+
+    const fmtDate = (d: Date | string | null | undefined): string =>
+      d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' }) : '';
+
+    // Fetch unit area details
+    const unitDetails = bookingRow.propertyUnit
+      ? await this.db
+          .select({
+            carpetArea: propertyUnits.carpetArea,
+            reraArea: propertyUnits.reraArea,
+          })
+          .from(propertyUnits)
+          .where(eq(propertyUnits.id, bookingRow.propertyUnit.id))
+          .limit(1)
+      : [];
+
+    const unit = unitDetails[0] ?? null;
+
+    // Fetch RERA number from entity
+    const entityDetails = bookingRow.propertyEntity
+      ? await this.db
+          .select({ reraNumber: propertyEntities.reraNumber })
+          .from(propertyEntities)
+          .where(eq(propertyEntities.id, bookingRow.propertyEntity.id))
+          .limit(1)
+      : [];
+
+    const entity = entityDetails[0] ?? null;
+
+    const totalConsideration = Number(bookingRow.booking.bookingAmount ?? 0);
+    const bookingAmount = Number(bookingRow.booking.paidAmount ?? 0);
+    const letterNumber = `AL-${bookingRow.booking.bookingNumber}`;
+
+    const buffer = await generateAllotmentLetterPdf({
+      letterNumber,
+      date: fmtDate(new Date()),
+      buyerName: bookingRow.lead?.name ?? 'Buyer',
+      buyerEmail: bookingRow.lead?.email ?? undefined,
+      buyerPhone: bookingRow.lead?.phone ?? undefined,
+      projectName: bookingRow.propertyEntity?.name ?? 'Project',
+      unitNumber: bookingRow.propertyUnit?.unitCode ?? bookingRow.booking.id,
+      carpetArea: unit?.carpetArea ? String(unit.carpetArea) : undefined,
+      superBuiltUp: unit?.reraArea ? String(unit.reraArea) : undefined,
+      totalConsideration,
+      bookingAmount,
+      reraNumber: entity?.reraNumber ?? undefined,
+      developerName: tenant?.name ?? 'Developer',
+      developerAddress: tenant?.address ?? undefined,
+    });
+
+    return {
+      buffer,
+      filename: `allotment-letter-${bookingRow.booking.bookingNumber}.pdf`,
+    };
   }
 
   private async resolveBookingRelations(tenantId: string, dto: CreateBookingDto) {

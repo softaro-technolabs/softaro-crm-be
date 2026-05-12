@@ -8,9 +8,11 @@ import {
   Post,
   Put,
   Query,
+  Res,
   UseGuards
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Response } from 'express';
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RequestContextService } from '../common/utils/request-context.service';
@@ -95,6 +97,43 @@ export class BookingsController {
   async listPayments(@Param('tenantId') tenantId: string, @Query() query: BookingPaymentQueryDto) {
     this.verifyTenantAccess(tenantId);
     return this.bookingsService.listPayments(tenantId, query);
+  }
+
+  @Get(':bookingId/demand-letter')
+  @ApiOperation({ summary: 'Generate demand letter PDF for a booking' })
+  async generateDemandLetter(
+    @Param('tenantId') tenantId: string,
+    @Param('bookingId') bookingId: string,
+    @Query('milestoneId') milestoneId: string | undefined,
+    @Res() res: Response
+  ) {
+    this.verifyTenantAccess(tenantId);
+    const { buffer, filename } = await this.bookingsService.generateDemandLetter(tenantId, bookingId, milestoneId);
+
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+      'Content-Length': buffer.length,
+    });
+    res.end(buffer);
+  }
+
+  @Get(':bookingId/allotment-letter')
+  @ApiOperation({ summary: 'Generate allotment letter PDF for a booking' })
+  async generateAllotmentLetter(
+    @Param('tenantId') tenantId: string,
+    @Param('bookingId') bookingId: string,
+    @Res() res: Response
+  ) {
+    this.verifyTenantAccess(tenantId);
+    const { buffer, filename } = await this.bookingsService.generateAllotmentLetter(tenantId, bookingId);
+
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+      'Content-Length': buffer.length,
+    });
+    res.end(buffer);
   }
 
   private verifyTenantAccess(tenantId: string) {

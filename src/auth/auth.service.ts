@@ -1,16 +1,21 @@
 import {
   BadRequestException,
   Injectable,
+  NotFoundException,
   UnauthorizedException
 } from '@nestjs/common';
+import { randomBytes } from 'crypto';
 
 import { AuthTokenService, AuthJwtPayload } from './auth.utils';
-import { LoginDto, RefreshTokenDto } from './auth.dto';
+import { ForgotPasswordDto, LoginDto, RefreshTokenDto, ResetPasswordDto } from './auth.dto';
 import { ModulesService } from '../modules/modules.service';
 import { PermissionsService } from '../permissions/permissions.service';
 import { RolesService } from '../roles/roles.service';
 import { TenantsService } from '../tenants/tenants.service';
 import { UsersService } from '../users/users.service';
+import { MailService } from '../common/services/mail.service';
+import { getForgotPasswordTemplate } from '../common/mail-templates/forgot-password.template';
+import { ConfigService } from '@nestjs/config';
 
 import bcrypt from 'bcrypt';
 
@@ -22,7 +27,9 @@ export class AuthService {
     private readonly rolesService: RolesService,
     private readonly permissionsService: PermissionsService,
     private readonly modulesService: ModulesService,
-    private readonly tokenService: AuthTokenService
+    private readonly tokenService: AuthTokenService,
+    private readonly mailService: MailService,
+    private readonly configService: ConfigService,
   ) { }
 
   async login(dto: LoginDto) {
@@ -156,6 +163,59 @@ export class AuthService {
       tenants: context.tenants
     };
   }
+
+  // ─── Forgot / Reset Password ─────────────────────────────────────────────────
+
+  async forgotPassword(dto: ForgotPasswordDto): Promise<{ message: string }> {
+    const user = await this.usersService.findByEmail(dto.email);
+
+    // Always return the same message to prevent email enumeration
+    const successMessage = 'If an account exists with that email, a reset link has been sent.';
+
+    if (!user) return { message: successMessage };
+
+    const token = randomBytes(48).toString('hex');
+    const expiry = new Date(Date.now() + 30 * 60 * 1000); // 30 minutes
+
+    await this.usersService.setPasswordResetToken(user.id, token, expiry);
+
+    const frontendUrl = this.configService.get<string>(
+      'FRONTEND_URL',
+      'https://estateos.softarotechnolabs.com'
+    );
+
+    const tenantSlug = dto.tenantSlug ? `/${dto.tenantSlug}` : '';
+    const resetUrl = `${frontendUrl}/reset-password?token=${token}${tenantSlug ? `&tenant=${dto.tenantSlug}` : ''}`;
+
+    try {
+      await this.mailService.sendEmail(
+        user.email,
+        'Reset Your EstateOS CRM Password',
+        getForgotPasswordTemplate({ name: user.name, resetUrl })
+      );
+    } catch {
+      // Don't expose mail errors to caller
+    }
+
+    return { message: successMessage };
+  }
+
+  async resetPassword(dto: ResetPasswordDto): Promise<{ message: string }> {
+    const user = await this.usersService.findByResetToken(dto.token);
+
+    if (!user || !user.passwordResetExpiry || user.passwordResetExpiry < new Date()) {
+      throw new BadRequestException('Invalid or expired reset token. Please request a new one.');
+    }
+
+    const saltRounds = this.configService.get<number>('security.hashRounds', 12);
+    const newHash = await bcrypt.hash(dto.newPassword, saltRounds);
+
+    await this.usersService.updatePassword(user.id, newHash);
+
+    return { message: 'Password reset successfully. You can now log in with your new password.' };
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
 
   private async resolveAuthContext(
     userId: string,

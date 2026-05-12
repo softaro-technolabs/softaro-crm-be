@@ -15,7 +15,25 @@ import { sql } from 'drizzle-orm';
 
 export const leadRequirementTypeEnum = pgEnum('lead_requirement_type', ['buy', 'rent', 'investment']);
 
-export const leadSourceEnum = pgEnum('lead_source', ['facebook', 'google', 'referral', 'website', 'walk_in', 'other']);
+export const leadSourceEnum = pgEnum('lead_source', [
+  'facebook',
+  'instagram',
+  'google',
+  'youtube',
+  'linkedin',
+  'whatsapp',
+  'referral',
+  'website',
+  'walk_in',
+  '99acres',
+  'magicbricks',
+  'housing_com',
+  'indiamart',
+  'sulekha',
+  'ivr_call',
+  'chatbot',
+  'other',
+]);
 
 export const leadAssignmentStrategyEnum = pgEnum('lead_assignment_strategy', [
   'round_robin',

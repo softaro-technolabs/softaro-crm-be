@@ -17,9 +17,20 @@ export class LeadScoringService {
       website: 30,
       referral: 40,
       facebook: 20,
+      instagram: 18,
       google: 20,
+      youtube: 15,
+      linkedin: 22,
+      whatsapp: 25,
       walk_in: 35,
-      other: 10
+      '99acres': 20,
+      magicbricks: 20,
+      housing_com: 20,
+      indiamart: 15,
+      sulekha: 15,
+      ivr_call: 30,
+      chatbot: 15,
+      other: 10,
     };
     score += sourceWeights[payload.source] || 10;
 

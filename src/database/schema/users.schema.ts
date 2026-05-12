@@ -17,6 +17,10 @@ export const users = pgTable(
     name: varchar('name', { length: 255 }).notNull(),
     phone: varchar('phone', { length: 50 }),
     roleGlobal: roleGlobalEnum('role_global').default('normal').notNull(),
+    // Password reset
+    passwordResetToken: varchar('password_reset_token', { length: 128 }),
+    passwordResetExpiry: timestamp('password_reset_expiry', { withTimezone: true }),
+    lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true })
       .defaultNow()
