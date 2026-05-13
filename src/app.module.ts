@@ -41,6 +41,7 @@ import { CommissionsModule } from './commissions/commissions.module';
 import { AuditLogsModule } from './audit-logs/audit-logs.module';
 import { CallLogsModule } from './call-logs/call-logs.module';
 import { LeadOptionsModule } from './lead-options/lead-options.module';
+import { PropertyEntityTypesModule } from './property-entity-types/property-entity-types.module';
 
 @Module({
   imports: [
@@ -93,6 +94,7 @@ import { LeadOptionsModule } from './lead-options/lead-options.module';
     AuditLogsModule,
     CallLogsModule,
     LeadOptionsModule,
+    PropertyEntityTypesModule,
   ],
   providers: [
     MigrationService,

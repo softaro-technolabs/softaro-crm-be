@@ -75,7 +75,8 @@ export default defineConfig({
     'property_pricing_breakups',
     'quotations',
     'quotation_items',
-    'waterpark_reviews'
+    'waterpark_reviews',
+    'property_entity_types'
   ],
 });
 
