@@ -24,7 +24,7 @@ export class WhatsappController {
         @Param('tenantId') tenantId: string,
         @Body() dto: SendMessageDto
     ) {
-        this.verifyTenantAccess(tenantId);
+        this.requestContext.verifyTenantAccess(tenantId);
         return this.whatsappService.sendMessage(
             tenantId,
             dto.leadId ?? null,
@@ -41,7 +41,7 @@ export class WhatsappController {
         @Param('tenantId') tenantId: string,
         @Body() dto: ScheduleMessageDto
     ) {
-        this.verifyTenantAccess(tenantId);
+        this.requestContext.verifyTenantAccess(tenantId);
         return this.whatsappService.scheduleMessage(
             tenantId,
             dto.leadId ?? null,
@@ -61,7 +61,7 @@ export class WhatsappController {
         @Param('leadId') leadId: string,
         @Query() query: MessageListQueryDto
     ) {
-        this.verifyTenantAccess(tenantId);
+        this.requestContext.verifyTenantAccess(tenantId);
         return this.whatsappService.getLeadMessageHistory(tenantId, leadId, query);
     }
 
@@ -73,7 +73,7 @@ export class WhatsappController {
         @Param('tenantId') tenantId: string,
         @Param('leadId') leadId: string
     ) {
-        this.verifyTenantAccess(tenantId);
+        this.requestContext.verifyTenantAccess(tenantId);
         return this.whatsappService.getScheduledMessages(tenantId, leadId);
     }
 
@@ -85,7 +85,7 @@ export class WhatsappController {
         @Param('tenantId') tenantId: string,
         @Param('id') id: string
     ) {
-        this.verifyTenantAccess(tenantId);
+        this.requestContext.verifyTenantAccess(tenantId);
         return this.whatsappService.cancelScheduledMessage(tenantId, id);
     }
 
@@ -93,26 +93,18 @@ export class WhatsappController {
     @ApiOperation({ summary: 'Get Meta OAuth authorization URL for the tenant' })
     @ApiParam({ name: 'tenantId', description: 'Tenant ID' })
     async getAuthUrl(@Param('tenantId') tenantId: string) {
-        this.verifyTenantAccess(tenantId);
+        this.requestContext.verifyTenantAccess(tenantId);
         return this.whatsappService.getAuthUrl(tenantId);
     }
 
     @Get('account')
     @ApiOperation({ summary: 'Get current connected WhatsApp account details' })
     async getAccount(@Param('tenantId') tenantId: string) {
-        this.verifyTenantAccess(tenantId);
+        this.requestContext.verifyTenantAccess(tenantId);
         return this.whatsappService.getTenantAccount(tenantId);
     }
 
-    private verifyTenantAccess(tenantId: string) {
-        const user = this.requestContext.getUser();
-        if (!user) {
-            throw new ForbiddenException('User context not found');
-        }
 
-        if (user.role_global === 'super_admin') {
-            return;
-        }
 
         if (user.tenant_id !== tenantId) {
             throw new ForbiddenException('Access denied to this tenant');

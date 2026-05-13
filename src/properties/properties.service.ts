@@ -912,7 +912,7 @@ export class PropertiesService {
   async listLeadPropertyInterests(tenantId: string, query: LeadPropertyInterestListQueryDto) {
     const limit = query.limit ?? 50;
     const page = query.page ?? 1;
-    const offset = (page - 1) * limit;
+    const offset = PaginationUtil.getOffset(page, limit);
 
     const filters: SQL[] = [eq(leadPropertyInterests.tenantId, tenantId)];
     if (query.leadId) filters.push(eq(leadPropertyInterests.leadId, query.leadId));

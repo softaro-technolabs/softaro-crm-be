@@ -38,21 +38,21 @@ export class BookingsController {
   @Get()
   @ApiOperation({ summary: 'List bookings with pagination and filters' })
   async list(@Param('tenantId') tenantId: string, @Query() query: BookingListQueryDto) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.bookingsService.listBookings(tenantId, query);
   }
 
   @Get(':bookingId')
   @ApiOperation({ summary: 'Get booking details' })
   async detail(@Param('tenantId') tenantId: string, @Param('bookingId') bookingId: string) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.bookingsService.getBooking(tenantId, bookingId);
   }
 
   @Post()
   @ApiOperation({ summary: 'Create a booking for a deal/property unit' })
   async create(@Param('tenantId') tenantId: string, @Body() dto: CreateBookingDto) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.bookingsService.createBooking(tenantId, dto, this.requestContext.getUserId());
   }
 
@@ -63,21 +63,21 @@ export class BookingsController {
     @Param('bookingId') bookingId: string,
     @Body() dto: UpdateBookingDto
   ) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.bookingsService.updateBooking(tenantId, bookingId, dto, this.requestContext.getUserId());
   }
 
   @Delete(':bookingId')
   @ApiOperation({ summary: 'Delete booking and release inventory linkage' })
   async delete(@Param('tenantId') tenantId: string, @Param('bookingId') bookingId: string) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.bookingsService.deleteBooking(tenantId, bookingId, this.requestContext.getUserId());
   }
 
   @Get(':bookingId/milestones')
   @ApiOperation({ summary: 'List payment milestones for a booking' })
   async listMilestones(@Param('tenantId') tenantId: string, @Param('bookingId') bookingId: string) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.bookingsService.getMilestones(tenantId, bookingId);
   }
 
@@ -88,14 +88,14 @@ export class BookingsController {
     @Param('bookingId') bookingId: string,
     @Body() dto: CreateBookingPaymentDto
   ) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.bookingsService.addPayment(tenantId, bookingId, dto);
   }
 
   @Get('payments')
   @ApiOperation({ summary: 'List all booking payments' })
   async listPayments(@Param('tenantId') tenantId: string, @Query() query: BookingPaymentQueryDto) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.bookingsService.listPayments(tenantId, query);
   }
 
@@ -107,7 +107,7 @@ export class BookingsController {
     @Query('milestoneId') milestoneId: string | undefined,
     @Res() res: Response
   ) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     const { buffer, filename } = await this.bookingsService.generateDemandLetter(tenantId, bookingId, milestoneId);
 
     res.set({
@@ -125,7 +125,7 @@ export class BookingsController {
     @Param('bookingId') bookingId: string,
     @Res() res: Response
   ) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     const { buffer, filename } = await this.bookingsService.generateAllotmentLetter(tenantId, bookingId);
 
     res.set({
@@ -136,14 +136,6 @@ export class BookingsController {
     res.end(buffer);
   }
 
-  private verifyTenantAccess(tenantId: string) {
-    const user = this.requestContext.getUser();
-    if (!user) {
-      throw new ForbiddenException('User context not found');
-    }
-    if (user.role_global === 'super_admin') {
-      return;
-    }
     if (user.tenant_id !== tenantId) {
       throw new ForbiddenException('Access denied to this tenant');
     }

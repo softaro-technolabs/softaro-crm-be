@@ -21,7 +21,7 @@ export class PropertyPricingController {
   @Get('units/:unitId/pricing-breakups')
   @ApiOperation({ summary: 'Get unit pricing breakups' })
   async list(@Param('tenantId') tenantId: string, @Param('unitId') unitId: string) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.propertiesService.getUnitPricingBreakups(tenantId, unitId);
   }
 
@@ -32,7 +32,7 @@ export class PropertyPricingController {
     @Param('unitId') unitId: string,
     @Body() dto: ReplacePricingBreakupsDto
   ) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.propertiesService.replaceUnitPricingBreakups(tenantId, unitId, dto);
   }
 
@@ -42,15 +42,9 @@ export class PropertyPricingController {
     @Param('tenantId') tenantId: string,
     @Body() dto: GenerateCostSheetDto
   ) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.propertiesService.generateCostSheet(tenantId, dto);
   }
 
-  private verifyTenantAccess(tenantId: string) {
-    const user = this.requestContext.getUser();
-    if (!user) throw new ForbiddenException('User context not found');
-    if (user.role_global === 'super_admin') return;
-    if (user.tenant_id !== tenantId) throw new ForbiddenException('Access denied to this tenant');
-  }
 }
 

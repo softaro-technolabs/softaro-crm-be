@@ -1,3 +1,4 @@
+import { GoogleAdsWebhookDto } from './google-ads.dto';
 import { Controller, Post, Body, Query, Logger, Res, Param, Get } from '@nestjs/common';
 import { Response } from 'express';
 import { GoogleAdsService } from './google-ads.service';
@@ -41,7 +42,7 @@ export class GoogleAdsWebhookController {
     @Post('webhook/:tenantId')
     async handleWebhook(
         @Param('tenantId') tenantId: string,
-        @Body() data: any,
+        @Body() dto: GoogleAdsWebhookDto,
         @Query('key') key: string,
         @Res() res: Response
     ) {
@@ -58,7 +59,7 @@ export class GoogleAdsWebhookController {
             // Google Ads expects a 200 response
             res.status(200).send('OK');
 
-            const mappedLead = await this.googleAdsService.processIncomingLead(tenantId, data);
+            const mappedLead = await this.googleAdsService.processIncomingLead(tenantId, dto.body);
             
             // Create the lead in the CRM
             await this.leadsService.createLead(tenantId, {

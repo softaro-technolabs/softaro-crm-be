@@ -19,14 +19,14 @@ export class TenantTasksController {
   @Get()
   @ApiOperation({ summary: 'List tasks across tenant (filters: assigned user, due, overdue, status)' })
   async list(@Param('tenantId') tenantId: string, @Query() query: TenantTaskListQueryDto) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.leadTasksService.listTenantTasks(tenantId, query);
   }
 
   @Get('my')
   @ApiOperation({ summary: 'List my tasks (assignedToUserId = current user)' })
   async my(@Param('tenantId') tenantId: string, @Query() query: TenantTaskListQueryDto) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     const userId = this.requestContext.getUserId();
     return this.leadTasksService.listTenantTasks(tenantId, { ...query, assignedToUserId: userId ?? undefined });
   }
@@ -34,7 +34,7 @@ export class TenantTasksController {
   @Post()
   @ApiOperation({ summary: 'Create a task (leadId is optional in body)' })
   async create(@Param('tenantId') tenantId: string, @Body() dto: CreateLeadTaskDto) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     const userId = this.requestContext.getUserId();
     // Use leadId from body if provided
     return this.leadTasksService.createLeadTask(tenantId, dto.leadId ?? null, dto, userId ?? null);
@@ -43,7 +43,7 @@ export class TenantTasksController {
   @Get(':taskId')
   @ApiOperation({ summary: 'Get a task by id' })
   async get(@Param('tenantId') tenantId: string, @Param('taskId') taskId: string) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     // Passing null for leadId to allow getting any task in the tenant by ID
     return this.leadTasksService.getTask(tenantId, null, taskId);
   }
@@ -55,7 +55,7 @@ export class TenantTasksController {
     @Param('taskId') taskId: string,
     @Body() dto: UpdateLeadTaskDto
   ) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     const userId = this.requestContext.getUserId();
     // If dto.leadId is provided, we use it, otherwise we pass null to indicate we don't care about existing lead scoping
     return this.leadTasksService.updateLeadTask(tenantId, dto.leadId ?? null, taskId, dto, userId ?? null);
@@ -64,19 +64,11 @@ export class TenantTasksController {
   @Patch(':taskId/archive')
   @ApiOperation({ summary: 'Archive a task' })
   async archive(@Param('tenantId') tenantId: string, @Param('taskId') taskId: string) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     const userId = this.requestContext.getUserId();
     return this.leadTasksService.archiveLeadTask(tenantId, null, taskId, userId ?? null);
   }
 
-  private verifyTenantAccess(tenantId: string) {
-    const user = this.requestContext.getUser();
-    if (!user) {
-      throw new ForbiddenException('User context not found');
-    }
-    if (user.role_global === 'super_admin') {
-      return;
-    }
     if (user.tenant_id !== tenantId) {
       throw new ForbiddenException('Access denied to this tenant');
     }

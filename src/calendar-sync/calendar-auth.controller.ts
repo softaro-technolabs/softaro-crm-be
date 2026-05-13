@@ -15,13 +15,6 @@ export class CalendarAuthController {
         private readonly requestContext: RequestContextService
     ) { }
 
-    private verifyTenantAccess(tenantId: string) {
-        const user = this.requestContext.getUser();
-        const userId = this.requestContext.getUserId();
-        if (!user || !userId) throw new HttpException('User context not found', HttpStatus.FORBIDDEN);
-        if (user.role_global !== 'super_admin' && user.tenant_id !== tenantId) {
-            throw new HttpException('Access denied to this tenant', HttpStatus.FORBIDDEN);
-        }
         return { ...user, id: userId };
     }
 
@@ -29,7 +22,7 @@ export class CalendarAuthController {
 
     @Get('google/auth')
     googleAuth(@Param('tenantId') tenantId: string, @Res() res: Response) {
-        this.verifyTenantAccess(tenantId);
+        this.requestContext.verifyTenantAccess(tenantId);
 
         const clientId = this.configService.get<string>('GOOGLE_CLIENT_ID');
         const redirectUri = this.configService.get<string>('GOOGLE_REDIRECT_URI');
@@ -60,7 +53,7 @@ export class CalendarAuthController {
 
     @Get('google/connect')
     async connectGoogle(@Param('tenantId') tenantId: string, @Query('code') code: string) {
-        const user = this.verifyTenantAccess(tenantId);
+        const user = this.requestContext.verifyTenantAccess(tenantId);
 
         const clientId = this.configService.get<string>('GOOGLE_CLIENT_ID');
         const clientSecret = this.configService.get<string>('GOOGLE_CLIENT_SECRET');
@@ -103,7 +96,7 @@ export class CalendarAuthController {
 
     @Get('microsoft/auth')
     microsoftAuth(@Param('tenantId') tenantId: string, @Res() res: Response) {
-        this.verifyTenantAccess(tenantId);
+        this.requestContext.verifyTenantAccess(tenantId);
 
         const clientId = this.configService.get<string>('MS_CLIENT_ID');
         const redirectUri = this.configService.get<string>('MS_REDIRECT_URI');
@@ -123,7 +116,7 @@ export class CalendarAuthController {
 
     @Get('microsoft/connect')
     async connectMicrosoft(@Param('tenantId') tenantId: string, @Query('code') code: string) {
-        const user = this.verifyTenantAccess(tenantId);
+        const user = this.requestContext.verifyTenantAccess(tenantId);
 
         const clientId = this.configService.get<string>('MS_CLIENT_ID');
         const clientSecret = this.configService.get<string>('MS_CLIENT_SECRET');
@@ -169,7 +162,7 @@ export class CalendarAuthController {
 
     @Delete(':provider')
     async disconnect(@Param('tenantId') tenantId: string, @Param('provider') provider: 'google' | 'microsoft') {
-        const user = this.verifyTenantAccess(tenantId);
+        const user = this.requestContext.verifyTenantAccess(tenantId);
         await this.calendarTokenService.disconnect(tenantId, user.id, provider);
         return { success: true, message: `Disconnected ${provider} calendar` };
     }

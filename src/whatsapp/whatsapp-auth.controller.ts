@@ -31,7 +31,7 @@ export class WhatsappAuthController {
         @Param('tenantId') tenantId: string,
         @Body() dto: OnboardTenantDto
     ) {
-        this.verifyTenantAccess(tenantId);
+        this.requestContext.verifyTenantAccess(tenantId);
         return this.whatsappService.onboardTenantAccount(tenantId, dto.code);
     }
 
@@ -42,7 +42,7 @@ export class WhatsappAuthController {
         @Param('tenantId') tenantId: string,
         @Body() dto: ConnectAccountDto
     ) {
-        this.verifyTenantAccess(tenantId);
+        this.requestContext.verifyTenantAccess(tenantId);
         return this.whatsappService.saveTenantAccount(
             tenantId,
             dto.businessAccountId,
@@ -53,15 +53,7 @@ export class WhatsappAuthController {
         );
     }
 
-    private verifyTenantAccess(tenantId: string) {
-        const user = this.requestContext.getUser();
-        if (!user) {
-            throw new ForbiddenException('User context not found');
-        }
 
-        if (user.role_global === 'super_admin') {
-            return;
-        }
 
         if (user.tenant_id !== tenantId) {
             throw new ForbiddenException('Access denied to this tenant');

@@ -20,7 +20,7 @@ export class PropertyAttributeValuesController {
   @Get('entities/:entityId/attributes')
   @ApiOperation({ summary: 'List entity attribute values (scope=entity)' })
   async listEntity(@Param('tenantId') tenantId: string, @Param('entityId') entityId: string) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.propertiesService.listEntityAttributeValues(tenantId, entityId);
   }
 
@@ -31,14 +31,14 @@ export class PropertyAttributeValuesController {
     @Param('entityId') entityId: string,
     @Body() dto: UpsertAttributeValuesDto
   ) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.propertiesService.upsertEntityAttributeValues(tenantId, entityId, dto);
   }
 
   @Get('units/:unitId/attributes')
   @ApiOperation({ summary: 'List unit attribute values (scope=unit)' })
   async listUnit(@Param('tenantId') tenantId: string, @Param('unitId') unitId: string) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.propertiesService.listUnitAttributeValues(tenantId, unitId);
   }
 
@@ -49,15 +49,9 @@ export class PropertyAttributeValuesController {
     @Param('unitId') unitId: string,
     @Body() dto: UpsertAttributeValuesDto
   ) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.propertiesService.upsertUnitAttributeValues(tenantId, unitId, dto);
   }
 
-  private verifyTenantAccess(tenantId: string) {
-    const user = this.requestContext.getUser();
-    if (!user) throw new ForbiddenException('User context not found');
-    if (user.role_global === 'super_admin') return;
-    if (user.tenant_id !== tenantId) throw new ForbiddenException('Access denied to this tenant');
-  }
 }
 

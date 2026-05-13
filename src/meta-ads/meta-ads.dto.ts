@@ -1,27 +1,10 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, IsOptional } from 'class-validator';
+import { IsObject } from 'class-validator';
 
-export class ConnectPageDto {
-    @ApiProperty()
-    @IsString()
-    @IsNotEmpty()
-    pageId!: string;
-
-    @ApiProperty()
-    @IsString()
-    @IsNotEmpty()
-    pageName!: string;
-
-    @ApiProperty()
-    @IsString()
-    @IsNotEmpty()
-    pageAccessToken!: string;
-}
-
-export class MetaWebhookDto {
-    @ApiProperty()
-    object!: string;
-
-    @ApiProperty()
-    entry!: any[];
+/**
+ * Meta Ads webhook payload (dynamic structure)
+ * Validated as an object, detailed structure varies by webhook event type
+ */
+export class MetaAdsWebhookDto {
+  @IsObject()
+  body: Record<string, any>;
 }

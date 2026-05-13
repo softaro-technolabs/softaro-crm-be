@@ -34,21 +34,21 @@ export class DealsController {
   @Get()
   @ApiOperation({ summary: 'List deals with pagination and filters' })
   async list(@Param('tenantId') tenantId: string, @Query() query: DealListQueryDto) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.dealsService.listDeals(tenantId, query);
   }
 
   @Get(':dealId')
   @ApiOperation({ summary: 'Get deal details' })
   async detail(@Param('tenantId') tenantId: string, @Param('dealId') dealId: string) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.dealsService.getDeal(tenantId, dealId);
   }
 
   @Post()
   @ApiOperation({ summary: 'Create a deal from a lead/opportunity' })
   async create(@Param('tenantId') tenantId: string, @Body() dto: CreateDealDto) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.dealsService.createDeal(tenantId, dto, this.requestContext.getUserId());
   }
 
@@ -59,7 +59,7 @@ export class DealsController {
     @Param('leadId') leadId: string,
     @Body() dto: ConvertLeadToDealDto
   ) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.dealsService.convertLeadToDeal(tenantId, leadId, dto, this.requestContext.getUserId());
   }
 
@@ -70,18 +70,10 @@ export class DealsController {
     @Param('dealId') dealId: string,
     @Body() dto: UpdateDealDto
   ) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.dealsService.updateDeal(tenantId, dealId, dto, this.requestContext.getUserId());
   }
 
-  private verifyTenantAccess(tenantId: string) {
-    const user = this.requestContext.getUser();
-    if (!user) {
-      throw new ForbiddenException('User context not found');
-    }
-    if (user.role_global === 'super_admin') {
-      return;
-    }
     if (user.tenant_id !== tenantId) {
       throw new ForbiddenException('Access denied to this tenant');
     }

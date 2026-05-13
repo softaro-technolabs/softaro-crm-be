@@ -29,14 +29,14 @@ export class SiteVisitsController {
   @Get()
   @ApiOperation({ summary: 'List site visits (optionally filtered by lead)' })
   async list(@Param('tenantId') tenantId: string, @Query('leadId') leadId?: string) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.siteVisitsService.list(tenantId, leadId);
   }
 
   @Post()
   @ApiOperation({ summary: 'Schedule a new site visit' })
   async create(@Param('tenantId') tenantId: string, @Body() dto: CreateSiteVisitDto) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.siteVisitsService.create(tenantId, dto);
   }
 
@@ -47,19 +47,11 @@ export class SiteVisitsController {
     @Param('visitId') visitId: string,
     @Body() dto: UpdateSiteVisitDto
   ) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.siteVisitsService.update(tenantId, visitId, dto);
   }
 
-  private verifyTenantAccess(tenantId: string) {
-    const user = this.requestContext.getUser();
-    if (!user) {
-      throw new ForbiddenException('User context not found');
-    }
 
-    if (user.role_global === 'super_admin') {
-      return;
-    }
 
     if (user.tenant_id !== tenantId) {
       throw new ForbiddenException('Access denied to this tenant');

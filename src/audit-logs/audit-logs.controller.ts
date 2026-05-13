@@ -39,7 +39,7 @@ export class AuditLogsController {
     @Query('page') page?: number,
     @Query('limit') limit?: number
   ) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.auditLogsService.findAll(tenantId, {
       action,
       entityType,
@@ -57,18 +57,10 @@ export class AuditLogsController {
     @Param('entityType') entityType: string,
     @Param('entityId') entityId: string
   ) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.auditLogsService.findByEntity(tenantId, entityType, entityId);
   }
 
-  private verifyTenantAccess(tenantId: string) {
-    const user = this.requestContext.getUser();
-    if (!user) {
-      throw new ForbiddenException('User context not found');
-    }
-    if (user.role_global === 'super_admin') {
-      return;
-    }
     if (user.tenant_id !== tenantId) {
       throw new ForbiddenException('Access denied to this tenant');
     }

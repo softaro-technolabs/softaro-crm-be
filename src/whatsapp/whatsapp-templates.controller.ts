@@ -37,7 +37,7 @@ export class WhatsappTemplatesController {
     @Param('tenantId') tenantId: string,
     @Query() query: WhatsappTemplateListQueryDto,
   ) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.templatesService.findAll(tenantId, query);
   }
 
@@ -47,7 +47,7 @@ export class WhatsappTemplatesController {
     @Param('tenantId') tenantId: string,
     @Body() dto: CreateWhatsappTemplateDto,
   ) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     const userId = this.requestContext.getUserId();
     return this.templatesService.create(tenantId, dto, userId);
   }
@@ -55,7 +55,7 @@ export class WhatsappTemplatesController {
   @Get(':id')
   @ApiOperation({ summary: 'Get a single WhatsApp message template by ID' })
   async detail(@Param('tenantId') tenantId: string, @Param('id') id: string) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.templatesService.findOne(tenantId, id);
   }
 
@@ -66,25 +66,17 @@ export class WhatsappTemplatesController {
     @Param('id') id: string,
     @Body() dto: UpdateWhatsappTemplateDto,
   ) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.templatesService.update(tenantId, id, dto);
   }
 
   @Delete(':id')
   @ApiOperation({ summary: 'Delete a WhatsApp message template' })
   async remove(@Param('tenantId') tenantId: string, @Param('id') id: string) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.templatesService.remove(tenantId, id);
   }
 
-  private verifyTenantAccess(tenantId: string) {
-    const user = this.requestContext.getUser();
-    if (!user) {
-      throw new ForbiddenException('User context not found');
-    }
-    if (user.role_global === 'super_admin') {
-      return;
-    }
     if (user.tenant_id !== tenantId) {
       throw new ForbiddenException('Access denied to this tenant');
     }

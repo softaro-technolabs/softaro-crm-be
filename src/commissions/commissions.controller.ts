@@ -37,7 +37,7 @@ export class CommissionsController {
     @Param('tenantId') tenantId: string,
     @Query() query: CommissionListQueryDto
   ) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.commissionsService.findAll(tenantId, query);
   }
 
@@ -47,7 +47,7 @@ export class CommissionsController {
     @Param('tenantId') tenantId: string,
     @Body() dto: CreateCommissionDto
   ) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.commissionsService.create(tenantId, dto, this.requestContext.getUserId());
   }
 
@@ -57,7 +57,7 @@ export class CommissionsController {
     @Param('tenantId') tenantId: string,
     @Param('id') id: string
   ) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.commissionsService.findOne(tenantId, id);
   }
 
@@ -68,7 +68,7 @@ export class CommissionsController {
     @Param('id') id: string,
     @Body() dto: UpdateCommissionDto
   ) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.commissionsService.update(tenantId, id, dto);
   }
 
@@ -78,7 +78,7 @@ export class CommissionsController {
     @Param('tenantId') tenantId: string,
     @Param('id') id: string
   ) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     const userId = this.requestContext.getUserId();
     return this.commissionsService.approve(tenantId, id, userId!);
   }
@@ -89,7 +89,7 @@ export class CommissionsController {
     @Param('tenantId') tenantId: string,
     @Param('id') id: string
   ) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.commissionsService.markPaid(tenantId, id);
   }
 
@@ -99,18 +99,10 @@ export class CommissionsController {
     @Param('tenantId') tenantId: string,
     @Param('id') id: string
   ) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.commissionsService.remove(tenantId, id);
   }
 
-  private verifyTenantAccess(tenantId: string) {
-    const user = this.requestContext.getUser();
-    if (!user) {
-      throw new ForbiddenException('User context not found');
-    }
-    if (user.role_global === 'super_admin') {
-      return;
-    }
     if (user.tenant_id !== tenantId) {
       throw new ForbiddenException('Access denied to this tenant');
     }

@@ -12,7 +12,7 @@ export class PropertyDocumentsService {
 
   async list(tenantId: string, query: { leadId?: string; propertyUnitId?: string; type?: string; limit?: number; page?: number }) {
     const { leadId, propertyUnitId, type, limit = 50, page = 1 } = query;
-    const skip = (page - 1) * limit;
+    const offset = PaginationUtil.getOffset(page, limit);
 
     const conditions: SQL[] = [eq(propertyDocuments.tenantId, tenantId)];
     if (leadId) conditions.push(eq(propertyDocuments.leadId, leadId));

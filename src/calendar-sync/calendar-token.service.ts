@@ -1,4 +1,4 @@
-import { Injectable, Inject, NotFoundException, Logger } from '@nestjs/common';
+import { Injectable, Inject, NotFoundException, Logger, InternalServerErrorException, BadRequestException } from '@nestjs/common';
 import { eq, and } from 'drizzle-orm';
 import axios from 'axios';
 import { randomUUID } from 'crypto';
@@ -130,7 +130,7 @@ export class CalendarTokenService {
             const clientId = this.configService.get<string>('GOOGLE_CLIENT_ID');
             const clientSecret = this.configService.get<string>('GOOGLE_CLIENT_SECRET');
 
-            if (!clientId || !clientSecret) throw new Error('Google OAuth credentials not configured');
+            if (!clientId || !clientSecret) throw new InternalServerErrorException('Google OAuth credentials not configured');
 
             const response = await axios.post('https://oauth2.googleapis.com/token', {
                 client_id: clientId,
@@ -147,7 +147,7 @@ export class CalendarTokenService {
             const clientSecret = this.configService.get<string>('MS_CLIENT_SECRET');
             const tenant = 'common'; // Or specific tenant id if single-tenant Azure app
 
-            if (!clientId || !clientSecret) throw new Error('Microsoft OAuth credentials not configured');
+            if (!clientId || !clientSecret) throw new InternalServerErrorException('Microsoft OAuth credentials not configured');
 
             const data = new URLSearchParams();
             data.append('client_id', clientId);
@@ -167,7 +167,7 @@ export class CalendarTokenService {
             return access_token;
         }
 
-        throw new Error('Unsupported provider refresh');
+        throw new BadRequestException('Unsupported provider refresh');
     }
 
     async disconnect(tenantId: string, userId: string, provider: 'google' | 'microsoft') {

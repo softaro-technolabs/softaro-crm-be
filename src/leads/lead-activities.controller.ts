@@ -23,7 +23,7 @@ export class LeadActivitiesController {
     @Param('leadId') leadId: string,
     @Query() query: LeadActivityListQueryDto
   ) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.leadActivitiesService.listLeadActivities(tenantId, leadId, query);
   }
 
@@ -34,20 +34,12 @@ export class LeadActivitiesController {
     @Param('leadId') leadId: string,
     @Body() dto: CreateLeadActivityDto
   ) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     const userId = this.requestContext.getUserId();
     return this.leadActivitiesService.createLeadActivity(tenantId, leadId, dto, userId ?? null);
   }
 
-  private verifyTenantAccess(tenantId: string) {
-    const user = this.requestContext.getUser();
-    if (!user) {
-      throw new ForbiddenException('User context not found');
-    }
 
-    if (user.role_global === 'super_admin') {
-      return;
-    }
 
     if (user.tenant_id !== tenantId) {
       throw new ForbiddenException('Access denied to this tenant');

@@ -32,7 +32,7 @@ export class WhatsappTemplatesService {
 
     const limit = query.limit ?? 50;
     const page = query.page ?? 1;
-    const offset = (page - 1) * limit;
+    const offset = PaginationUtil.getOffset(page, limit);
 
     const whereCondition = and(...filters);
 

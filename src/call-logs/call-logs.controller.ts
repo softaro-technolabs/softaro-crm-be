@@ -36,7 +36,7 @@ export class CallLogsController {
     @Param('tenantId') tenantId: string,
     @Query() query: CallLogListQueryDto
   ) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.callLogsService.findAll(tenantId, query);
   }
 
@@ -48,7 +48,7 @@ export class CallLogsController {
     @Param('tenantId') tenantId: string,
     @Body() dto: CreateCallLogDto
   ) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.callLogsService.create(tenantId, dto);
   }
 
@@ -60,7 +60,7 @@ export class CallLogsController {
     @Param('tenantId') tenantId: string,
     @Param('leadId') leadId: string
   ) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.callLogsService.findByLead(tenantId, leadId);
   }
 
@@ -74,14 +74,6 @@ export class CallLogsController {
     return this.callLogsService.handleExotelWebhook(tenantId, body);
   }
 
-  private verifyTenantAccess(tenantId: string) {
-    const user = this.requestContext.getUser();
-    if (!user) {
-      throw new ForbiddenException('User context not found');
-    }
-    if (user.role_global === 'super_admin') {
-      return;
-    }
     if (user.tenant_id !== tenantId) {
       throw new ForbiddenException('Access denied to this tenant');
     }

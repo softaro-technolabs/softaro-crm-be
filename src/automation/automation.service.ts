@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, Logger, NotFoundException, OnModuleInit, BadRequestException } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { Cron } from '@nestjs/schedule';
 import { and, eq, lt, sql, count, desc } from 'drizzle-orm';
@@ -317,10 +317,10 @@ export class AutomationService implements OnModuleInit {
 
     switch (action.type) {
       case 'send_whatsapp': {
-        if (!this.whatsappService) throw new Error('WhatsApp service not available');
+        if (!this.whatsappService) throw new BadRequestException('WhatsApp service not available');
         const phone = String(context.lead?.phone ?? config.phone ?? '');
         const message = this.replaceVariables(String(config.message ?? ''), context);
-        if (!phone) throw new Error('No phone number available for send_whatsapp action');
+        if (!phone) throw new BadRequestException('No phone number available for send_whatsapp action');
         await this.whatsappService.sendMessage(
           tenantId,
           context.leadId ?? null,
@@ -348,19 +348,19 @@ export class AutomationService implements OnModuleInit {
         let toEmail: string;
         if (config.to === 'assignee') {
           const assignedUserId = String(context.lead?.assignedToUserId ?? '');
-          if (!assignedUserId) throw new Error('No assignee found for send_email action');
+          if (!assignedUserId) throw new BadRequestException('No assignee found for send_email action');
           const { users } = await import('../database/schema');
           const [user] = await this.db
             .select({ email: users.email })
             .from(users)
             .where(eq(users.id, assignedUserId))
             .limit(1);
-          if (!user?.email) throw new Error('Assignee email not found');
+          if (!user?.email) throw new BadRequestException('Assignee email not found');
           toEmail = user.email;
         } else {
           toEmail = String(config.to ?? '');
         }
-        if (!toEmail) throw new Error('No email address for send_email action');
+        if (!toEmail) throw new BadRequestException('No email address for send_email action');
         const subject = this.replaceVariables(String(config.subject ?? ''), context);
         const body = this.replaceVariables(String(config.body ?? ''), context);
         await this.mailService.sendEmail(toEmail, subject, body);
@@ -368,9 +368,9 @@ export class AutomationService implements OnModuleInit {
       }
 
       case 'reassign_lead': {
-        if (!context.leadId) throw new Error('No leadId for reassign_lead action');
+        if (!context.leadId) throw new BadRequestException('No leadId for reassign_lead action');
         const newUserId = String(config.userId ?? '');
-        if (!newUserId) throw new Error('No userId specified in reassign_lead config');
+        if (!newUserId) throw new BadRequestException('No userId specified in reassign_lead config');
         await this.db
           .update(leads)
           .set({ assignedToUserId: newUserId, updatedAt: new Date() })
@@ -379,7 +379,7 @@ export class AutomationService implements OnModuleInit {
       }
 
       case 'create_task': {
-        if (!context.leadId) throw new Error('No leadId for create_task action');
+        if (!context.leadId) throw new BadRequestException('No leadId for create_task action');
         const dueInHours = Number(config.dueInHours ?? 24);
         const dueAt = new Date(Date.now() + dueInHours * 60 * 60 * 1000);
         const title = this.replaceVariables(String(config.title ?? 'Automation Task'), context);
@@ -398,9 +398,9 @@ export class AutomationService implements OnModuleInit {
       }
 
       case 'update_lead_status': {
-        if (!context.leadId) throw new Error('No leadId for update_lead_status action');
+        if (!context.leadId) throw new BadRequestException('No leadId for update_lead_status action');
         const statusId = String(config.statusId ?? '');
-        if (!statusId) throw new Error('No statusId specified in update_lead_status config');
+        if (!statusId) throw new BadRequestException('No statusId specified in update_lead_status config');
         await this.db
           .update(leads)
           .set({ statusId, updatedAt: new Date() })
@@ -420,7 +420,7 @@ export class AutomationService implements OnModuleInit {
       }
 
       default:
-        throw new Error(`Unknown action type: ${(action as any).type}`);
+        throw new BadRequestException(`Unknown action type: ${(action as any).type}`);
     }
   }
 

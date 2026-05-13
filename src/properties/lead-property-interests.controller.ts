@@ -24,21 +24,21 @@ export class LeadPropertyInterestsController {
   @Get()
   @ApiOperation({ summary: 'List lead-property interests' })
   async list(@Param('tenantId') tenantId: string, @Query() query: LeadPropertyInterestListQueryDto) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.propertiesService.listLeadPropertyInterests(tenantId, query);
   }
 
   @Get(':interestId')
   @ApiOperation({ summary: 'Get lead-property interest' })
   async detail(@Param('tenantId') tenantId: string, @Param('interestId') interestId: string) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.propertiesService.getLeadPropertyInterest(tenantId, interestId);
   }
 
   @Post()
   @ApiOperation({ summary: 'Create lead-property interest' })
   async create(@Param('tenantId') tenantId: string, @Body() dto: CreateLeadPropertyInterestDto) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.propertiesService.createLeadPropertyInterest(tenantId, dto);
   }
 
@@ -49,23 +49,17 @@ export class LeadPropertyInterestsController {
     @Param('interestId') interestId: string,
     @Body() dto: UpdateLeadPropertyInterestDto
   ) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.propertiesService.updateLeadPropertyInterest(tenantId, interestId, dto);
   }
 
   @Delete(':interestId')
   @ApiOperation({ summary: 'Delete lead-property interest' })
   async delete(@Param('tenantId') tenantId: string, @Param('interestId') interestId: string) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     await this.propertiesService.deleteLeadPropertyInterest(tenantId, interestId);
     return null;
   }
 
-  private verifyTenantAccess(tenantId: string) {
-    const user = this.requestContext.getUser();
-    if (!user) throw new ForbiddenException('User context not found');
-    if (user.role_global === 'super_admin') return;
-    if (user.tenant_id !== tenantId) throw new ForbiddenException('Access denied to this tenant');
-  }
 }
 

@@ -22,19 +22,11 @@ export class DashboardController {
     @Param('tenantId') tenantId: string,
     @Query() query: DashboardQueryDto
   ): Promise<DashboardResponseDto> {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.dashboardService.getDashboardSummary(tenantId, query);
   }
 
-  private verifyTenantAccess(tenantId: string) {
-    const user = this.requestContext.getUser();
-    if (!user) {
-      throw new ForbiddenException('User context not found');
-    }
 
-    if (user.role_global === 'super_admin') {
-      return;
-    }
 
     if (user.tenant_id !== tenantId) {
       throw new ForbiddenException('Access denied to this tenant');

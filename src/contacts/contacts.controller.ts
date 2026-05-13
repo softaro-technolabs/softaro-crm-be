@@ -26,23 +26,16 @@ export class ContactsController {
     @Query('page') page?: number,
     @Query('search') search?: string
   ) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.contactsService.listContacts(tenantId, { limit, page, search });
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Get details of a single customer' })
   async findOne(@Param('tenantId') tenantId: string, @Param('id') id: string) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.contactsService.getContact(tenantId, id);
   }
 
-  private verifyTenantAccess(tenantId: string) {
-    const user = this.requestContext.getUser();
-    if (!user) return;
-    if (user.role_global === 'super_admin') return;
-    if (user.tenant_id !== tenantId) {
-      throw new Error('Access denied to this tenant');
-    }
   }
 }

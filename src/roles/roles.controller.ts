@@ -19,21 +19,21 @@ export class RolesController {
   @Post()
   @ApiOperation({ summary: 'Create a new role in a tenant' })
   async create(@Param('tenantId') tenantId: string, @Body() dto: CreateRoleDto) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.rolesService.create(tenantId, dto);
   }
 
   @Get()
   @ApiOperation({ summary: 'List all roles in a tenant' })
   async findAll(@Param('tenantId') tenantId: string, @Query() query: RoleListQueryDto) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.rolesService.findByTenant(tenantId, query);
   }
 
   @Get(':roleId')
   @ApiOperation({ summary: 'Get role by ID' })
   async findById(@Param('tenantId') tenantId: string, @Param('roleId') roleId: string) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.rolesService.findById(roleId);
   }
 
@@ -44,28 +44,20 @@ export class RolesController {
     @Param('roleId') roleId: string,
     @Body() dto: UpdateRoleDto
   ) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.rolesService.update(tenantId, roleId, dto);
   }
 
   @Delete(':roleId')
   @ApiOperation({ summary: 'Delete role' })
   async delete(@Param('tenantId') tenantId: string, @Param('roleId') roleId: string) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     await this.rolesService.delete(tenantId, roleId);
     return null;
   }
 
-  private verifyTenantAccess(tenantId: string) {
-    const user = this.requestContext.getUser();
-    if (!user) {
-      throw new ForbiddenException('User context not found');
-    }
 
     // Super admin can access any tenant
-    if (user.role_global === 'super_admin') {
-      return;
-    }
 
     // Normal users can only access their own tenant
     if (user.tenant_id !== tenantId) {

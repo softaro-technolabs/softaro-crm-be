@@ -24,21 +24,21 @@ export class PropertyAttributesController {
   @Get()
   @ApiOperation({ summary: 'List property attributes (metadata definitions)' })
   async list(@Param('tenantId') tenantId: string, @Query() query: PropertyAttributeListQueryDto) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.propertiesService.listAttributes(tenantId, query);
   }
 
   @Get(':attributeId')
   @ApiOperation({ summary: 'Get property attribute' })
   async detail(@Param('tenantId') tenantId: string, @Param('attributeId') attributeId: string) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.propertiesService.getAttribute(tenantId, attributeId);
   }
 
   @Post()
   @ApiOperation({ summary: 'Create property attribute' })
   async create(@Param('tenantId') tenantId: string, @Body() dto: CreatePropertyAttributeDto) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.propertiesService.createAttribute(tenantId, dto);
   }
 
@@ -49,23 +49,17 @@ export class PropertyAttributesController {
     @Param('attributeId') attributeId: string,
     @Body() dto: UpdatePropertyAttributeDto
   ) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.propertiesService.updateAttribute(tenantId, attributeId, dto);
   }
 
   @Delete(':attributeId')
   @ApiOperation({ summary: 'Delete property attribute (only if no values exist)' })
   async delete(@Param('tenantId') tenantId: string, @Param('attributeId') attributeId: string) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     await this.propertiesService.deleteAttribute(tenantId, attributeId);
     return null;
   }
 
-  private verifyTenantAccess(tenantId: string) {
-    const user = this.requestContext.getUser();
-    if (!user) throw new ForbiddenException('User context not found');
-    if (user.role_global === 'super_admin') return;
-    if (user.tenant_id !== tenantId) throw new ForbiddenException('Access denied to this tenant');
-  }
 }
 

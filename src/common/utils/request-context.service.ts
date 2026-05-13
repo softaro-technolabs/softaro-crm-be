@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { ForbiddenException, Injectable } from '@nestjs/common';
 import { AsyncLocalStorage } from 'async_hooks';
 
 export interface RequestContext {
@@ -50,6 +50,22 @@ export class RequestContextService {
       role_global: store.roleGlobal,
       permissions: store.permissions
     };
+  }
+
+  /**
+   * Centralised tenant access check used by every tenant-scoped controller.
+   * Super-admins bypass the tenant match — all other users must belong to the tenant.
+   * Throws ForbiddenException so the global HttpExceptionFilter formats the response correctly.
+   */
+  verifyTenantAccess(tenantId: string): void {
+    const user = this.getUser();
+    if (!user) {
+      throw new ForbiddenException('User context not found');
+    }
+    if (user.role_global === 'super_admin') return;
+    if (user.tenant_id !== tenantId) {
+      throw new ForbiddenException('Access denied to this tenant');
+    }
   }
 }
 

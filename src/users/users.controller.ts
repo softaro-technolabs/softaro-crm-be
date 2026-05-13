@@ -19,21 +19,21 @@ export class UsersController {
   @Post('register')
   @ApiOperation({ summary: 'Register a new user in a tenant' })
   async register(@Param('tenantId') tenantId: string, @Body() dto: RegisterUserDto) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.usersService.registerUserInTenant(tenantId, dto);
   }
 
   @Get()
   @ApiOperation({ summary: 'List all users in a tenant with pagination, sorting, and filters' })
   async findAll(@Param('tenantId') tenantId: string, @Query() query: UserListQueryDto) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.usersService.findUsersByTenant(tenantId, query);
   }
 
   @Get(':userId')
   @ApiOperation({ summary: 'Get user details in a tenant' })
   async findById(@Param('tenantId') tenantId: string, @Param('userId') userId: string) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     const result = await this.usersService.findUserWithTenant(userId, tenantId);
     if (!result || result.tenant?.id !== tenantId) {
       throw new NotFoundException('User not found in this tenant');
@@ -48,7 +48,7 @@ export class UsersController {
     @Param('userId') userId: string,
     @Body() dto: UpdateUserTenantDto
   ) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.usersService.updateUserTenantMembership(tenantId, userId, dto);
   }
 
@@ -58,21 +58,13 @@ export class UsersController {
     @Param('tenantId') tenantId: string,
     @Param('userId') userId: string
   ) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     await this.usersService.deleteUser(userId);
     return { message: 'User deleted successfully' };
   }
 
-  private verifyTenantAccess(tenantId: string) {
-    const user = this.requestContext.getUser();
-    if (!user) {
-      throw new ForbiddenException('User context not found');
-    }
 
     // Super admin can access any tenant
-    if (user.role_global === 'super_admin') {
-      return;
-    }
 
     // Normal users can only access their own tenant
     if (user.tenant_id !== tenantId) {

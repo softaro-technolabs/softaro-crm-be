@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Resend } from 'resend';
 import { getUserInvitationTemplate } from '../mail-templates/user-invitation.template';
@@ -31,7 +31,7 @@ export class MailService {
 
       if (error) {
         console.error('Resend error:', error);
-        throw new Error(`Failed to send email: ${error.message}`);
+        throw new InternalServerErrorException('Failed to send email: ${error.message}`);
       }
 
       return data;

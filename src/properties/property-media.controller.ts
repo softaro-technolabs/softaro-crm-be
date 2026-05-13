@@ -20,14 +20,14 @@ export class PropertyMediaController {
   @Get()
   @ApiOperation({ summary: 'List media for an entity (optionally a unit)' })
   async list(@Param('tenantId') tenantId: string, @Query() query: PropertyMediaListQueryDto) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.propertiesService.listMedia(tenantId, { entityId: query.entityId, unitId: query.unitId });
   }
 
   @Post()
   @ApiOperation({ summary: 'Create media record' })
   async create(@Param('tenantId') tenantId: string, @Body() dto: CreatePropertyMediaDto) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.propertiesService.createMedia(tenantId, dto);
   }
 
@@ -38,23 +38,17 @@ export class PropertyMediaController {
     @Param('mediaId') mediaId: string,
     @Body() dto: UpdatePropertyMediaDto
   ) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.propertiesService.updateMedia(tenantId, mediaId, dto);
   }
 
   @Delete(':mediaId')
   @ApiOperation({ summary: 'Delete media record' })
   async delete(@Param('tenantId') tenantId: string, @Param('mediaId') mediaId: string) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     await this.propertiesService.deleteMedia(tenantId, mediaId);
     return null;
   }
 
-  private verifyTenantAccess(tenantId: string) {
-    const user = this.requestContext.getUser();
-    if (!user) throw new ForbiddenException('User context not found');
-    if (user.role_global === 'super_admin') return;
-    if (user.tenant_id !== tenantId) throw new ForbiddenException('Access denied to this tenant');
-  }
 }
 

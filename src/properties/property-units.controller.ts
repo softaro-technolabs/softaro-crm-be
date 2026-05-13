@@ -37,21 +37,21 @@ export class PropertyUnitsController {
   @Get()
   @ApiOperation({ summary: 'List property units (sellable inventory)' })
   async list(@Param('tenantId') tenantId: string, @Query() query: PropertyUnitListQueryDto) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.propertiesService.listUnits(tenantId, query);
   }
 
   @Get(':unitId')
   @ApiOperation({ summary: 'Get property unit details' })
   async detail(@Param('tenantId') tenantId: string, @Param('unitId') unitId: string) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.propertiesService.getUnit(tenantId, unitId);
   }
 
   @Post()
   @ApiOperation({ summary: 'Create a property unit' })
   async create(@Param('tenantId') tenantId: string, @Body() dto: CreatePropertyUnitDto) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.propertiesService.createUnit(tenantId, dto);
   }
 
@@ -62,7 +62,7 @@ export class PropertyUnitsController {
     @Param('unitId') unitId: string,
     @Body() dto: UpdatePropertyUnitDto
   ) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.propertiesService.updateUnit(tenantId, unitId, dto);
   }
 
@@ -73,7 +73,7 @@ export class PropertyUnitsController {
     @Param('unitId') unitId: string,
     @Body() dto: UpdatePropertyUnitStatusDto
   ) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     const changedBy = this.requestContext.getUserId();
     return this.propertiesService.changeUnitStatus(tenantId, unitId, dto, { changedByUserId: changedBy });
   }
@@ -81,25 +81,17 @@ export class PropertyUnitsController {
   @Get(':unitId/status-logs')
   @ApiOperation({ summary: 'List unit status logs' })
   async statusLogs(@Param('tenantId') tenantId: string, @Param('unitId') unitId: string) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.propertiesService.listUnitStatusLogs(tenantId, unitId);
   }
 
   @Delete(':unitId')
   @ApiOperation({ summary: 'Delete a unit (also deletes dependent data: interests, pricing, values, media, logs)' })
   async delete(@Param('tenantId') tenantId: string, @Param('unitId') unitId: string) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     await this.propertiesService.deleteUnit(tenantId, unitId);
     return null;
   }
 
-  private verifyTenantAccess(tenantId: string) {
-    const user = this.requestContext.getUser();
-    if (!user) {
-      throw new ForbiddenException('User context not found');
-    }
-    if (user.role_global === 'super_admin') return;
-    if (user.tenant_id !== tenantId) throw new ForbiddenException('Access denied to this tenant');
-  }
 }
 

@@ -24,7 +24,7 @@ export class PropertyDocumentsController {
     @Query('limit') limit?: number,
     @Query('page') page?: number,
   ) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.documentsService.list(tenantId, {
       leadId,
       propertyUnitId,
@@ -37,14 +37,8 @@ export class PropertyDocumentsController {
   @Get(':id')
   @ApiOperation({ summary: 'Get a document by ID' })
   async findOne(@Param('tenantId') tenantId: string, @Param('id') id: string) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.documentsService.findOne(tenantId, id);
   }
 
-  private verifyTenantAccess(tenantId: string) {
-    const user = this.requestContext.getUser();
-    if (!user) throw new ForbiddenException('User context not found');
-    if (user.role_global === 'super_admin') return;
-    if (user.tenant_id !== tenantId) throw new ForbiddenException('Access denied to this tenant');
-  }
 }

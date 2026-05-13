@@ -15,7 +15,7 @@ export class LeadActivitiesService {
   async listLeadActivities(tenantId: string, leadId: string, query: LeadActivityListQueryDto) {
     const limit = query.limit ?? 50;
     const page = query.page ?? 1;
-    const offset = (page - 1) * limit;
+    const offset = PaginationUtil.getOffset(page, limit);
 
     await this.ensureLeadExists(tenantId, leadId);
 
@@ -114,7 +114,7 @@ export class LeadActivitiesService {
   async listFollowUps(tenantId: string, query: LeadFollowUpsQueryDto) {
     const limit = query.limit ?? 50;
     const page = query.page ?? 1;
-    const offset = (page - 1) * limit;
+    const offset = PaginationUtil.getOffset(page, limit);
 
     const now = new Date();
     const due = query.due ?? false;

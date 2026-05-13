@@ -39,14 +39,14 @@ export class AutomationController {
     @Param('tenantId') tenantId: string,
     @Query() query: AutomationListQueryDto
   ) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.automationService.listRules(tenantId, query);
   }
 
   @Get('rules/:ruleId')
   @ApiOperation({ summary: 'Get a single automation rule' })
   async getRule(@Param('tenantId') tenantId: string, @Param('ruleId') ruleId: string) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.automationService.getRule(tenantId, ruleId);
   }
 
@@ -56,7 +56,7 @@ export class AutomationController {
     @Param('tenantId') tenantId: string,
     @Body() dto: CreateAutomationRuleDto
   ) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     const userId = this.requestContext.getUserId() ?? undefined;
     return this.automationService.createRule(tenantId, dto, userId);
   }
@@ -68,21 +68,21 @@ export class AutomationController {
     @Param('ruleId') ruleId: string,
     @Body() dto: UpdateAutomationRuleDto
   ) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.automationService.updateRule(tenantId, ruleId, dto);
   }
 
   @Delete('rules/:ruleId')
   @ApiOperation({ summary: 'Delete an automation rule' })
   async deleteRule(@Param('tenantId') tenantId: string, @Param('ruleId') ruleId: string) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.automationService.deleteRule(tenantId, ruleId);
   }
 
   @Patch('rules/:ruleId/toggle')
   @ApiOperation({ summary: 'Toggle active/inactive state of a rule' })
   async toggleRule(@Param('tenantId') tenantId: string, @Param('ruleId') ruleId: string) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.automationService.toggleRule(tenantId, ruleId);
   }
 
@@ -92,14 +92,8 @@ export class AutomationController {
     @Param('tenantId') tenantId: string,
     @Query() query: AutomationLogQueryDto
   ) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.automationService.listLogs(tenantId, query);
   }
 
-  private verifyTenantAccess(tenantId: string) {
-    const user = this.requestContext.getUser();
-    if (!user) throw new ForbiddenException('User context not found');
-    if (user.role_global === 'super_admin') return;
-    if (user.tenant_id !== tenantId) throw new ForbiddenException('Access denied to this tenant');
-  }
 }

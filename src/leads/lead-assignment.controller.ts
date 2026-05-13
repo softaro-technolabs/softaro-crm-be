@@ -23,28 +23,28 @@ export class LeadAssignmentController {
   @Get('settings')
   @ApiOperation({ summary: 'Get auto-assignment settings' })
   async getSettings(@Param('tenantId') tenantId: string) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.assignmentService.getSettings(tenantId);
   }
 
   @Patch('settings')
   @ApiOperation({ summary: 'Update auto-assignment settings' })
   async updateSettings(@Param('tenantId') tenantId: string, @Body() dto: UpdateLeadAssignmentSettingsDto) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.assignmentService.updateSettings(tenantId, dto);
   }
 
   @Get('agents')
   @ApiOperation({ summary: 'List assignment agents & profiles' })
   async listAgents(@Param('tenantId') tenantId: string) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.assignmentService.listAgentProfiles(tenantId);
   }
 
   @Post('agents')
   @ApiOperation({ summary: 'Create or update agent assignment profile' })
   async upsertAgent(@Param('tenantId') tenantId: string, @Body() dto: UpsertLeadAssignmentAgentDto) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.assignmentService.upsertAgentProfile(tenantId, dto);
   }
 
@@ -55,7 +55,7 @@ export class LeadAssignmentController {
     @Param('userId') userId: string,
     @Body() dto: UpdateAgentAvailabilityDto
   ) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.assignmentService.setAgentAvailability(tenantId, userId, dto.isAvailable);
   }
 
@@ -79,19 +79,11 @@ export class LeadAssignmentController {
 **Alternative:** Use GET /tenants/{tenantId}/leads/assignment/settings to view current key (also requires auth)`
   })
   async rotateApiKey(@Param('tenantId') tenantId: string) {
-    this.verifyTenantAccess(tenantId);
+    this.requestContext.verifyTenantAccess(tenantId);
     return this.assignmentService.rotatePublicApiKey(tenantId);
   }
 
-  private verifyTenantAccess(tenantId: string) {
-    const user = this.requestContext.getUser();
-    if (!user) {
-      throw new ForbiddenException('User context not found');
-    }
 
-    if (user.role_global === 'super_admin') {
-      return;
-    }
 
     if (user.tenant_id !== tenantId) {
       throw new ForbiddenException('Access denied to this tenant');
