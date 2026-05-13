@@ -1085,6 +1085,7 @@ export class PropertiesService {
         id: propertyUnits.id,
         unitCode: propertyUnits.unitCode,
         price: propertyUnits.price,
+        pricePerSqft: propertyUnits.pricePerSqft,
         carpetArea: propertyUnits.carpetArea,
         reraArea: propertyUnits.reraArea,
         entityGst: propertyEntities.defaultGstPercentage,
@@ -1103,16 +1104,15 @@ export class PropertiesService {
       .from(propertyPricingBreakups)
       .where(and(eq(propertyPricingBreakups.tenantId, tenantId), eq(propertyPricingBreakups.unitId, dto.unitId)));
 
-    // Use RERA area if available, else Carpet Area
+    // Use RERA area if available, else Carpet Area (used for per-sqft discount conversion only)
     const area = Number(unit.reraArea || unit.carpetArea || 0);
-    const basePricePerSqft = Number(unit.price || 0);
-    
-    // Apply discount per sqft
-    const effectiveBaseRate = Math.max(0, basePricePerSqft - (dto.discountPerSqft || 0));
-    let basePrice = effectiveBaseRate * area;
 
-    // Apply lumpsum discount
-    basePrice = Math.max(0, basePrice - (dto.lumpsumDiscount || 0));
+    // unit.price is the total base price entered at unit creation (e.g. ₹1,02,60,000)
+    // discountPerSqft is converted to a total discount: discountPerSqft × area
+    const grossBasePrice = Number(unit.price || 0);
+    const sqftDiscountTotal = (dto.discountPerSqft || 0) * area;
+    const totalDiscount = sqftDiscountTotal + (dto.lumpsumDiscount || 0);
+    const basePrice = Math.max(0, grossBasePrice - totalDiscount);
 
     const plcAmount = breakups.reduce((sum, b) => sum + Number(b.amount || 0), 0);
     const agreementValue = basePrice + plcAmount;
