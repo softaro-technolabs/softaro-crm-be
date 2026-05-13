@@ -7,6 +7,7 @@ export * from './role-permissions.schema';
 export * from './modules.schema';
 export * from './tenant-modules.schema';
 export * from './leads.schema';
+export * from './lead-options.schema';
 export * from './lead-activities.schema';
 export * from './lead-tasks.schema';
 export * from './properties.schema';

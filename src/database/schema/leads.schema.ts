@@ -13,6 +13,9 @@ import {
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
+// Kept for backward-compatibility with existing data.
+// New requirement_type values are managed via the lead_options master table.
+// @deprecated — use lead_options with type='requirement_type' for UI options.
 export const leadRequirementTypeEnum = pgEnum('lead_requirement_type', ['buy', 'rent', 'investment']);
 
 export const leadSourceEnum = pgEnum('lead_source', [
@@ -72,7 +75,7 @@ export const leads = pgTable(
     phone: varchar('phone', { length: 50 }),
     email: varchar('email', { length: 255 }),
     budget: numeric('budget', { precision: 15, scale: 2 }),
-    requirementType: leadRequirementTypeEnum('requirement_type').notNull(),
+    requirementType: varchar('requirement_type', { length: 120 }).notNull(),
     propertyType: varchar('property_type', { length: 120 }),
     propertyCategory: varchar('property_category', { length: 120 }),
     bhkType: varchar('bhk_type', { length: 50 }),

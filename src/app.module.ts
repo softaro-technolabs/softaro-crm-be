@@ -40,6 +40,7 @@ import { HealthController } from './health/health.controller';
 import { CommissionsModule } from './commissions/commissions.module';
 import { AuditLogsModule } from './audit-logs/audit-logs.module';
 import { CallLogsModule } from './call-logs/call-logs.module';
+import { LeadOptionsModule } from './lead-options/lead-options.module';
 
 @Module({
   imports: [
@@ -91,6 +92,7 @@ import { CallLogsModule } from './call-logs/call-logs.module';
     CommissionsModule,
     AuditLogsModule,
     CallLogsModule,
+    LeadOptionsModule,
   ],
   providers: [
     MigrationService,

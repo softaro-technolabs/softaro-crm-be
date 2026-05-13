@@ -57,6 +57,7 @@ export default defineConfig({
     'modules',
     'tenant_modules',
     'lead_statuses',
+    'lead_options',
     'leads',
     'lead_assignment_settings',
     'lead_assignment_agents',

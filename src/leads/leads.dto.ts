@@ -20,8 +20,9 @@ import {
 } from 'class-validator';
 import { LocationPointDto } from './location-preference.dto';
 
+// Default seed values — the actual allowed values now come from the lead_options table.
 export const LEAD_REQUIREMENT_TYPES = ['buy', 'rent', 'investment'] as const;
-export type LeadRequirementType = (typeof LEAD_REQUIREMENT_TYPES)[number];
+export type LeadRequirementType = string; // open string so custom options work
 
 export const LEAD_SOURCES = [
   'facebook',
@@ -73,8 +74,8 @@ export class CreateLeadDto {
   @Min(0)
   budget?: number;
 
-  @ApiProperty({ enum: LEAD_REQUIREMENT_TYPES, example: 'buy' })
-  @IsIn(LEAD_REQUIREMENT_TYPES)
+  @ApiProperty({ example: 'buy', description: 'Value from lead_options requirement_type' })
+  @IsString()
   requirementType!: LeadRequirementType;
 
   @ApiPropertyOptional({ description: 'Eg. Apartment, Villa', maxLength: 120, example: 'Apartment' })
@@ -185,9 +186,9 @@ export class UpdateLeadDto {
   @Min(0)
   budget?: number;
 
-  @ApiPropertyOptional({ enum: LEAD_REQUIREMENT_TYPES, example: 'rent' })
+  @ApiPropertyOptional({ example: 'rent', description: 'Value from lead_options requirement_type' })
   @IsOptional()
-  @IsIn(LEAD_REQUIREMENT_TYPES)
+  @IsString()
   requirementType?: LeadRequirementType;
 
   @ApiPropertyOptional({ maxLength: 120, example: 'Office Space' })
