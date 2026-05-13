@@ -1,6 +1,7 @@
-import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, Req, Res, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
+import { Response } from 'express';
 
 import { AuthService } from './auth.service';
 import { ForgotPasswordDto, LoginDto, RefreshTokenDto, ResetPasswordDto, CreateSuperAdminDto } from './auth.dto';
@@ -40,11 +41,19 @@ export class AuthController {
   @Throttle({ short: { limit: 10, ttl: 60000 }, medium: { limit: 30, ttl: 300000 } })
   @ApiOperation({
     summary: 'Login for all users (Super Admin & Normal Users)',
-    description: 'Single login endpoint. Super admin can login with or without tenant slug. Normal users must provide tenant slug.'
+    description: 'Single login endpoint. Always returns HTTP 200. Check the `success` flag in the response body.'
   })
-  @ApiOkResponse({ description: 'Returns access token, refresh token and authorization context' })
-  async login(@Body() dto: LoginDto) {
-    return this.authService.login(dto);
+  @ApiOkResponse({ description: 'Returns { success: true, data: {...} } or { success: false, message: "..." }' })
+  async login(@Body() dto: LoginDto, @Res() res: Response) {
+    try {
+      const data = await this.authService.login(dto);
+      return res.status(200).json({ success: true, data });
+    } catch (error: any) {
+      return res.status(200).json({
+        success: false,
+        message: error?.message || 'Login failed. Please check your credentials.'
+      });
+    }
   }
 
   @Post('refresh')
