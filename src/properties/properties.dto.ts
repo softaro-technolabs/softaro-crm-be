@@ -20,8 +20,9 @@ import {
   ValidateNested
 } from 'class-validator';
 
+/** @deprecated Hard-coded list kept only for legacy list-query filtering. Entity types are now DB-driven via property_entity_types table. */
 export const PROPERTY_ENTITY_TYPES = ['project', 'building', 'plot', 'unit', 'land', 'villa'] as const;
-export type PropertyEntityType = (typeof PROPERTY_ENTITY_TYPES)[number];
+export type PropertyEntityType = string;
 
 export const PROPERTY_ENTITY_STATUSES = ['active', 'inactive'] as const;
 export type PropertyEntityStatus = (typeof PROPERTY_ENTITY_STATUSES)[number];
@@ -98,9 +99,9 @@ export class UpsertPropertyLocationDto {
 import { BaseListQueryDto } from '../common/dto/base-list-query.dto';
 
 export class PropertyEntityListQueryDto extends BaseListQueryDto {
-  @ApiPropertyOptional({ enum: PROPERTY_ENTITY_TYPES, example: 'project' })
+  @ApiPropertyOptional({ example: 'project', description: 'Filter by entity type' })
   @IsOptional()
-  @IsIn(PROPERTY_ENTITY_TYPES)
+  @IsString()
   entityType?: PropertyEntityType;
 
   @ApiPropertyOptional({ enum: PROPERTY_ENTITY_STATUSES, example: 'active' })
@@ -131,8 +132,9 @@ export class PropertyEntityListQueryDto extends BaseListQueryDto {
 }
 
 export class CreatePropertyEntityDto {
-  @ApiProperty({ enum: PROPERTY_ENTITY_TYPES, example: 'project' })
-  @IsIn(PROPERTY_ENTITY_TYPES)
+  @ApiProperty({ example: 'project', description: 'Entity type — DB-driven via property_entity_types table' })
+  @IsString()
+  @IsNotEmpty()
   entityType!: PropertyEntityType;
 
   @ApiPropertyOptional({ format: 'uuid', example: 'b222c4b3-cb0c-4bb0-9c50-3aa1a3b3b3b3' })

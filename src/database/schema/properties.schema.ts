@@ -54,7 +54,7 @@ export const propertyEntities = pgTable(
     id: varchar('id', { length: 36 }).primaryKey(),
     tenantId: varchar('tenant_id', { length: 36 }).notNull(),
     parentId: varchar('parent_id', { length: 36 }),
-    entityType: propertyEntityTypeEnum('entity_type').notNull(),
+    entityType: varchar('entity_type', { length: 100 }).notNull(),
     name: varchar('name', { length: 255 }).notNull(),
     status: propertyEntityStatusEnum('status').default('active').notNull(),
     description: varchar('description', { length: 2000 }),
