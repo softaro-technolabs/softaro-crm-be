@@ -50,11 +50,4 @@ export class SiteVisitsController {
     this.requestContext.verifyTenantAccess(tenantId);
     return this.siteVisitsService.update(tenantId, visitId, dto);
   }
-
-
-
-    if (user.tenant_id !== tenantId) {
-      throw new ForbiddenException('Access denied to this tenant');
-    }
-  }
 }

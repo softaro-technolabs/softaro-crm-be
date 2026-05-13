@@ -102,9 +102,4 @@ export class CommissionsController {
     this.requestContext.verifyTenantAccess(tenantId);
     return this.commissionsService.remove(tenantId, id);
   }
-
-    if (user.tenant_id !== tenantId) {
-      throw new ForbiddenException('Access denied to this tenant');
-    }
-  }
 }

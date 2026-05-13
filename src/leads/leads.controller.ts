@@ -165,13 +165,6 @@ export class LeadsController {
     const userId = this.requestContext.getUserId();
     return this.leadsService.importLeads(tenantId, file, userId ?? undefined);
   }
-
-
-
-    if (user.tenant_id !== tenantId) {
-      throw new ForbiddenException('Access denied to this tenant');
-    }
-  }
 }
 
 

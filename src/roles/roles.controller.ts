@@ -55,14 +55,4 @@ export class RolesController {
     await this.rolesService.delete(tenantId, roleId);
     return null;
   }
-
-
-    // Super admin can access any tenant
-
-    // Normal users can only access their own tenant
-    if (user.tenant_id !== tenantId) {
-      throw new ForbiddenException('Access denied to this tenant');
-    }
-  }
 }
-

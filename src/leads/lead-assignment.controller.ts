@@ -82,13 +82,6 @@ export class LeadAssignmentController {
     this.requestContext.verifyTenantAccess(tenantId);
     return this.assignmentService.rotatePublicApiKey(tenantId);
   }
-
-
-
-    if (user.tenant_id !== tenantId) {
-      throw new ForbiddenException('Access denied to this tenant');
-    }
-  }
 }
 
 

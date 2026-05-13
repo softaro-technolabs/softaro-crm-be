@@ -1,4 +1,15 @@
-import { IsObject } from 'class-validator';
+import { IsObject, IsString } from 'class-validator';
+
+export class ConnectPageDto {
+  @IsString()
+  pageId!: string;
+
+  @IsString()
+  pageName!: string;
+
+  @IsString()
+  pageAccessToken!: string;
+}
 
 /**
  * Meta Ads webhook payload (dynamic structure)
@@ -6,5 +17,5 @@ import { IsObject } from 'class-validator';
  */
 export class MetaAdsWebhookDto {
   @IsObject()
-  body: Record<string, any>;
+  body!: Record<string, any>;
 }

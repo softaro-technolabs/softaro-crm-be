@@ -31,7 +31,7 @@ export class MailService {
 
       if (error) {
         console.error('Resend error:', error);
-        throw new InternalServerErrorException('Failed to send email: ${error.message}`);
+        throw new InternalServerErrorException(`Failed to send email: ${error.message}`);
       }
 
       return data;

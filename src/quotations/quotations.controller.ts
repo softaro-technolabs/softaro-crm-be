@@ -120,11 +120,4 @@ export class QuotationsController {
     this.requestContext.verifyTenantAccess(tenantId);
     return this.quotationsService.convertToDeal(tenantId, id, dto);
   }
-
-
-
-    if (user.tenant_id !== tenantId) {
-      throw new ForbiddenException('Access denied to this tenant');
-    }
-  }
 }

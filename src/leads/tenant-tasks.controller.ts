@@ -68,11 +68,6 @@ export class TenantTasksController {
     const userId = this.requestContext.getUserId();
     return this.leadTasksService.archiveLeadTask(tenantId, null, taskId, userId ?? null);
   }
-
-    if (user.tenant_id !== tenantId) {
-      throw new ForbiddenException('Access denied to this tenant');
-    }
-  }
 }
 
 

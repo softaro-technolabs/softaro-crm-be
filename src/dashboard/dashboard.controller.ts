@@ -25,11 +25,4 @@ export class DashboardController {
     this.requestContext.verifyTenantAccess(tenantId);
     return this.dashboardService.getDashboardSummary(tenantId, query);
   }
-
-
-
-    if (user.tenant_id !== tenantId) {
-      throw new ForbiddenException('Access denied to this tenant');
-    }
-  }
 }

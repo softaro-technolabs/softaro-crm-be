@@ -62,14 +62,4 @@ export class UsersController {
     await this.usersService.deleteUser(userId);
     return { message: 'User deleted successfully' };
   }
-
-
-    // Super admin can access any tenant
-
-    // Normal users can only access their own tenant
-    if (user.tenant_id !== tenantId) {
-      throw new ForbiddenException('Access denied to this tenant');
-    }
-  }
 }
-

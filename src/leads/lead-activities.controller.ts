@@ -38,13 +38,6 @@ export class LeadActivitiesController {
     const userId = this.requestContext.getUserId();
     return this.leadActivitiesService.createLeadActivity(tenantId, leadId, dto, userId ?? null);
   }
-
-
-
-    if (user.tenant_id !== tenantId) {
-      throw new ForbiddenException('Access denied to this tenant');
-    }
-  }
 }
 
 

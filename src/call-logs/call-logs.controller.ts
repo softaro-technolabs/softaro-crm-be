@@ -73,9 +73,4 @@ export class CallLogsController {
   ) {
     return this.callLogsService.handleExotelWebhook(tenantId, body);
   }
-
-    if (user.tenant_id !== tenantId) {
-      throw new ForbiddenException('Access denied to this tenant');
-    }
-  }
 }

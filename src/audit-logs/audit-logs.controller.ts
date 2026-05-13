@@ -60,9 +60,4 @@ export class AuditLogsController {
     this.requestContext.verifyTenantAccess(tenantId);
     return this.auditLogsService.findByEntity(tenantId, entityType, entityId);
   }
-
-    if (user.tenant_id !== tenantId) {
-      throw new ForbiddenException('Access denied to this tenant');
-    }
-  }
 }

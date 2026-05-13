@@ -1,12 +1,11 @@
-import { MetaAdsWebhookDto } from './meta-ads.dto';
-import { Controller, Get, Post, Delete, Param, Query, Body, UseGuards, ForbiddenException, Logger, Res, Req } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Param, Query, Body, UseGuards, Logger, Res } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags, ApiParam } from '@nestjs/swagger';
 import { Response } from 'express';
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RequestContextService } from '../common/utils/request-context.service';
 import { MetaAdsService } from './meta-ads.service';
-import { ConnectPageDto, MetaWebhookDto } from './meta-ads.dto';
+import { ConnectPageDto, MetaAdsWebhookDto } from './meta-ads.dto';
 
 @ApiTags('Meta Ads Integration')
 @Controller('tenants/:tenantId/meta-ads')
@@ -27,7 +26,7 @@ export class MetaAdsController {
         @Param('tenantId') tenantId: string,
         @Body() dto: ConnectPageDto
     ) {
-        this.requestContext.verifyTenantAccess(tenantId);
+        this.requestContextService.verifyTenantAccess(tenantId);
         return this.metaAdsService.connectPage(tenantId, dto.pageId, dto.pageName, dto.pageAccessToken);
     }
 
@@ -35,7 +34,7 @@ export class MetaAdsController {
     @ApiOperation({ summary: 'Get Meta OAuth authorization URL for Lead Ads' })
     @ApiParam({ name: 'tenantId', description: 'Tenant ID' })
     async getAuthUrl(@Param('tenantId') tenantId: string) {
-        this.requestContext.verifyTenantAccess(tenantId);
+        this.requestContextService.verifyTenantAccess(tenantId);
         return this.metaAdsService.getAuthUrl(tenantId);
     }
 
@@ -46,7 +45,7 @@ export class MetaAdsController {
         @Param('tenantId') tenantId: string,
         @Body('code') code: string
     ) {
-        this.requestContext.verifyTenantAccess(tenantId);
+        this.requestContextService.verifyTenantAccess(tenantId);
         return this.metaAdsService.exchangeCode(tenantId, code);
     }
 
@@ -54,7 +53,7 @@ export class MetaAdsController {
     @ApiOperation({ summary: 'Get all connected Facebook Pages' })
     @ApiParam({ name: 'tenantId', description: 'Tenant ID' })
     async getPages(@Param('tenantId') tenantId: string) {
-        this.requestContext.verifyTenantAccess(tenantId);
+        this.requestContextService.verifyTenantAccess(tenantId);
         return this.metaAdsService.getConnectedPages(tenantId);
     }
 
@@ -66,10 +65,8 @@ export class MetaAdsController {
         @Param('tenantId') tenantId: string,
         @Param('pageId') pageId: string
     ) {
-        this.requestContext.verifyTenantAccess(tenantId);
+        this.requestContextService.verifyTenantAccess(tenantId);
         return this.metaAdsService.disconnectPage(tenantId, pageId);
-    }
-
     }
 }
 
@@ -105,7 +102,7 @@ export class MetaAdsWebhookController {
         // Meta expects 200 response immediately
         res.status(200).send('EVENT_RECEIVED');
         try {
-            await this.metaAdsService.handleWebhook(data);
+            await this.metaAdsService.handleWebhook(dto);
         } catch (error: any) {
             this.logger.error('Error handling Meta Ads Webhook:', error.message);
         }

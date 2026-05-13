@@ -6,5 +6,5 @@ import { IsObject } from 'class-validator';
  */
 export class GoogleAdsWebhookDto {
   @IsObject()
-  body: Record<string, any>;
+  body!: Record<string, any>;
 }

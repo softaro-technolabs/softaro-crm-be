@@ -1,4 +1,5 @@
 import { Injectable, Inject, NotFoundException } from '@nestjs/common';
+import { PaginationUtil } from '../../common/utils/pagination.util';
 import { eq, and, desc, sql, SQL } from 'drizzle-orm';
 import { DRIZZLE } from '../../database/database.constants';
 import { DrizzleDatabase } from '../../database/database.types';
@@ -27,7 +28,7 @@ export class PropertyDocumentsService {
       .where(where)
       .orderBy(desc(propertyDocuments.createdAt))
       .limit(limit)
-      .offset(skip);
+      .offset(offset);
 
     const [countResult] = await this.db
       .select({ count: sql<number>`count(*)` })

@@ -37,5 +37,4 @@ export class ContactsController {
     return this.contactsService.getContact(tenantId, id);
   }
 
-  }
 }

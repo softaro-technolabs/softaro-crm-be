@@ -22,13 +22,6 @@ export class LeadFollowUpsController {
     this.requestContext.verifyTenantAccess(tenantId);
     return this.leadActivitiesService.listFollowUps(tenantId, query);
   }
-
-
-
-    if (user.tenant_id !== tenantId) {
-      throw new ForbiddenException('Access denied to this tenant');
-    }
-  }
 }
 
 

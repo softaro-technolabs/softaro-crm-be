@@ -15,9 +15,6 @@ export class CalendarAuthController {
         private readonly requestContext: RequestContextService
     ) { }
 
-        return { ...user, id: userId };
-    }
-
     // --- GOOGLE OAUTH ---
 
     @Get('google/auth')
@@ -53,7 +50,8 @@ export class CalendarAuthController {
 
     @Get('google/connect')
     async connectGoogle(@Param('tenantId') tenantId: string, @Query('code') code: string) {
-        const user = this.requestContext.verifyTenantAccess(tenantId);
+        this.requestContext.verifyTenantAccess(tenantId);
+        const userId = this.requestContext.getUserId()!;
 
         const clientId = this.configService.get<string>('GOOGLE_CLIENT_ID');
         const clientSecret = this.configService.get<string>('GOOGLE_CLIENT_SECRET');
@@ -78,7 +76,7 @@ export class CalendarAuthController {
 
             await this.calendarTokenService.saveToken(
                 tenantId,
-                user.id,
+                userId,
                 'google',
                 accountId,
                 access_token,
@@ -116,7 +114,8 @@ export class CalendarAuthController {
 
     @Get('microsoft/connect')
     async connectMicrosoft(@Param('tenantId') tenantId: string, @Query('code') code: string) {
-        const user = this.requestContext.verifyTenantAccess(tenantId);
+        this.requestContext.verifyTenantAccess(tenantId);
+        const userId = this.requestContext.getUserId()!;
 
         const clientId = this.configService.get<string>('MS_CLIENT_ID');
         const clientSecret = this.configService.get<string>('MS_CLIENT_SECRET');
@@ -146,7 +145,7 @@ export class CalendarAuthController {
 
             await this.calendarTokenService.saveToken(
                 tenantId,
-                user.id,
+                userId,
                 'microsoft',
                 accountId,
                 access_token,
@@ -162,8 +161,9 @@ export class CalendarAuthController {
 
     @Delete(':provider')
     async disconnect(@Param('tenantId') tenantId: string, @Param('provider') provider: 'google' | 'microsoft') {
-        const user = this.requestContext.verifyTenantAccess(tenantId);
-        await this.calendarTokenService.disconnect(tenantId, user.id, provider);
+        this.requestContext.verifyTenantAccess(tenantId);
+        const userId = this.requestContext.getUserId()!;
+        await this.calendarTokenService.disconnect(tenantId, userId, provider);
         return { success: true, message: `Disconnected ${provider} calendar` };
     }
 }

@@ -73,9 +73,4 @@ export class DealsController {
     this.requestContext.verifyTenantAccess(tenantId);
     return this.dealsService.updateDeal(tenantId, dealId, dto, this.requestContext.getUserId());
   }
-
-    if (user.tenant_id !== tenantId) {
-      throw new ForbiddenException('Access denied to this tenant');
-    }
-  }
 }

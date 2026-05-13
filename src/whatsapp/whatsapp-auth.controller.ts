@@ -52,11 +52,4 @@ export class WhatsappAuthController {
             dto.permanentToken
         );
     }
-
-
-
-        if (user.tenant_id !== tenantId) {
-            throw new ForbiddenException('Access denied to this tenant');
-        }
-    }
 }
