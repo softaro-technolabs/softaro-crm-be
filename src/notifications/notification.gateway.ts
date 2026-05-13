@@ -18,17 +18,20 @@ export class NotificationGateway implements OnGatewayConnection, OnGatewayDiscon
     server!: Server;
 
     private readonly logger = new Logger(NotificationGateway.name);
-    private connectedUsers = new Map<string, string>(); // userId -> socketId
+    // userId → Set of socketIds (supports multiple tabs / devices per user)
+    private connectedUsers = new Map<string, Set<string>>();
 
     handleConnection(client: Socket) {
         const userId = client.handshake.query.userId as string;
         const tenantId = client.handshake.query.tenantId as string;
-        
+
         if (userId) {
-            this.connectedUsers.set(userId, client.id);
+            if (!this.connectedUsers.has(userId)) {
+                this.connectedUsers.set(userId, new Set());
+            }
+            this.connectedUsers.get(userId)!.add(client.id);
             this.logger.log(`User ${userId} (socket ${client.id}) connected`);
-            
-            // Join a private room for this tenant
+
             if (tenantId) {
                 client.join(`tenant:${tenantId}`);
                 this.logger.log(`User ${userId} joined room: tenant:${tenantId}`);
@@ -37,19 +40,20 @@ export class NotificationGateway implements OnGatewayConnection, OnGatewayDiscon
     }
 
     handleDisconnect(client: Socket) {
-        for (const [userId, socketId] of this.connectedUsers.entries()) {
-            if (socketId === client.id) {
-                this.connectedUsers.delete(userId);
-                this.logger.log(`User ${userId} disconnected`);
+        for (const [userId, socketIds] of this.connectedUsers.entries()) {
+            if (socketIds.has(client.id)) {
+                socketIds.delete(client.id);
+                if (socketIds.size === 0) this.connectedUsers.delete(userId);
+                this.logger.log(`User ${userId} (socket ${client.id}) disconnected`);
                 break;
             }
         }
     }
 
     sendNotificationToUser(userId: string, event: string, data: any) {
-        const socketId = this.connectedUsers.get(userId);
-        if (socketId) {
-            this.server.to(socketId).emit(event, data);
+        const socketIds = this.connectedUsers.get(userId);
+        if (socketIds?.size) {
+            socketIds.forEach((socketId) => this.server.to(socketId).emit(event, data));
         }
     }
 

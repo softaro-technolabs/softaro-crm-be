@@ -1,10 +1,11 @@
-import { Body, Controller, Delete, ForbiddenException, Get, Param, Post, Put, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { RolesService } from './roles.service';
 import { CreateRoleDto, UpdateRoleDto, RoleListQueryDto } from './roles.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RequestContextService } from '../common/utils/request-context.service';
+import { NotificationGateway } from '../notifications/notification.gateway';
 
 @ApiTags('Roles')
 @Controller('tenants/:tenantId/roles')
@@ -13,7 +14,8 @@ import { RequestContextService } from '../common/utils/request-context.service';
 export class RolesController {
   constructor(
     private readonly rolesService: RolesService,
-    private readonly requestContext: RequestContextService
+    private readonly requestContext: RequestContextService,
+    private readonly notificationGateway: NotificationGateway,
   ) {}
 
   @Post()
@@ -45,7 +47,17 @@ export class RolesController {
     @Body() dto: UpdateRoleDto
   ) {
     this.requestContext.verifyTenantAccess(tenantId);
-    return this.rolesService.update(tenantId, roleId, dto);
+    const updated = await this.rolesService.update(tenantId, roleId, dto);
+
+    // Broadcast to every connected user in this tenant.
+    // The frontend will check if the updated roleId matches the user's own role
+    // and refresh their session only when it does.
+    this.notificationGateway.sendNotificationToTenant(tenantId, 'permissions:updated', {
+      roleId,
+      tenantId,
+    });
+
+    return updated;
   }
 
   @Delete(':roleId')

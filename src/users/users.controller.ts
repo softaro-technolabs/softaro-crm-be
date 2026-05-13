@@ -5,6 +5,7 @@ import { UsersService } from './users.service';
 import { RegisterUserDto, UpdateUserTenantDto, UserListQueryDto } from './users.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RequestContextService } from '../common/utils/request-context.service';
+import { NotificationGateway } from '../notifications/notification.gateway';
 
 @ApiTags('Users')
 @Controller('tenants/:tenantId/users')
@@ -13,7 +14,8 @@ import { RequestContextService } from '../common/utils/request-context.service';
 export class UsersController {
   constructor(
     private readonly usersService: UsersService,
-    private readonly requestContext: RequestContextService
+    private readonly requestContext: RequestContextService,
+    private readonly notificationGateway: NotificationGateway,
   ) {}
 
   @Post('register')
@@ -49,7 +51,18 @@ export class UsersController {
     @Body() dto: UpdateUserTenantDto
   ) {
     this.requestContext.verifyTenantAccess(tenantId);
-    return this.usersService.updateUserTenantMembership(tenantId, userId, dto);
+    const result = await this.usersService.updateUserTenantMembership(tenantId, userId, dto);
+
+    // When an admin changes a user's role or status, push a targeted event so
+    // that user's session refreshes immediately without waiting for a re-login.
+    if (dto.roleId !== undefined || dto.status !== undefined) {
+      this.notificationGateway.sendNotificationToUser(userId, 'permissions:updated', {
+        userId,
+        tenantId,
+      });
+    }
+
+    return result;
   }
 
   @Delete(':userId')
