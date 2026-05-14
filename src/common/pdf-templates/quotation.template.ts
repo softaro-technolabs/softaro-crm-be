@@ -15,8 +15,9 @@ export const getQuotationHtml = (quotation: any): string => {
 
   const toWords = (n: number): string => {
     if (!n || isNaN(n) || n <= 0) return '';
-    const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine',
-      'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+    const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven',
+      'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen',
+      'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
     const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
     const two   = (x: number) => x < 20 ? ones[x] : tens[Math.floor(x / 10)] + (x % 10 ? ' ' + ones[x % 10] : '');
     const three = (x: number) => x < 100 ? two(x) : ones[Math.floor(x / 100)] + ' Hundred' + (x % 100 ? ' and ' + two(x % 100) : '');
@@ -68,8 +69,8 @@ export const getQuotationHtml = (quotation: any): string => {
     { label: 'Unit No.',       value: quotation.unitNumber  || '' },
     { label: 'Floor / Tower',  value: quotation.floorTower  || '' },
     { label: 'Unit Type',      value: quotation.unitType    || '' },
-    { label: 'Carpet Area',    value: carpetAreaNum  > 0 ? `${carpetAreaNum.toLocaleString('en-IN')} sq.ft`                       : '' },
-    { label: 'Super Built-up', value: quotation.superBuiltUp ? `${Number(quotation.superBuiltUp).toLocaleString('en-IN')} sq.ft`  : '' },
+    { label: 'Carpet Area',    value: carpetAreaNum > 0 ? `${carpetAreaNum.toLocaleString('en-IN')} sq.ft` : '' },
+    { label: 'Super Built-up', value: quotation.superBuiltUp ? `${Number(quotation.superBuiltUp).toLocaleString('en-IN')} sq.ft` : '' },
     { label: 'Possession',     value: quotation.possession  || '' },
   ].filter(m => m.value);
 
@@ -82,7 +83,7 @@ export const getQuotationHtml = (quotation: any): string => {
 
   // ─── Pricing rows ─────────────────────────────────────────────────────────────
 
-  const pricingRows: { label: string; sub?: string; amount: number }[] = [
+  const pricingRows = [
     {
       label: 'Basic Sale Price',
       sub: pricePerSqft > 0
@@ -93,14 +94,14 @@ export const getQuotationHtml = (quotation: any): string => {
     ...(plc            > 0 ? [{ label: 'Preferential Location Charges (PLC)', amount: plc }]            : []),
     ...(parking        > 0 ? [{ label: 'Parking Charges',                     amount: parking }]        : []),
     ...(clubMembership > 0 ? [{ label: 'Club Membership',                     amount: clubMembership }] : []),
-    ...otherCharges.map(c  =>  ({ label: c.label,                             amount: c.amount })),
+    ...otherCharges.map(c  => ({ label: c.label,                              amount: c.amount })),
   ].filter(r => r.amount > 0);
 
   const pricingRowsHtml = pricingRows.map((row, i) => `
     <tr class="${i % 2 === 1 ? 'row-alt' : ''}">
       <td class="row-label">
         ${row.label}
-        ${row.sub ? `<span class="row-sub">${row.sub}</span>` : ''}
+        ${'sub' in row && row.sub ? `<span class="row-sub">${row.sub}</span>` : ''}
       </td>
       <td class="row-amount">${fmt(row.amount)}</td>
     </tr>`).join('');
@@ -108,10 +109,10 @@ export const getQuotationHtml = (quotation: any): string => {
   // ─── Statutory rows ───────────────────────────────────────────────────────────
 
   const statutoryRows: { label: string; amount: number; deduct?: boolean }[] = [
-    { label: `GST @ ${gstRate}% on Agreement Value`,  amount: gstAmount },
-    ...(stampDuty           > 0 ? [{ label: 'Stamp Duty',             amount: stampDuty }]           : []),
-    ...(registrationCharges > 0 ? [{ label: 'Registration Charges',   amount: registrationCharges }] : []),
-    ...(discount            > 0 ? [{ label: 'Discount / Concession',  amount: discount, deduct: true }] : []),
+    { label: `GST @ ${gstRate}% on Agreement Value`, amount: gstAmount },
+    ...(stampDuty           > 0 ? [{ label: 'Stamp Duty',            amount: stampDuty }]           : []),
+    ...(registrationCharges > 0 ? [{ label: 'Registration Charges',  amount: registrationCharges }] : []),
+    ...(discount            > 0 ? [{ label: 'Discount / Concession', amount: discount, deduct: true }] : []),
   ];
 
   const statutoryRowsHtml = statutoryRows.map((row, i) => `
@@ -122,11 +123,11 @@ export const getQuotationHtml = (quotation: any): string => {
 
   // ─── Pills ────────────────────────────────────────────────────────────────────
 
-  const pills: { label: string; value: string }[] = [
-    ...(pricePerSqft          > 0 ? [{ label: 'Rate / Sq.Ft', value: `₹ ${pricePerSqft.toLocaleString('en-IN')}` }] : []),
-    ...(quotation.paymentPlan      ? [{ label: 'Payment Plan', value: quotation.paymentPlan }]    : []),
-    ...(quotation.possession       ? [{ label: 'Possession',   value: quotation.possession }]     : []),
-    ...(expiryDate                 ? [{ label: 'Valid Until',  value: expiryDate }]               : []),
+  const pills = [
+    ...(pricePerSqft     > 0 ? [{ label: 'Rate / Sq.Ft', value: `₹ ${pricePerSqft.toLocaleString('en-IN')}` }] : []),
+    ...(quotation.paymentPlan  ? [{ label: 'Payment Plan', value: quotation.paymentPlan }]  : []),
+    ...(quotation.possession   ? [{ label: 'Possession',   value: quotation.possession }]   : []),
+    ...(expiryDate             ? [{ label: 'Valid Until',  value: expiryDate }]             : []),
   ];
 
   const pillsHtml = pills.map(p => `
@@ -135,10 +136,7 @@ export const getQuotationHtml = (quotation: any): string => {
       <div class="pill-value">${p.value}</div>
     </div>`).join('');
 
-  // ─── RERA / company ───────────────────────────────────────────────────────────
-
   const reraNo = quotation.reraNumber || quotation.tenantReraNumber || 'RERA/XXXXX/XXXXX/XXXX';
-  const gstin  = quotation.tenantGstin || '&mdash;';
 
   // ─── HTML ─────────────────────────────────────────────────────────────────────
 
@@ -167,54 +165,39 @@ export const getQuotationHtml = (quotation: any): string => {
       --white:   #FFFFFF;
     }
 
-    body {
-      font-family: 'Inter', sans-serif;
-      background: var(--white);
-      color: var(--ink);
-      font-size: 12px;
-      line-height: 1.6;
-      -webkit-print-color-adjust: exact;
-      print-color-adjust: exact;
+    /*
+     * PAGE BORDER — box-shadow on html element is the most reliable technique
+     * in Puppeteer. It renders on every page and stays within the margin zone.
+     * inset spread of -5mm keeps it inside the 12mm margin area.
+     */
+    html {
+      box-shadow: inset 0 0 0 1.5px rgba(27, 45, 79, 0.35);
     }
 
-    /* ══════════════════════════════════════════════════
-       PAGE BORDER FRAME — appears on every page
-       With 12mm Puppeteer margins, inset -7mm places
-       the border 5mm from the paper edge on all sides.
-    ══════════════════════════════════════════════════ */
-    .page-frame {
-      position: fixed;
-      top: -7mm; left: -7mm; right: -7mm; bottom: -7mm;
-      border: 1.5px solid rgba(27, 45, 79, 0.28);
-      border-radius: 3px;
-      pointer-events: none;
-      z-index: 998;
-    }
-
-    /* Gold corner squares */
+    /* Gold corner marks — position: fixed works reliably for corner pins */
     .corner {
       position: fixed;
-      width: 9px;
-      height: 9px;
+      width: 10px;
+      height: 10px;
       background: var(--gold);
       z-index: 999;
       pointer-events: none;
     }
-    .c-tl { top: -7mm;    left: -7mm;   }
-    .c-tr { top: -7mm;    right: -7mm;  margin-right: -9px; }
-    .c-bl { bottom: -7mm; left: -7mm;   margin-bottom: -9px; }
-    .c-br { bottom: -7mm; right: -7mm;  margin-right: -9px; margin-bottom: -9px; }
+    .c-tl { top: 0;    left: 0;    border-radius: 0 0 3px 0; }
+    .c-tr { top: 0;    right: 0;   border-radius: 0 0 0 3px; }
+    .c-bl { bottom: 0; left: 0;    border-radius: 0 3px 0 0; }
+    .c-br { bottom: 0; right: 0;   border-radius: 3px 0 0 0; }
 
-    /* ══ WATERMARK — subtle, smaller ══ */
+    /* Watermark — very subtle, only readable up close */
     .watermark {
       position: fixed;
       top: 46%;
       left: 50%;
-      transform: translate(-50%, -50%) rotate(-30deg);
-      font-size: 64px;
+      transform: translate(-50%, -50%) rotate(-28deg);
+      font-size: 58px;
       font-weight: 800;
-      color: rgba(27, 45, 79, 0.04);
-      letter-spacing: 8px;
+      color: rgba(27, 45, 79, 0.055);
+      letter-spacing: 10px;
       text-transform: uppercase;
       pointer-events: none;
       z-index: 0;
@@ -222,69 +205,29 @@ export const getQuotationHtml = (quotation: any): string => {
       user-select: none;
     }
 
-    /* ══ FIXED FOOTER — appears at bottom of every page ══ */
-    .footer {
-      position: fixed;
-      bottom: 0;
-      left: 0;
-      right: 0;
-      background: var(--navy);
-      padding: 10px 28px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 20px;
-      z-index: 997;
-      border-top: 2px solid var(--gold);
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--white);
+      color: var(--ink);
+      font-size: 11.5px;
+      line-height: 1.55;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
     }
 
-    .footer-company {
-      font-size: 11px;
-      font-weight: 700;
-      color: var(--white);
-      margin-bottom: 2px;
-    }
-
-    .footer-detail {
-      font-size: 9.5px;
-      color: rgba(255,255,255,0.45);
-      line-height: 1.7;
-    }
-
-    .footer-rera {
-      font-size: 9.5px;
-      font-weight: 600;
-      color: var(--gold);
-      text-align: right;
-      margin-bottom: 2px;
-    }
-
-    .footer-gen {
-      font-size: 9px;
-      color: rgba(255,255,255,0.3);
-      text-align: right;
-      line-height: 1.7;
-    }
-
-    /* ══ PAGE WRAPPER ══ */
-    .page {
-      position: relative;
-      z-index: 1;
-      /* Push content above fixed footer (~52px) */
-      padding-bottom: 68px;
-    }
+    .page { position: relative; z-index: 1; }
 
     /* ══ HEADER ══ */
     .header {
       background: var(--navy);
-      padding: 22px 28px;
+      padding: 20px 26px;
       display: flex;
       justify-content: space-between;
       align-items: flex-start;
     }
 
     .company-name {
-      font-size: 21px;
+      font-size: 20px;
       font-weight: 800;
       color: var(--white);
       letter-spacing: -0.4px;
@@ -292,36 +235,36 @@ export const getQuotationHtml = (quotation: any): string => {
     }
 
     .company-tagline {
-      font-size: 10px;
+      font-size: 9.5px;
       font-weight: 500;
       color: var(--gold);
-      letter-spacing: 0.5px;
-      margin-top: 4px;
+      letter-spacing: 0.4px;
+      margin-top: 3px;
     }
 
     .hdr-right { text-align: right; }
 
     .doc-type-label {
-      font-size: 8.5px;
+      font-size: 8px;
       font-weight: 700;
       letter-spacing: 3px;
       text-transform: uppercase;
       color: var(--gold);
-      margin-bottom: 4px;
+      margin-bottom: 3px;
     }
 
     .doc-number {
-      font-size: 20px;
+      font-size: 19px;
       font-weight: 800;
       color: var(--white);
       letter-spacing: -0.4px;
     }
 
     .doc-dates {
-      margin-top: 5px;
-      font-size: 10px;
+      margin-top: 4px;
+      font-size: 9.5px;
       color: rgba(255,255,255,0.5);
-      line-height: 1.9;
+      line-height: 1.8;
     }
 
     .doc-expiry { color: #FCA5A5; font-weight: 600; }
@@ -329,27 +272,26 @@ export const getQuotationHtml = (quotation: any): string => {
     /* ══ RERA STRIP ══ */
     .rera-strip {
       background: var(--navy-lt);
-      padding: 8px 28px;
+      padding: 7px 26px;
       display: flex;
       align-items: center;
       flex-wrap: wrap;
-      gap: 0;
       border-top: 1px solid rgba(255,255,255,0.07);
     }
 
     .ri {
       display: flex;
       align-items: center;
-      gap: 7px;
-      padding-right: 18px;
-      margin-right: 18px;
+      gap: 6px;
+      padding-right: 16px;
+      margin-right: 16px;
       border-right: 1px solid rgba(255,255,255,0.12);
     }
 
     .ri:last-child { border-right: none; margin-right: 0; padding-right: 0; }
 
     .ri-label {
-      font-size: 8px;
+      font-size: 7.5px;
       font-weight: 700;
       letter-spacing: 1.8px;
       text-transform: uppercase;
@@ -357,20 +299,20 @@ export const getQuotationHtml = (quotation: any): string => {
     }
 
     .ri-value {
-      font-size: 10px;
+      font-size: 9.5px;
       font-weight: 600;
       color: rgba(255,255,255,0.9);
     }
 
     /* ══ CONTENT ══ */
-    .content { padding: 20px 28px 0; }
+    .content { padding: 16px 26px 0; }
 
     /* ══ INFO GRID ══ */
     .info-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 12px;
-      margin-bottom: 18px;
+      margin-bottom: 16px;
     }
 
     .info-card {
@@ -379,43 +321,36 @@ export const getQuotationHtml = (quotation: any): string => {
       overflow: hidden;
     }
 
-    .info-card-hdr {
-      background: var(--navy);
-      padding: 6px 14px;
-    }
+    .info-card-hdr { background: var(--navy); padding: 6px 13px; }
 
     .info-card-title {
-      font-size: 8px;
+      font-size: 7.5px;
       font-weight: 700;
       letter-spacing: 2.5px;
       text-transform: uppercase;
       color: var(--gold);
     }
 
-    .info-card-body { padding: 12px 14px; }
+    .info-card-body { padding: 11px 13px; }
 
     .buyer-name {
-      font-size: 14px;
+      font-size: 13.5px;
       font-weight: 700;
       color: var(--ink);
       margin-bottom: 4px;
     }
 
-    .buyer-detail {
-      font-size: 11px;
-      color: var(--muted);
-      line-height: 1.9;
-    }
+    .buyer-detail { font-size: 10.5px; color: var(--muted); line-height: 1.8; }
 
     table.unit-table { width: 100%; border-collapse: collapse; }
-    .meta-label { font-size: 10px; color: var(--muted); padding: 3px 0; width: 38%; }
-    .meta-sep   { font-size: 10px; color: var(--line);  padding: 3px 4px; }
-    .meta-value { font-size: 10.5px; font-weight: 600; color: var(--ink); padding: 3px 0; }
+    .meta-label { font-size: 9.5px; color: var(--muted); padding: 2.5px 0; width: 38%; }
+    .meta-sep   { font-size: 9.5px; color: var(--line);  padding: 2.5px 4px; }
+    .meta-value { font-size: 10px;  font-weight: 600; color: var(--ink); padding: 2.5px 0; }
 
     /* ══ SECTION HEADER ══ */
     .sec-hdr {
       background: var(--navy);
-      padding: 8px 14px;
+      padding: 7px 13px;
       border-radius: 6px 6px 0 0;
       display: flex;
       align-items: center;
@@ -423,14 +358,14 @@ export const getQuotationHtml = (quotation: any): string => {
     }
 
     .sec-title {
-      font-size: 8px;
+      font-size: 7.5px;
       font-weight: 700;
       letter-spacing: 2.5px;
       text-transform: uppercase;
       color: var(--white);
     }
 
-    .sec-note { font-size: 9.5px; color: rgba(255,255,255,0.4); }
+    .sec-note { font-size: 9px; color: rgba(255,255,255,0.38); }
 
     /* ══ PRICING TABLE ══ */
     .pricing-table {
@@ -438,72 +373,51 @@ export const getQuotationHtml = (quotation: any): string => {
       border-collapse: collapse;
       border: 1px solid var(--line);
       border-top: none;
-      margin-bottom: 16px;
+      margin-bottom: 14px;
     }
 
     .pricing-table tbody tr { border-bottom: 1px solid var(--line); }
     .pricing-table tbody tr:last-child { border-bottom: none; }
     .row-alt { background: var(--surface); }
 
-    .row-label {
-      padding: 10px 14px;
-      font-size: 11.5px;
-      color: var(--ink);
-    }
+    .row-label  { padding: 9px 13px; font-size: 11px; color: var(--ink); }
+    .row-sub    { display: block; font-size: 9px; color: var(--muted); font-weight: 400; margin-top: 1px; }
+    .row-amount { padding: 9px 13px; text-align: right; font-size: 11px; font-weight: 600; color: var(--ink); white-space: nowrap; }
 
-    .row-sub {
-      display: block;
-      font-size: 9.5px;
-      color: var(--muted);
-      font-weight: 400;
-      margin-top: 1px;
-    }
-
-    .row-amount {
-      padding: 10px 14px;
-      text-align: right;
-      font-size: 11.5px;
-      font-weight: 600;
-      color: var(--ink);
-      white-space: nowrap;
-    }
-
-    /* Agreement Value row */
+    /* Agreement Value */
     .row-agr { background: var(--gold-lt) !important; }
     .row-agr td { border-top: 2px solid var(--gold-bd) !important; border-bottom: 2px solid var(--gold-bd) !important; }
-    .row-agr .row-label  { font-size: 12px; font-weight: 700; color: var(--green); }
-    .row-agr .row-amount { font-size: 12px; font-weight: 800; color: var(--green); }
+    .row-agr .row-label  { font-size: 11.5px; font-weight: 700; color: var(--green); }
+    .row-agr .row-amount { font-size: 11.5px; font-weight: 800; color: var(--green); }
 
-    /* Statutory rows */
-    .row-stat-label  { color: var(--muted); font-size: 11px; }
+    /* Statutory */
+    .row-stat-label  { color: var(--muted); font-size: 10.5px; }
     .row-stat-amount { color: var(--muted); font-weight: 500; }
-
-    /* Deduct row */
     .row-deduct .row-stat-label  { color: var(--red); font-weight: 600; }
     .row-deduct .row-stat-amount { color: var(--red); font-weight: 700; }
 
-    /* ══ GRAND TOTAL BLOCK ══ */
+    /* ══ GRAND TOTAL ══ */
     .grand-block {
       background: var(--navy);
       border-radius: 8px;
-      padding: 20px 24px;
-      margin-bottom: 16px;
+      padding: 17px 22px;
+      margin-bottom: 14px;
       display: flex;
       align-items: flex-end;
       justify-content: space-between;
     }
 
     .gt-label {
-      font-size: 8px;
+      font-size: 7.5px;
       font-weight: 700;
       letter-spacing: 3px;
       text-transform: uppercase;
       color: var(--gold);
-      margin-bottom: 7px;
+      margin-bottom: 6px;
     }
 
     .gt-amount {
-      font-size: 30px;
+      font-size: 28px;
       font-weight: 800;
       color: var(--white);
       letter-spacing: -1.5px;
@@ -511,55 +425,53 @@ export const getQuotationHtml = (quotation: any): string => {
     }
 
     .gt-words {
-      font-size: 9.5px;
-      color: rgba(255,255,255,0.38);
-      margin-top: 7px;
+      font-size: 9px;
+      color: rgba(255,255,255,0.36);
+      margin-top: 6px;
       font-style: italic;
       line-height: 1.5;
-      max-width: 360px;
+      max-width: 340px;
     }
-
-    .gt-right { text-align: right; }
 
     .gt-badge {
       display: inline-block;
       background: var(--gold);
       color: var(--navy);
-      font-size: 8px;
+      font-size: 7.5px;
       font-weight: 800;
       letter-spacing: 2px;
       text-transform: uppercase;
-      padding: 4px 11px;
+      padding: 4px 10px;
       border-radius: 3px;
-      margin-bottom: 7px;
+      margin-bottom: 6px;
     }
 
     .gt-incl {
-      font-size: 9.5px;
-      color: rgba(255,255,255,0.28);
+      font-size: 9px;
+      color: rgba(255,255,255,0.26);
       line-height: 1.8;
       text-align: right;
     }
 
-    /* ══ HIGHLIGHTS ══ */
+    /* ══ PILLS ══ */
     .pills-row {
       display: flex;
-      gap: 10px;
+      gap: 8px;
       flex-wrap: wrap;
-      margin-bottom: 16px;
+      margin-bottom: 14px;
     }
 
     .pill {
       flex: 1;
-      min-width: 100px;
+      min-width: 90px;
       border: 1px solid var(--gold-bd);
       background: var(--gold-lt);
-      border-radius: 6px;
-      padding: 9px 13px;
+      border-radius: 5px;
+      padding: 8px 12px;
     }
 
     .pill-label {
-      font-size: 8px;
+      font-size: 7.5px;
       font-weight: 700;
       letter-spacing: 1.5px;
       text-transform: uppercase;
@@ -567,49 +479,40 @@ export const getQuotationHtml = (quotation: any): string => {
       margin-bottom: 3px;
     }
 
-    .pill-value {
-      font-size: 12px;
-      font-weight: 700;
-      color: var(--ink);
-    }
+    .pill-value { font-size: 11.5px; font-weight: 700; color: var(--ink); }
 
     /* ══ NOTES ══ */
     .notes-block {
       border: 1px solid var(--line);
       border-left: 4px solid var(--navy);
-      border-radius: 0 6px 6px 0;
-      padding: 12px 16px;
-      margin-bottom: 16px;
+      border-radius: 0 5px 5px 0;
+      padding: 10px 14px;
+      margin-bottom: 14px;
       background: var(--surface);
     }
 
     .notes-title {
-      font-size: 8px;
+      font-size: 7.5px;
       font-weight: 700;
       letter-spacing: 2px;
       text-transform: uppercase;
       color: var(--navy);
-      margin-bottom: 6px;
+      margin-bottom: 5px;
     }
 
-    .notes-text {
-      font-size: 10.5px;
-      color: var(--muted);
-      white-space: pre-wrap;
-      line-height: 1.8;
-    }
+    .notes-text { font-size: 10px; color: var(--muted); white-space: pre-wrap; line-height: 1.75; }
 
     /* ══ DISCLAIMER ══ */
     .disclaimer {
       background: #FFFBEB;
       border: 1px solid #FDE68A;
-      border-radius: 6px;
-      padding: 10px 14px;
-      margin-bottom: 16px;
+      border-radius: 5px;
+      padding: 9px 13px;
+      margin-bottom: 14px;
     }
 
     .disclaimer-title {
-      font-size: 8px;
+      font-size: 7.5px;
       font-weight: 700;
       letter-spacing: 2px;
       text-transform: uppercase;
@@ -617,95 +520,72 @@ export const getQuotationHtml = (quotation: any): string => {
       margin-bottom: 4px;
     }
 
-    .disclaimer-text {
-      font-size: 9.5px;
-      color: #78350F;
-      line-height: 1.75;
-    }
+    .disclaimer-text { font-size: 9px; color: #78350F; line-height: 1.7; }
 
-    /* ══ SIGNATURES ══ */
+    /* ══ SIGNATURES — kept together, page-break-inside: avoid ══ */
     .sig-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 16px;
-      margin-bottom: 16px;
+      gap: 14px;
+      page-break-inside: avoid;
+      break-inside: avoid;
     }
 
     .sig-box {
       border: 1px solid var(--line);
-      border-radius: 7px;
+      border-radius: 6px;
       overflow: hidden;
+      page-break-inside: avoid;
+      break-inside: avoid;
     }
 
-    .sig-hdr {
-      background: var(--surface);
-      border-bottom: 1px solid var(--line);
-      padding: 6px 14px;
-    }
+    .sig-hdr { background: var(--surface); border-bottom: 1px solid var(--line); padding: 6px 13px; }
 
     .sig-hdr-title {
-      font-size: 8px;
+      font-size: 7.5px;
       font-weight: 700;
       letter-spacing: 2px;
       text-transform: uppercase;
       color: var(--muted);
     }
 
-    .sig-body { padding: 16px 14px 14px; }
+    .sig-body { padding: 12px 13px 13px; }
 
     .sig-seal {
-      width: 56px;
-      height: 56px;
+      width: 48px;
+      height: 48px;
       border: 2px dashed #CBD5E0;
       border-radius: 50%;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 7.5px;
+      font-size: 7px;
       color: #CBD5E0;
       font-weight: 700;
       letter-spacing: 0.4px;
       text-align: center;
-      margin-bottom: 24px;
-      line-height: 1.35;
+      margin-bottom: 18px;
+      line-height: 1.3;
     }
 
-    .sig-space { height: 42px; margin-bottom: 8px; }
-
-    .sig-line { border-top: 1.5px solid var(--ink); padding-top: 5px; }
-    .sig-name { font-size: 11.5px; font-weight: 700; color: var(--ink); }
-    .sig-role { font-size: 9.5px; color: var(--muted); margin-top: 1px; }
-    .sig-date { font-size: 9.5px; color: var(--muted); margin-top: 5px; }
+    .sig-space { height: 30px; margin-bottom: 8px; }
+    .sig-line  { border-top: 1.5px solid var(--ink); padding-top: 5px; }
+    .sig-name  { font-size: 11px; font-weight: 700; color: var(--ink); }
+    .sig-role  { font-size: 9px; color: var(--muted); margin-top: 1px; }
+    .sig-date  { font-size: 9px; color: var(--muted); margin-top: 4px; }
   </style>
 </head>
 <body>
 
-<!-- Page border frame (fixed — appears on every page) -->
-<div class="page-frame"></div>
-<!-- Gold corner marks -->
+<!-- Gold corner marks — appear on every page via position:fixed -->
 <div class="corner c-tl"></div>
 <div class="corner c-tr"></div>
 <div class="corner c-bl"></div>
 <div class="corner c-br"></div>
 
-<!-- Watermark (fixed — appears on every page) -->
+<!-- Subtle watermark -->
 <div class="watermark">COST SHEET</div>
 
-<!-- Fixed footer (appears at bottom of every page) -->
-<div class="footer">
-  <div>
-    <div class="footer-company">${quotation.tenantName || 'Your Company'}</div>
-    <div class="footer-detail">
-      ${[quotation.tenantAddress, quotation.tenantPhone, quotation.tenantEmail].filter(Boolean).join('&nbsp;&nbsp;&middot;&nbsp;&nbsp;')}
-    </div>
-  </div>
-  <div>
-    <div class="footer-rera">RERA: ${reraNo}&nbsp;&nbsp;|&nbsp;&nbsp;GSTIN: ${gstin}</div>
-    <div class="footer-gen">Computer Generated Document &middot; ${quotation.quotationNumber || 'CS-0001'} &middot; ${today}</div>
-  </div>
-</div>
-
-<!-- Page content -->
 <div class="page">
 
   <!-- ══ HEADER ══ -->
@@ -728,7 +608,7 @@ export const getQuotationHtml = (quotation: any): string => {
   <div class="rera-strip">
     ${quotation.projectName ? `<div class="ri"><span class="ri-label">Project</span><span class="ri-value">${quotation.projectName}</span></div>` : ''}
     <div class="ri"><span class="ri-label">RERA No.</span><span class="ri-value">${reraNo}</span></div>
-    ${quotation.unitNumber ? `<div class="ri"><span class="ri-label">Unit</span><span class="ri-value">${quotation.unitNumber}</span></div>` : ''}
+    ${quotation.unitNumber  ? `<div class="ri"><span class="ri-label">Unit</span><span class="ri-value">${quotation.unitNumber}</span></div>` : ''}
     <div class="ri"><span class="ri-label">All Amounts In</span><span class="ri-value">Indian Rupees (INR)</span></div>
   </div>
 
@@ -750,13 +630,13 @@ export const getQuotationHtml = (quotation: any): string => {
         <div class="info-card-hdr"><div class="info-card-title">Unit Specifications</div></div>
         <div class="info-card-body">
           <table class="unit-table">
-            ${unitMetaHtml || '<tr><td class="meta-label" colspan="3" style="color:var(--muted)">No unit details provided</td></tr>'}
+            ${unitMetaHtml || '<tr><td class="meta-label" colspan="3" style="color:var(--muted)">—</td></tr>'}
           </table>
         </div>
       </div>
     </div>
 
-    <!-- Pricing breakup -->
+    <!-- Pricing table -->
     ${pricingRows.length > 0 ? `
     <div>
       <div class="sec-hdr">
@@ -782,7 +662,7 @@ export const getQuotationHtml = (quotation: any): string => {
         <div class="gt-amount">${fmt(grandTotal)}</div>
         ${grandTotal > 0 ? `<div class="gt-words">${toWords(Math.round(grandTotal))}</div>` : ''}
       </div>
-      <div class="gt-right">
+      <div style="text-align:right;">
         <div class="gt-badge">All Inclusive</div>
         <div class="gt-incl">
           Base &middot; PLC &middot; Parking<br/>
@@ -791,7 +671,7 @@ export const getQuotationHtml = (quotation: any): string => {
       </div>
     </div>
 
-    <!-- Highlights -->
+    <!-- Pills -->
     ${pills.length > 0 ? `<div class="pills-row">${pillsHtml}</div>` : ''}
 
     <!-- Notes & Terms -->
@@ -799,22 +679,21 @@ export const getQuotationHtml = (quotation: any): string => {
     <div class="notes-block">
       <div class="notes-title">Notes &amp; Terms</div>
       ${quotation.notes ? `<p class="notes-text">${quotation.notes}</p>` : ''}
-      ${quotation.terms ? `<p class="notes-text" style="margin-top:8px;">${quotation.terms}</p>` : ''}
+      ${quotation.terms ? `<p class="notes-text" style="margin-top:6px;">${quotation.terms}</p>` : ''}
     </div>` : ''}
 
     <!-- Disclaimer -->
     <div class="disclaimer">
       <div class="disclaimer-title">Important Disclaimer</div>
       <div class="disclaimer-text">
-        This cost sheet is indicative and prepared for discussion purposes only. All prices are subject to revision by
-        management without prior notice. Final amounts will be confirmed in the registered Agreement for Sale / Allotment Letter.
-        GST, stamp duty, registration charges and other statutory levies are applicable as per government norms prevailing at the
-        time of execution. This document does not constitute a legal offer or binding commitment.
-        Subject to RERA guidelines &mdash; ${reraNo}.
+        This cost sheet is indicative and prepared for discussion purposes only. All prices are subject to revision by management
+        without prior notice. Final amounts will be confirmed in the registered Agreement for Sale / Allotment Letter. GST, stamp duty,
+        registration charges and other statutory levies are applicable as per government norms prevailing at the time of execution.
+        This document does not constitute a legal offer or binding commitment. Subject to RERA — ${reraNo}.
       </div>
     </div>
 
-    <!-- Signatures -->
+    <!-- Signatures — page-break-inside: avoid keeps both boxes together -->
     <div class="sig-grid">
       <div class="sig-box">
         <div class="sig-hdr"><div class="sig-hdr-title">For &mdash; ${quotation.tenantName || 'Company'}</div></div>
