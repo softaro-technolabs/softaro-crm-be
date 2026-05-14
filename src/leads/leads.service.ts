@@ -19,6 +19,7 @@ import type { DrizzleDatabase } from '../database/database.types';
 import {
   leadStatuses,
   leadActivities,
+  leadTasks,
   leads,
   tenants,
   users,
@@ -1090,7 +1091,127 @@ export class LeadsService {
       updatedAt: new Date()
     }).where(and(eq(leads.id, leadId), eq(leads.tenantId, tenantId)));
 
+    // Auto-create a follow-up task from AI suggested action (hot or warm leads only)
+    if (aiResult.suggestedNextAction && (aiResult.label === 'hot' || aiResult.label === 'warm')) {
+      const dueAt = new Date();
+      // Hot leads: follow up within 2h, warm: within 24h
+      dueAt.setHours(dueAt.getHours() + (aiResult.label === 'hot' ? 2 : 24));
+      try {
+        await this.db.insert(leadTasks).values({
+          id: randomUUID(),
+          tenantId,
+          leadId,
+          title: `[AI] ${aiResult.suggestedNextAction}`,
+          description: aiResult.agentScript
+            ? `Suggested script:\n"${aiResult.agentScript}"`
+            : undefined,
+          status: 'open',
+          priority: aiResult.label === 'hot' ? 'urgent' : 'high',
+          dueAt,
+          assignedToUserId: lead.lead.assignedToUserId ?? undefined,
+          metadata: { source: 'ai_qualification', score: aiResult.finalScore ?? aiResult.score },
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+        this.logger.log(`[AI Task Created] lead=${leadId} label=${aiResult.label} action="${aiResult.suggestedNextAction}"`);
+      } catch (err) {
+        // Non-fatal: log and continue
+        this.logger.warn('[AI Task Creation Failed]', err);
+      }
+    }
+
     return this.getLead(tenantId, leadId);
+  }
+
+  // ─── AI Email Draft ──────────────────────────────────────────────────────────
+
+  async draftEmailForLead(tenantId: string, leadId: string) {
+    const { lead } = await this.getLead(tenantId, leadId);
+    const draft = await this.aiQualificationService.draftLeadEmail({
+      name: lead.name,
+      email: lead.email,
+      phone: lead.phone,
+      budget: lead.budget ? Number(lead.budget) : null,
+      requirementType: lead.requirementType,
+      propertyType: lead.propertyType,
+      bhkType: lead.bhkType,
+      leadSource: lead.leadSource,
+      notes: lead.notes,
+      aiQualification: lead.aiQualification as any,
+    });
+    if (!draft) {
+      throw new InternalServerErrorException('AI email drafting failed — check GROQ_API_KEY');
+    }
+    return { data: draft };
+  }
+
+  // ─── AI Analytics Insights ────────────────────────────────────────────────────
+
+  async getAiInsights(tenantId: string) {
+    // Build stats from DB for the last 30 days
+    const [totalResult] = await this.db
+      .select({ val: count() })
+      .from(leads)
+      .where(eq(leads.tenantId, tenantId));
+
+    const allLeads = await this.db
+      .select({
+        leadLabel: leads.leadLabel,
+        leadScore: leads.leadScore,
+        leadSource: leads.leadSource,
+        statusId: leads.statusId,
+        createdAt: leads.createdAt,
+      })
+      .from(leads)
+      .where(eq(leads.tenantId, tenantId))
+      .limit(500);
+
+    const hotLeads  = allLeads.filter(l => l.leadLabel === 'hot').length;
+    const warmLeads = allLeads.filter(l => l.leadLabel === 'warm').length;
+    const coldLeads = allLeads.filter(l => l.leadLabel === 'cold').length;
+
+    const scores = allLeads.map(l => Number(l.leadScore || 0)).filter(s => s > 0);
+    const avgScore = scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
+
+    // Source counts
+    const sourceCounts: Record<string, number> = {};
+    for (const l of allLeads) {
+      if (l.leadSource) sourceCounts[l.leadSource] = (sourceCounts[l.leadSource] || 0) + 1;
+    }
+    const topSources = Object.entries(sourceCounts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([source, count]) => ({ source, count }));
+
+    // Fetch site visit rate
+    const [visitResult] = await this.db
+      .select({ val: count() })
+      .from(siteVisits)
+      .where(eq(siteVisits.tenantId, tenantId));
+
+    const totalLeads = Number(totalResult?.val || 0);
+    const siteVisitRate = totalLeads > 0
+      ? Math.round((Number(visitResult?.val || 0) / totalLeads) * 100)
+      : 0;
+
+    const insights = await this.aiQualificationService.generateAnalyticsInsights({
+      totalLeads,
+      hotLeads,
+      warmLeads,
+      coldLeads,
+      convertedLeads: 0, // extend when deals module is linked
+      avgScore,
+      topSources,
+      topDropOffStage: 'Initial Contact', // placeholder — extend with pipeline analytics
+      siteVisitRate,
+      avgResponseTimeHours: 4, // placeholder
+      period: 'Last 30 days',
+    });
+
+    if (!insights) {
+      throw new InternalServerErrorException('AI insights generation failed — check GROQ_API_KEY');
+    }
+    return { data: insights };
   }
 
   // ─── Export Leads to Excel ───────────────────────────────────────────────────

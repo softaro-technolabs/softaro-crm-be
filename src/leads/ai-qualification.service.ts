@@ -44,9 +44,38 @@ export interface LeadQualificationInput {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const PROMPT_VERSION = 'v1.1';
-const MODEL = 'llama-3.3-70b-versatile';
+const PROMPT_VERSION = 'v1.2';
 const API_URL = 'https://api.groq.com/openai/v1/chat/completions';
+
+/**
+ * Model routing — each task uses the Groq model best suited for it:
+ *
+ *  QUALIFICATION  llama-3.3-70b-versatile
+ *    Complex reasoning + structured JSON output; supports response_format:json_object.
+ *    Best accuracy for scoring, property matching, agent-script generation.
+ *
+ *  CHAT_REALTIME  llama-3.1-8b-instant
+ *    Sub-second WhatsApp responses. 8B is fast enough for fact-based replies
+ *    from a structured DB context; no need for 70B at real-time latency.
+ *
+ *  EMAIL_DRAFT    llama-3.3-70b-versatile
+ *    Nuanced, persuasive long-form writing needs the full 70B language quality.
+ *
+ *  AI_WHATSAPP    llama-3.1-8b-instant
+ *    High-volume automation personalization; speed + cost trump quality here.
+ *    Short message generation, 200-token max.
+ *
+ *  ANALYTICS      mixtral-8x7b-32768
+ *    32k context window handles large batches of lead/deal stats efficiently.
+ *    MoE architecture excels at summarisation and pattern extraction.
+ */
+const MODELS = {
+  QUALIFICATION: 'llama-3.3-70b-versatile',
+  CHAT_REALTIME: 'llama-3.1-8b-instant',
+  EMAIL_DRAFT:   'llama-3.3-70b-versatile',
+  AI_WHATSAPP:   'llama-3.1-8b-instant',
+  ANALYTICS:     'mixtral-8x7b-32768',
+} as const;
 
 const LABEL_THRESHOLDS = {
   hot: 70,
@@ -98,7 +127,7 @@ export class AiQualificationService {
       matchedPropertyName: aiResult.matchedPropertyName,
       ruleScore,
       finalScore,
-      modelUsed: MODEL,
+      modelUsed: MODELS.QUALIFICATION,
       promptVersion: PROMPT_VERSION,
       qualifiedAt: new Date().toISOString(),
     };
@@ -161,13 +190,13 @@ Response:`.trim();
       const response = await axios.post(
         API_URL,
         {
-          model: MODEL,
+          model: MODELS.CHAT_REALTIME,
           messages: [
             { role: 'system', content: 'You are a professional real estate assistant. You are strictly data-driven and never hallucinate prices.' },
             { role: 'user', content: prompt },
           ],
           temperature: 0.1,
-          max_tokens: 256,
+          max_tokens: 512,
         },
         {
           headers: {
@@ -283,7 +312,7 @@ Response:`.trim();
     const response = await axios.post(
       API_URL,
       {
-        model: MODEL,
+        model: MODELS.QUALIFICATION,
         messages: [
           { role: 'system', content: 'You are a helpful assistant that outputs valid JSON only. No markdown, no explanation.' },
           { role: 'user', content: prompt },
@@ -335,7 +364,7 @@ Lead Details:
 - Loan Pre-approved: ${lead.loanPreApproved ?? 'N/A'}
 - Site Visits Done: ${lead.siteVisitCount ?? 0}
 - Lead Source: ${lead.leadSource || 'N/A'}
-- Notes: ${lead.notes || 'N/A'}
+- Notes: ${this.sanitizeInput(lead.notes) || 'N/A'}
 
 Available Properties to Match:
 ${lead.availableProperties?.map(p => `- [ID: ${p.id}] Name: ${p.name}, Type: ${p.type}, Category: ${p.category || 'N/A'}, Location: ${p.location || 'N/A'}`).join('\n') || 'No properties available.'}
@@ -414,6 +443,232 @@ Return ONLY this JSON (no markdown, no extra text):
     if (score >= LABEL_THRESHOLDS.hot) return 'hot';
     if (score >= LABEL_THRESHOLDS.warm) return 'warm';
     return 'cold';
+  }
+
+  // ── AI Email Drafting ─────────────────────────────────────────────────────
+  // Model: llama-3.3-70b-versatile — needs full 70B quality for persuasive writing
+
+  async draftLeadEmail(lead: {
+    name: string;
+    email?: string | null;
+    phone?: string | null;
+    budget?: number | null;
+    requirementType?: string | null;
+    propertyType?: string | null;
+    bhkType?: string | null;
+    leadSource?: string | null;
+    notes?: string | null;
+    aiQualification?: {
+      label?: string;
+      score?: number;
+      suggestedNextAction?: string;
+      matchedPropertyName?: string;
+    } | null;
+  }): Promise<{ subject: string; body: string; tone: string } | null> {
+    if (!this.apiKey) return null;
+
+    const prompt = `
+You are an expert real estate sales executive writing a personalized follow-up email in Indian English.
+
+Lead Profile:
+- Name: ${this.sanitizeInput(lead.name)}
+- Budget: ${lead.budget ? `₹${Number(lead.budget).toLocaleString('en-IN')}` : 'Not specified'}
+- Looking for: ${lead.requirementType || 'Property'} — ${lead.propertyType || ''} ${lead.bhkType || ''}
+- Source: ${lead.leadSource || 'Unknown'}
+- AI Score: ${lead.aiQualification?.label || 'unknown'} (${lead.aiQualification?.score ?? '—'}/100)
+- Matched Property: ${lead.aiQualification?.matchedPropertyName || 'None yet'}
+- AI Suggested Action: ${lead.aiQualification?.suggestedNextAction || 'Follow up'}
+- Notes: ${this.sanitizeInput(lead.notes) || 'None'}
+
+Write a warm, professional follow-up email. Guidelines:
+- Address them by first name
+- Reference their specific requirement if known
+- Mention the matched property if available
+- Include a clear call-to-action (schedule a site visit or call)
+- Keep it concise (150-200 words max)
+- Tone: professional but friendly, Indian real estate context
+- NO generic filler phrases like "I hope this email finds you well"
+
+Return ONLY this JSON:
+{
+  "subject": "<compelling email subject line>",
+  "body": "<full email body with \\n for line breaks>",
+  "tone": "<warm|professional|urgent>"
+}
+`.trim();
+
+    try {
+      const response = await axios.post(
+        API_URL,
+        {
+          model: MODELS.EMAIL_DRAFT,
+          messages: [
+            { role: 'system', content: 'You are a real estate sales expert. Output only valid JSON.' },
+            { role: 'user', content: prompt },
+          ],
+          response_format: { type: 'json_object' },
+          temperature: 0.4,
+          max_tokens: 600,
+        },
+        {
+          headers: { Authorization: `Bearer ${this.apiKey}`, 'Content-Type': 'application/json' },
+          timeout: 15000,
+        },
+      );
+
+      const raw = response.data?.choices?.[0]?.message?.content;
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      return {
+        subject: typeof parsed.subject === 'string' ? parsed.subject : 'Following up on your property inquiry',
+        body: typeof parsed.body === 'string' ? parsed.body : '',
+        tone: typeof parsed.tone === 'string' ? parsed.tone : 'professional',
+      };
+    } catch (err) {
+      this.logger.error('[AI Email Draft] Failed', err);
+      return null;
+    }
+  }
+
+  // ── AI Personalized WhatsApp (for Automation) ─────────────────────────────
+  // Model: llama-3.1-8b-instant — high-volume, speed matters, short output
+
+  async generatePersonalizedWhatsApp(lead: {
+    name: string;
+    phone?: string | null;
+    budget?: number | null;
+    requirementType?: string | null;
+    propertyType?: string | null;
+    bhkType?: string | null;
+    aiQualification?: { label?: string; matchedPropertyName?: string; suggestedNextAction?: string } | null;
+  }, contextPrompt?: string): Promise<string | null> {
+    if (!this.apiKey) return null;
+
+    const prompt = `
+You are a real estate sales agent in India. Write a short, friendly WhatsApp message to a lead.
+
+Lead:
+- Name: ${this.sanitizeInput(lead.name)}
+- Looking for: ${lead.requirementType || 'property'} ${lead.bhkType || ''} ${lead.propertyType || ''}
+- Budget: ${lead.budget ? `₹${Number(lead.budget).toLocaleString('en-IN')}` : 'not specified'}
+- AI Label: ${lead.aiQualification?.label || 'unknown'}
+- Matched Property: ${lead.aiQualification?.matchedPropertyName || 'not matched yet'}
+${contextPrompt ? `- Agent context: ${this.sanitizeInput(contextPrompt)}` : ''}
+
+Write ONE short WhatsApp message (max 3 sentences).
+- Address them by first name
+- Be conversational, not salesy
+- Include one specific detail about their requirement
+- End with a question or soft CTA
+- Output plain text only, no JSON, no quotes
+`.trim();
+
+    try {
+      const response = await axios.post(
+        API_URL,
+        {
+          model: MODELS.AI_WHATSAPP,
+          messages: [{ role: 'user', content: prompt }],
+          temperature: 0.5,
+          max_tokens: 200,
+        },
+        {
+          headers: { Authorization: `Bearer ${this.apiKey}`, 'Content-Type': 'application/json' },
+          timeout: 8000,
+        },
+      );
+      const text = response.data?.choices?.[0]?.message?.content?.trim();
+      return text || null;
+    } catch (err) {
+      this.logger.error('[AI WhatsApp] Failed', err);
+      return null;
+    }
+  }
+
+  // ── AI Analytics Insights ─────────────────────────────────────────────────
+  // Model: mixtral-8x7b-32768 — 32k context handles large stats batches;
+  // MoE architecture is efficient for summarisation and pattern extraction
+
+  async generateAnalyticsInsights(stats: {
+    totalLeads: number;
+    hotLeads: number;
+    warmLeads: number;
+    coldLeads: number;
+    convertedLeads: number;
+    avgScore: number;
+    topSources: { source: string; count: number }[];
+    topDropOffStage: string;
+    siteVisitRate: number;
+    avgResponseTimeHours: number;
+    period: string;
+  }): Promise<{ summary: string; insights: string[]; recommendations: string[] } | null> {
+    if (!this.apiKey) return null;
+
+    const prompt = `
+You are a senior real estate CRM analyst. Analyze these lead pipeline stats and produce actionable insights.
+
+Period: ${stats.period}
+Lead Stats:
+- Total Leads: ${stats.totalLeads}
+- Hot / Warm / Cold: ${stats.hotLeads} / ${stats.warmLeads} / ${stats.coldLeads}
+- Converted: ${stats.convertedLeads} (${stats.totalLeads > 0 ? ((stats.convertedLeads / stats.totalLeads) * 100).toFixed(1) : 0}% conversion)
+- Avg AI Score: ${stats.avgScore}
+- Top Lead Sources: ${stats.topSources.map(s => `${s.source} (${s.count})`).join(', ')}
+- Top Drop-off Stage: ${stats.topDropOffStage}
+- Site Visit Rate: ${stats.siteVisitRate}%
+- Avg Agent Response Time: ${stats.avgResponseTimeHours}h
+
+Return ONLY this JSON:
+{
+  "summary": "<2-3 sentence executive summary>",
+  "insights": ["<key insight 1>", "<key insight 2>", "<key insight 3>", "<key insight 4>"],
+  "recommendations": ["<actionable recommendation 1>", "<actionable recommendation 2>", "<actionable recommendation 3>"]
+}
+`.trim();
+
+    try {
+      const response = await axios.post(
+        API_URL,
+        {
+          model: MODELS.ANALYTICS,
+          messages: [
+            { role: 'system', content: 'You are a CRM data analyst. Output only valid JSON.' },
+            { role: 'user', content: prompt },
+          ],
+          response_format: { type: 'json_object' },
+          temperature: 0.2,
+          max_tokens: 700,
+        },
+        {
+          headers: { Authorization: `Bearer ${this.apiKey}`, 'Content-Type': 'application/json' },
+          timeout: 20000,
+        },
+      );
+      const raw = response.data?.choices?.[0]?.message?.content;
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      return {
+        summary: typeof parsed.summary === 'string' ? parsed.summary : '',
+        insights: Array.isArray(parsed.insights) ? parsed.insights.filter((i: unknown) => typeof i === 'string') : [],
+        recommendations: Array.isArray(parsed.recommendations) ? parsed.recommendations.filter((r: unknown) => typeof r === 'string') : [],
+      };
+    } catch (err) {
+      this.logger.error('[AI Analytics] Failed', err);
+      return null;
+    }
+  }
+
+  /** Strip prompt-injection attempts from free-text fields before interpolation */
+  private sanitizeInput(text?: string | null): string {
+    if (!text) return '';
+    return text
+      .replace(/```[\s\S]*?```/g, '[code block removed]')
+      .replace(/system:/gi, '[system]')
+      .replace(/IGNORE (PREVIOUS|ALL|ABOVE)/gi, '[filtered]')
+      .replace(/you are (now|a|an)/gi, '[filtered]')
+      .replace(/return ONLY|respond ONLY|output ONLY/gi, '[filtered]')
+      .trim()
+      .slice(0, 500); // Hard-cap notes at 500 chars
   }
 
   private sleep(ms: number) {

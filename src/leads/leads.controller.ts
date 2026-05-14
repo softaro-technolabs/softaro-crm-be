@@ -98,10 +98,24 @@ export class LeadsController {
   }
 
   @Post(':leadId/ai-qualify')
-  @ApiOperation({ summary: 'Trigger AI qualification for a lead using Groq' })
+  @ApiOperation({ summary: 'Trigger AI qualification for a lead using Groq llama-3.3-70b-versatile' })
   async aiQualify(@Param('tenantId') tenantId: string, @Param('leadId') leadId: string) {
     this.requestContext.verifyTenantAccess(tenantId);
     return this.leadsService.qualifyLeadWithAi(tenantId, leadId);
+  }
+
+  @Post(':leadId/ai-draft-email')
+  @ApiOperation({ summary: 'AI-draft a personalised follow-up email for a lead (llama-3.3-70b-versatile)' })
+  async aiDraftEmail(@Param('tenantId') tenantId: string, @Param('leadId') leadId: string) {
+    this.requestContext.verifyTenantAccess(tenantId);
+    return this.leadsService.draftEmailForLead(tenantId, leadId);
+  }
+
+  @Get('ai-insights')
+  @ApiOperation({ summary: 'AI analytics insights for the tenant pipeline (mixtral-8x7b-32768)' })
+  async aiInsights(@Param('tenantId') tenantId: string) {
+    this.requestContext.verifyTenantAccess(tenantId);
+    return this.leadsService.getAiInsights(tenantId);
   }
 
   @Get('pipeline/statuses')

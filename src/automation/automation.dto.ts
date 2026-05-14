@@ -19,7 +19,8 @@ export type AutomationActionType =
   | 'reassign_lead'
   | 'create_task'
   | 'update_lead_status'
-  | 'send_notification';
+  | 'send_notification'
+  | 'generate_ai_whatsapp';   // AI-personalized WhatsApp — llama-3.1-8b-instant
 
 export interface AutomationCondition {
   field: string;

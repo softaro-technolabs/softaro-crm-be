@@ -30,21 +30,28 @@ interface FireEventContext {
 export class AutomationService implements OnModuleInit {
   private readonly logger = new Logger(AutomationService.name);
   private whatsappService?: any;
+  private aiService?: any; // lazy-loaded to avoid circular dependency
 
   constructor(
     @Inject(DRIZZLE) private readonly db: DrizzleDatabase,
     private readonly mailService: MailService,
     private readonly notificationGateway: NotificationGateway,
-    private readonly moduleRef: ModuleRef
+    private readonly moduleRef: ModuleRef,
   ) {}
 
   async onModuleInit() {
-    // Lazy-load WhatsappService to avoid circular dependency
+    // Lazy-load to avoid circular dependency (LeadsModule ↔ AutomationModule)
     try {
       const { WhatsappService } = await import('../whatsapp/whatsapp.service');
       this.whatsappService = this.moduleRef.get(WhatsappService, { strict: false });
     } catch {
       this.logger.warn('[AutomationEngine] WhatsappService not available — send_whatsapp actions will be skipped');
+    }
+    try {
+      const { AiQualificationService } = await import('../leads/ai-qualification.service');
+      this.aiService = this.moduleRef.get(AiQualificationService, { strict: false });
+    } catch {
+      this.logger.warn('[AutomationEngine] AiQualificationService not available — generate_ai_whatsapp will use fallback');
     }
   }
 
@@ -416,6 +423,57 @@ export class AutomationService implements OnModuleInit {
           leadId: context.leadId
         };
         this.notificationGateway.sendNotificationToTenant(tenantId, notifEvent, payload);
+        break;
+      }
+
+      case 'generate_ai_whatsapp': {
+        // AI generates a personalised WhatsApp message using llama-3.1-8b-instant,
+        // then sends it via the same WhatsApp channel — no static template needed.
+        if (!this.whatsappService) throw new BadRequestException('WhatsApp service not available');
+        const phone = String(context.lead?.phone ?? config.phone ?? '');
+        if (!phone) throw new BadRequestException('No phone number for generate_ai_whatsapp action');
+
+        const aiMessage = this.aiService
+          ? await this.aiService.generatePersonalizedWhatsApp(
+              {
+                name: String(context.lead?.name ?? ''),
+                phone,
+                budget: context.lead?.budget ? Number(context.lead.budget) : null,
+                requirementType: context.lead?.requirementType as string | null,
+                propertyType: context.lead?.propertyType as string | null,
+                bhkType: context.lead?.bhkType as string | null,
+                aiQualification: context.lead?.aiQualification as any,
+              },
+              config.contextPrompt ? String(config.contextPrompt) : undefined,
+            )
+          : null;
+
+        const messageText = aiMessage ?? this.replaceVariables(
+          String(config.fallbackMessage ?? 'Hi {{lead.name}}, following up on your property inquiry.'),
+          context,
+        );
+
+        await this.whatsappService.sendMessage(
+          tenantId,
+          context.leadId ?? null,
+          phone,
+          {
+            messaging_product: 'whatsapp',
+            recipient_type: 'individual',
+            to: phone,
+            type: 'text',
+            text: { body: messageText },
+          },
+          false,
+          false,
+        );
+
+        if (context.leadId) {
+          await this.db.update(leads)
+            .set({ lastContactedAt: new Date(), updatedAt: new Date() })
+            .where(and(eq(leads.tenantId, tenantId), eq(leads.id, context.leadId)));
+        }
+        this.logger.log(`[AutomationEngine] AI WhatsApp sent to ${phone} (leadId=${context.leadId})`);
         break;
       }
 
