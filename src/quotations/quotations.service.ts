@@ -130,7 +130,7 @@ export class QuotationsService {
         subTotal: dto.basePrice ? (Number(dto.basePrice) + Number(dto.plc || 0) + Number(dto.parking || 0) + Number(dto.clubMembership || 0)).toString() : subTotal,
         taxTotal: dto.gstAmount ? dto.gstAmount.toString() : calculatedTax,
         discountTotal: dto.discount ? dto.discount.toString() : calculatedDiscount,
-        grandTotal: dto.basePrice ? (Number(dto.basePrice) + Number(dto.plc || 0) + Number(dto.parking || 0) + Number(dto.clubMembership || 0) + Number(dto.gstAmount || 0) + Number(dto.stampDuty || 0) - Number(dto.discount || 0)).toString() : calculatedGrand,
+        grandTotal: dto.basePrice ? (Number(dto.basePrice) + Number(dto.plc || 0) + Number(dto.parking || 0) + Number(dto.clubMembership || 0) + Number(dto.gstAmount || 0) + Number(dto.stampDuty || 0) + Number(dto.registrationCharges || 0) - Number(dto.discount || 0)).toString() : calculatedGrand,
         notes,
         terms,
         projectName: dto.projectName,
@@ -148,6 +148,7 @@ export class QuotationsService {
         gstRate: dto.gstRate?.toString(),
         gstAmount: dto.gstAmount?.toString(),
         stampDuty: dto.stampDuty?.toString(),
+        registrationCharges: dto.registrationCharges?.toString(),
         discount: dto.discount?.toString(),
         otherCharges: dto.otherCharges,
         assignedToUserId: assignedToUserId || lead.assignedToUserId,
@@ -239,12 +240,13 @@ export class QuotationsService {
         const club = dto.clubMembership !== undefined ? Number(dto.clubMembership) : Number(existing.clubMembership || 0);
         const gstA = dto.gstAmount !== undefined ? Number(dto.gstAmount) : Number(existing.gstAmount || 0);
         const sd = dto.stampDuty !== undefined ? Number(dto.stampDuty) : Number(existing.stampDuty || 0);
+        const reg = dto.registrationCharges !== undefined ? Number(dto.registrationCharges) : Number(existing.registrationCharges || 0);
         const disc = dto.discount !== undefined ? Number(dto.discount) : Number(existing.discount || 0);
 
         finalSub = (bp + plc + pkg + club).toString();
         finalTax = gstA.toString();
         finalDiscount = disc.toString();
-        finalGrand = (bp + plc + pkg + club + gstA + sd - disc).toString();
+        finalGrand = (bp + plc + pkg + club + gstA + sd + reg - disc).toString();
       }
 
       await tx.update(quotations).set({

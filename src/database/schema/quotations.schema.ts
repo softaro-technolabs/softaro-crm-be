@@ -60,6 +60,7 @@ export const quotations = pgTable(
     gstRate: numeric('gst_rate', { precision: 5, scale: 2 }).default('5'),
     gstAmount: numeric('gst_amount', { precision: 15, scale: 2 }).default('0'),
     stampDuty: numeric('stamp_duty', { precision: 15, scale: 2 }).default('0'),
+    registrationCharges: numeric('registration_charges', { precision: 15, scale: 2 }).default('0'),
     discount: numeric('discount', { precision: 15, scale: 2 }).default('0'),
     otherCharges: jsonb('other_charges').default('[]'),
 

@@ -100,6 +100,7 @@ export class CreateQuotationDto {
   @ApiPropertyOptional() @IsNumber() @IsOptional() gstRate?: number;
   @ApiPropertyOptional() @IsNumber() @IsOptional() gstAmount?: number;
   @ApiPropertyOptional() @IsNumber() @IsOptional() stampDuty?: number;
+  @ApiPropertyOptional() @IsNumber() @IsOptional() registrationCharges?: number;
   @ApiPropertyOptional() @IsNumber() @IsOptional() discount?: number;
   @IsArray() @IsOptional() otherCharges?: any[];
 
