@@ -18,10 +18,10 @@ export class PdfGeneratorService {
     const pdf = await page.pdf({
       format: 'A4',
       margin: {
-        top: '20mm',
-        right: '20mm',
-        bottom: '20mm',
-        left: '20mm'
+        top: '12mm',
+        right: '12mm',
+        bottom: '12mm',
+        left: '12mm'
       },
       printBackground: true
     });
