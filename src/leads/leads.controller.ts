@@ -49,6 +49,53 @@ export class LeadsController {
     return this.leadsService.listLeads(tenantId, query);
   }
 
+  // ── Static routes MUST come before :leadId wildcard ──────────────────────
+
+  @Get('export')
+  @ApiOperation({ summary: 'Export all leads to Excel (.xlsx)' })
+  async exportLeads(
+    @Param('tenantId') tenantId: string,
+    @Query() query: LeadListQueryDto,
+    @Res() res: Response
+  ) {
+    this.requestContext.verifyTenantAccess(tenantId);
+    const buffer = await this.leadsService.exportLeadsToXlsx(tenantId, query);
+    const filename = `leads_${tenantId}_${Date.now()}.xlsx`;
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(buffer);
+  }
+
+  @Get('ai-insights')
+  @ApiOperation({ summary: 'AI analytics insights for the tenant pipeline (mixtral-8x7b-32768)' })
+  async aiInsights(@Param('tenantId') tenantId: string) {
+    this.requestContext.verifyTenantAccess(tenantId);
+    return this.leadsService.getAiInsights(tenantId);
+  }
+
+  @Get('pipeline/statuses')
+  @ApiOperation({ summary: 'Fetch pipeline/kanban statuses with counts' })
+  async pipeline(@Param('tenantId') tenantId: string) {
+    this.requestContext.verifyTenantAccess(tenantId);
+    return this.leadsService.getPipeline(tenantId);
+  }
+
+  @Post('pipeline/statuses')
+  @ApiOperation({ summary: 'Create a new pipeline status column' })
+  async createStatus(@Param('tenantId') tenantId: string, @Body() dto: CreateLeadStatusDto) {
+    this.requestContext.verifyTenantAccess(tenantId);
+    return this.leadsService.createPipelineStatus(tenantId, dto);
+  }
+
+  @Patch('pipeline/reorder')
+  @ApiOperation({ summary: 'Reorder pipeline columns (drag & drop order)' })
+  async reorderStatuses(@Param('tenantId') tenantId: string, @Body() dto: ReorderLeadStatusesDto) {
+    this.requestContext.verifyTenantAccess(tenantId);
+    return this.leadsService.reorderPipeline(tenantId, dto);
+  }
+
+  // ── Dynamic :leadId routes ────────────────────────────────────────────────
+
   @Get(':leadId')
   @ApiOperation({ summary: 'Get lead details' })
   async detail(@Param('tenantId') tenantId: string, @Param('leadId') leadId: string) {
@@ -109,49 +156,6 @@ export class LeadsController {
   async aiDraftEmail(@Param('tenantId') tenantId: string, @Param('leadId') leadId: string) {
     this.requestContext.verifyTenantAccess(tenantId);
     return this.leadsService.draftEmailForLead(tenantId, leadId);
-  }
-
-  @Get('ai-insights')
-  @ApiOperation({ summary: 'AI analytics insights for the tenant pipeline (mixtral-8x7b-32768)' })
-  async aiInsights(@Param('tenantId') tenantId: string) {
-    this.requestContext.verifyTenantAccess(tenantId);
-    return this.leadsService.getAiInsights(tenantId);
-  }
-
-  @Get('pipeline/statuses')
-  @ApiOperation({ summary: 'Fetch pipeline/kanban statuses with counts' })
-  async pipeline(@Param('tenantId') tenantId: string) {
-    this.requestContext.verifyTenantAccess(tenantId);
-    return this.leadsService.getPipeline(tenantId);
-  }
-
-  @Post('pipeline/statuses')
-  @ApiOperation({ summary: 'Create a new pipeline status column' })
-  async createStatus(@Param('tenantId') tenantId: string, @Body() dto: CreateLeadStatusDto) {
-    this.requestContext.verifyTenantAccess(tenantId);
-    return this.leadsService.createPipelineStatus(tenantId, dto);
-  }
-
-  @Patch('pipeline/reorder')
-  @ApiOperation({ summary: 'Reorder pipeline columns (drag & drop order)' })
-  async reorderStatuses(@Param('tenantId') tenantId: string, @Body() dto: ReorderLeadStatusesDto) {
-    this.requestContext.verifyTenantAccess(tenantId);
-    return this.leadsService.reorderPipeline(tenantId, dto);
-  }
-
-  @Get('export')
-  @ApiOperation({ summary: 'Export all leads to Excel (.xlsx)' })
-  async exportLeads(
-    @Param('tenantId') tenantId: string,
-    @Query() query: LeadListQueryDto,
-    @Res() res: Response
-  ) {
-    this.requestContext.verifyTenantAccess(tenantId);
-    const buffer = await this.leadsService.exportLeadsToXlsx(tenantId, query);
-    const filename = `leads_${tenantId}_${Date.now()}.xlsx`;
-    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-    res.send(buffer);
   }
 
   @Post('import')
