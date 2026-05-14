@@ -8,6 +8,8 @@ export interface RequestContext {
   roleId: string | null;
   permissions: string[];
   roleGlobal: 'super_admin' | 'normal' | null;
+  ipAddress: string | null;
+  userAgent: string | null;
 }
 
 @Injectable()
@@ -35,6 +37,14 @@ export class RequestContextService {
 
   getUserId() {
     return this.get('userId');
+  }
+
+  getIpAddress() {
+    return this.get('ipAddress');
+  }
+
+  getUserAgent() {
+    return this.get('userAgent');
   }
 
   getPermissions() {

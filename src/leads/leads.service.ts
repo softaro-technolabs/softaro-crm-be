@@ -432,13 +432,22 @@ export class LeadsService {
     }
 
     updateData.updatedAt = new Date();
+
+    // Build proper before/after diff — only the fields that actually changed
+    const changedKeys = Object.keys(updateData).filter(k => k !== 'updatedAt');
+    const before: Record<string, unknown> = {};
+    const after: Record<string, unknown> = {};
+    for (const key of changedKeys) {
+      before[key] = (existing.lead as Record<string, unknown>)[key] ?? null;
+      after[key]  = (updateData as Record<string, unknown>)[key] ?? null;
+    }
+
     await this.db.update(leads).set(updateData).where(eq(leads.id, leadId));
 
-    // Audit log
+    // Audit log — proper diff, not full payload dump
     this.auditLogsService.log(
       tenantId, AUDIT_ACTIONS.LEAD_UPDATED, 'lead', leadId,
-      { before: {}, after: updateData },
-      this.requestContext.getUserId(),
+      { before, after },
     ).catch(() => {});
 
     // Re-qualify with AI if key fields changed
@@ -1126,6 +1135,7 @@ export class LeadsService {
     this.auditLogsService.log(
       tenantId, AUDIT_ACTIONS.LEAD_AI_QUALIFIED, 'lead', leadId,
       { score: aiResult.finalScore, label: aiResult.label, model: aiResult.modelUsed },
+      'system', // AI-triggered, not a human action
     ).catch(() => {});
 
     // Auto-create a follow-up task from AI suggested action (hot or warm leads only)

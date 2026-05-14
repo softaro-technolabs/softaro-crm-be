@@ -6,6 +6,7 @@ import { DRIZZLE } from '../database/database.constants';
 import type { DrizzleDatabase } from '../database/database.types';
 import { auditLogs } from '../database/schema';
 import { PaginationUtil } from '../common/utils/pagination.util';
+import { RequestContextService } from '../common/utils/request-context.service';
 
 export interface AuditLogQuery {
   action?: string;
@@ -18,8 +19,17 @@ export interface AuditLogQuery {
 
 @Injectable()
 export class AuditLogsService {
-  constructor(@Inject(DRIZZLE) private readonly db: DrizzleDatabase) {}
+  constructor(
+    @Inject(DRIZZLE) private readonly db: DrizzleDatabase,
+    private readonly requestContext: RequestContextService,
+  ) {}
 
+  /**
+   * Write an audit log entry.
+   * ipAddress and userAgent are auto-resolved from RequestContextService (HTTP request scope).
+   * userId falls back to the current request user if not explicitly provided.
+   * Pass userId = 'system' for AI/automated actions so it's clear it wasn't a human.
+   */
   async log(
     tenantId: string,
     action: string,
@@ -28,14 +38,17 @@ export class AuditLogsService {
     changes?: Record<string, unknown> | null,
     userId?: string | null,
     meta?: Record<string, unknown> | null,
-    ipAddress?: string | null,
-    userAgent?: string | null
   ): Promise<void> {
     try {
+      // Auto-resolve from request context if not explicitly provided
+      const resolvedUserId = userId !== undefined ? userId : this.requestContext.getUserId();
+      const ipAddress = this.requestContext.getIpAddress();
+      const userAgent = this.requestContext.getUserAgent();
+
       await this.db.insert(auditLogs).values({
         id: randomUUID(),
         tenantId,
-        userId: userId ?? null,
+        userId: resolvedUserId ?? null,
         action,
         entityType,
         entityId: entityId ?? null,

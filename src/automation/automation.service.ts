@@ -535,6 +535,7 @@ export class AutomationService implements OnModuleInit {
         this.auditLogsService.log(
           tenantId, AUDIT_ACTIONS.AUTOMATION_RULE_TRIGGERED, 'automation_rule', ruleId,
           { triggerEvent, leadId, actionsCount: actionsExecuted.length },
+          'system', // fired by automation engine, not a human
         ).catch(() => {});
       }
     } catch (err) {
