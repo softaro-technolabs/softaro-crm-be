@@ -18,6 +18,9 @@ import {
 import { RegisterUserDto, UpdateUserTenantDto, UserListQueryDto } from './users.dto';
 import { PaginationUtil } from '../common/utils/pagination.util';
 import { MailService } from '../common/services/mail.service';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
+import { AUDIT_ACTIONS } from '../audit-logs/audit-actions.constants';
+import { RequestContextService } from '../common/utils/request-context.service';
 
 import bcrypt from 'bcrypt';
 
@@ -34,7 +37,9 @@ export class UsersService {
   constructor(
     @Inject(DRIZZLE) private readonly db: DrizzleDatabase,
     private readonly configService: ConfigService,
-    private readonly mailService: MailService
+    private readonly mailService: MailService,
+    private readonly auditLogsService: AuditLogsService,
+    private readonly requestContext: RequestContextService,
   ) {}
 
   async createUser(input: CreateUserInput) {
@@ -127,7 +132,15 @@ export class UsersService {
       console.error(`Failed to send invitation email to ${dto.email}:`, mailError);
     }
 
-    return this.findUserWithTenant(user.id, tenantId);
+    const result = await this.findUserWithTenant(user.id, tenantId);
+
+    this.auditLogsService.log(
+      tenantId, AUDIT_ACTIONS.USER_CREATED, 'user', user.id,
+      { email: dto.email, name: dto.name, roleId: dto.roleId },
+      this.requestContext.getUserId(),
+    ).catch(() => {});
+
+    return result;
   }
 
   async updateUserTenantMembership(
@@ -195,6 +208,13 @@ export class UsersService {
         .set(membershipUpdateData)
         .where(and(eq(userTenants.userId, userId), eq(userTenants.tenantId, tenantId)));
     }
+
+    const action = dto.roleId !== undefined ? AUDIT_ACTIONS.USER_ROLE_CHANGED : AUDIT_ACTIONS.USER_UPDATED;
+    this.auditLogsService.log(
+      tenantId, action, 'user', userId,
+      { ...userUpdateData, ...membershipUpdateData },
+      this.requestContext.getUserId(),
+    ).catch(() => {});
 
     return this.findUserWithTenant(userId, tenantId);
   }
@@ -432,6 +452,12 @@ export class UsersService {
 
     // Finally, delete the user
     await this.db.delete(users).where(eq(users.id, userId));
+
+    this.auditLogsService.log(
+      'unknown', AUDIT_ACTIONS.USER_DELETED, 'user', userId,
+      { email: user.email, name: user.name },
+      this.requestContext.getUserId(),
+    ).catch(() => {});
   }
 }
 

@@ -47,6 +47,9 @@ import { PhoneUtil } from '../common/utils/phone.util';
 import { PaginationUtil } from '../common/utils/pagination.util';
 import { AiQualificationService, LeadQualificationInput } from './ai-qualification.service';
 import { AutomationService } from '../automation/automation.service';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
+import { AUDIT_ACTIONS } from '../audit-logs/audit-actions.constants';
+import { RequestContextService } from '../common/utils/request-context.service';
 
 type CreateLeadOptions = {
   createdByUserId?: string | null;
@@ -75,7 +78,9 @@ export class LeadsService {
     private readonly mailService: MailService,
     private readonly configService: ConfigService,
     private readonly aiQualificationService: AiQualificationService,
-    private readonly automationService: AutomationService
+    private readonly automationService: AutomationService,
+    private readonly auditLogsService: AuditLogsService,
+    private readonly requestContext: RequestContextService,
   ) { }
 
   async listLeads(tenantId: string, query: LeadListQueryDto) {
@@ -265,6 +270,13 @@ export class LeadsService {
       updatedAt: now
     });
 
+    // Audit log — fire-and-forget
+    this.auditLogsService.log(
+      tenantId, AUDIT_ACTIONS.LEAD_CREATED, 'lead', id,
+      { name: dto.name, phone: dto.phone, email: dto.email, leadSource: dto.leadSource },
+      this.requestContext.getUserId(),
+    ).catch(() => {});
+
     // Fire-and-forget AI qualification in the background
     this.qualifyLeadWithAi(tenantId, id).catch((err) => {
       this.logger.error('[AI Qualification Background Failed]', err);
@@ -422,6 +434,13 @@ export class LeadsService {
     updateData.updatedAt = new Date();
     await this.db.update(leads).set(updateData).where(eq(leads.id, leadId));
 
+    // Audit log
+    this.auditLogsService.log(
+      tenantId, AUDIT_ACTIONS.LEAD_UPDATED, 'lead', leadId,
+      { before: {}, after: updateData },
+      this.requestContext.getUserId(),
+    ).catch(() => {});
+
     // Re-qualify with AI if key fields changed
     const qualificationFields = ['budget', 'requirementType', 'propertyType', 'propertyCategory', 'bhkType', 'locationPreference', 'notes'];
     const shouldRequalify = Object.keys(updateData).some(key => qualificationFields.includes(key));
@@ -474,6 +493,13 @@ export class LeadsService {
       await tx.update(leads).set(updateData).where(and(eq(leads.id, leadId), eq(leads.tenantId, tenantId)));
 
       if (existing.statusId !== statusId) {
+        // Audit log
+        this.auditLogsService.log(
+          tenantId, AUDIT_ACTIONS.LEAD_STATUS_CHANGED, 'lead', leadId,
+          { fromStatusId: existing.statusId, toStatusId: statusId },
+          this.requestContext.getUserId(),
+        ).catch(() => {});
+
         await tx.insert(leadActivities).values({
           id: randomUUID(),
           tenantId,
@@ -521,6 +547,12 @@ export class LeadsService {
       null,
       dto.reason ?? 'manual_transfer'
     );
+
+    this.auditLogsService.log(
+      tenantId, AUDIT_ACTIONS.LEAD_TRANSFERRED, 'lead', leadId,
+      { fromUserId: existing.lead.assignedToUserId, toUserId: newAssignee, reason: dto.reason },
+      this.requestContext.getUserId(),
+    ).catch(() => {});
 
     return this.getLead(tenantId, leadId);
   }
@@ -1090,6 +1122,11 @@ export class LeadsService {
       aiQualification: aiResult,
       updatedAt: new Date()
     }).where(and(eq(leads.id, leadId), eq(leads.tenantId, tenantId)));
+
+    this.auditLogsService.log(
+      tenantId, AUDIT_ACTIONS.LEAD_AI_QUALIFIED, 'lead', leadId,
+      { score: aiResult.finalScore, label: aiResult.label, model: aiResult.modelUsed },
+    ).catch(() => {});
 
     // Auto-create a follow-up task from AI suggested action (hot or warm leads only)
     if (aiResult.suggestedNextAction && (aiResult.label === 'hot' || aiResult.label === 'warm')) {

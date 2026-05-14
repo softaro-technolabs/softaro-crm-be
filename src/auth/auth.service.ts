@@ -16,6 +16,8 @@ import { UsersService } from '../users/users.service';
 import { MailService } from '../common/services/mail.service';
 import { getForgotPasswordTemplate } from '../common/mail-templates/forgot-password.template';
 import { ConfigService } from '@nestjs/config';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
+import { AUDIT_ACTIONS } from '../audit-logs/audit-actions.constants';
 
 import bcrypt from 'bcrypt';
 
@@ -30,16 +32,27 @@ export class AuthService {
     private readonly tokenService: AuthTokenService,
     private readonly mailService: MailService,
     private readonly configService: ConfigService,
+    private readonly auditLogsService: AuditLogsService,
   ) { }
 
   async login(dto: LoginDto) {
     const user = await this.usersService.findByEmail(dto.email);
     if (!user) {
+      // Audit failed login attempt (no tenant context available yet)
+      this.auditLogsService.log(
+        'unknown', AUDIT_ACTIONS.AUTH_LOGIN_FAILED, 'auth', undefined,
+        { email: dto.email, reason: 'user_not_found' },
+      ).catch(() => {});
       throw new UnauthorizedException('Invalid credentials');
     }
 
     const passwordValid = await bcrypt.compare(dto.password, user.passwordHash);
     if (!passwordValid) {
+      this.auditLogsService.log(
+        'unknown', AUDIT_ACTIONS.AUTH_LOGIN_FAILED, 'auth', undefined,
+        { email: dto.email, reason: 'invalid_password' },
+        user.id,
+      ).catch(() => {});
       throw new UnauthorizedException('Invalid credentials');
     }
 
@@ -76,6 +89,13 @@ export class AuthService {
     this.usersService.updateLastLogin(user.id).catch(err => {
       console.error('Failed to update last login:', err);
     });
+
+    // Audit successful login
+    this.auditLogsService.log(
+      context.tenant?.id ?? 'unknown', AUDIT_ACTIONS.AUTH_LOGIN, 'auth', undefined,
+      { email: user.email, tenantSlug: dto.tenantSlug },
+      user.id,
+    ).catch(() => {});
 
     return {
       token: accessToken,
@@ -179,6 +199,12 @@ export class AuthService {
 
     await this.usersService.setPasswordResetToken(user.id, token, expiry);
 
+    this.auditLogsService.log(
+      'unknown', AUDIT_ACTIONS.AUTH_FORGOT_PASSWORD, 'auth', undefined,
+      { email: dto.email },
+      user.id,
+    ).catch(() => {});
+
     const frontendUrl = this.configService.get<string>(
       'FRONTEND_URL',
       'https://estateos.softarotechnolabs.com'
@@ -211,6 +237,12 @@ export class AuthService {
     const newHash = await bcrypt.hash(dto.newPassword, saltRounds);
 
     await this.usersService.updatePassword(user.id, newHash);
+
+    this.auditLogsService.log(
+      'unknown', AUDIT_ACTIONS.AUTH_PASSWORD_RESET, 'auth', undefined,
+      { email: user.email },
+      user.id,
+    ).catch(() => {});
 
     return { message: 'Password reset successfully. You can now log in with your new password.' };
   }

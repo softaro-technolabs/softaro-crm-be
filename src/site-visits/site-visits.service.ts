@@ -8,13 +8,18 @@ import { siteVisits, leadActivities, leads, leadStatuses } from '../database/sch
 import { CreateSiteVisitDto, UpdateSiteVisitDto } from './site-visits.dto';
 import { NotificationGateway } from '../notifications/notification.gateway';
 import { AutomationService } from '../automation/automation.service';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
+import { AUDIT_ACTIONS } from '../audit-logs/audit-actions.constants';
+import { RequestContextService } from '../common/utils/request-context.service';
 
 @Injectable()
 export class SiteVisitsService {
   constructor(
     @Inject(DRIZZLE) private readonly db: DrizzleDatabase,
     private readonly notificationGateway: NotificationGateway,
-    private readonly automationService: AutomationService
+    private readonly automationService: AutomationService,
+    private readonly auditLogsService: AuditLogsService,
+    private readonly requestContext: RequestContextService,
   ) {}
 
   private async resolveStatusIdBySlug(tenantId: string, slug: string): Promise<string | null> {
@@ -105,6 +110,12 @@ export class SiteVisitsService {
     // Fire automation event (fire-and-forget)
     this.automationService.fireEvent(tenantId, 'site_visit_scheduled', { leadId: dto.leadId }).catch(() => {});
 
+    this.auditLogsService.log(
+      tenantId, AUDIT_ACTIONS.SITE_VISIT_CREATED, 'site_visit', id,
+      { leadId: dto.leadId, propertyId: dto.propertyId, visitDate: dto.visitDate },
+      this.requestContext.getUserId(),
+    ).catch(() => {});
+
     return this.findOne(tenantId, id);
   }
 
@@ -192,6 +203,16 @@ export class SiteVisitsService {
         this.automationService.fireEvent(tenantId, 'site_visit_no_show', { leadId: existing.leadId }).catch(() => {});
       }
     }
+
+    const action = dto.status === 'completed'
+      ? AUDIT_ACTIONS.SITE_VISIT_COMPLETED
+      : AUDIT_ACTIONS.SITE_VISIT_UPDATED;
+
+    this.auditLogsService.log(
+      tenantId, action, 'site_visit', visitId,
+      { leadId: existing.leadId, status: dto.status, visitDate: dto.visitDate },
+      this.requestContext.getUserId(),
+    ).catch(() => {});
 
     return this.findOne(tenantId, visitId);
   }

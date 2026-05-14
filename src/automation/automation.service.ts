@@ -10,6 +10,9 @@ import { automationRules, automationLogs, leads, leadTasks } from '../database/s
 import { MailService } from '../common/services/mail.service';
 import { NotificationGateway } from '../notifications/notification.gateway';
 import { PaginationUtil } from '../common/utils/pagination.util';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
+import { AUDIT_ACTIONS } from '../audit-logs/audit-actions.constants';
+import { RequestContextService } from '../common/utils/request-context.service';
 import type {
   AutomationTriggerEvent,
   AutomationCondition,
@@ -37,6 +40,8 @@ export class AutomationService implements OnModuleInit {
     private readonly mailService: MailService,
     private readonly notificationGateway: NotificationGateway,
     private readonly moduleRef: ModuleRef,
+    private readonly auditLogsService: AuditLogsService,
+    private readonly requestContext: RequestContextService,
   ) {}
 
   async onModuleInit() {
@@ -76,7 +81,15 @@ export class AutomationService implements OnModuleInit {
       updatedAt: now
     });
 
-    return this.getRule(tenantId, id);
+    const rule = await this.getRule(tenantId, id);
+
+    this.auditLogsService.log(
+      tenantId, AUDIT_ACTIONS.AUTOMATION_RULE_CREATED, 'automation_rule', id,
+      { name: dto.name, triggerEvent: dto.triggerEvent },
+      this.requestContext.getUserId(),
+    ).catch(() => {});
+
+    return rule;
   }
 
   async updateRule(tenantId: string, ruleId: string, dto: UpdateAutomationRuleDto) {
@@ -96,14 +109,27 @@ export class AutomationService implements OnModuleInit {
       .set(updateData)
       .where(and(eq(automationRules.tenantId, tenantId), eq(automationRules.id, ruleId)));
 
+    this.auditLogsService.log(
+      tenantId, AUDIT_ACTIONS.AUTOMATION_RULE_UPDATED, 'automation_rule', ruleId,
+      { changes: updateData },
+      this.requestContext.getUserId(),
+    ).catch(() => {});
+
     return this.getRule(tenantId, ruleId);
   }
 
   async deleteRule(tenantId: string, ruleId: string) {
-    await this.getRule(tenantId, ruleId);
+    const rule = await this.getRule(tenantId, ruleId);
     await this.db
       .delete(automationRules)
       .where(and(eq(automationRules.tenantId, tenantId), eq(automationRules.id, ruleId)));
+
+    this.auditLogsService.log(
+      tenantId, AUDIT_ACTIONS.AUTOMATION_RULE_DELETED, 'automation_rule', ruleId,
+      { name: rule.name },
+      this.requestContext.getUserId(),
+    ).catch(() => {});
+
     return { success: true };
   }
 
@@ -503,6 +529,14 @@ export class AutomationService implements OnModuleInit {
         actionsExecuted: actionsExecuted as any,
         executedAt: new Date()
       });
+
+      // Audit log only successful triggers (not skipped/failed to avoid noise)
+      if (status === 'success') {
+        this.auditLogsService.log(
+          tenantId, AUDIT_ACTIONS.AUTOMATION_RULE_TRIGGERED, 'automation_rule', ruleId,
+          { triggerEvent, leadId, actionsCount: actionsExecuted.length },
+        ).catch(() => {});
+      }
     } catch (err) {
       this.logger.error('[AutomationEngine] Failed to write execution log', err);
     }
