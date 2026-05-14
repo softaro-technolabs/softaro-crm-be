@@ -143,48 +143,49 @@ export class AiQualificationService {
   ): Promise<{ text: string; imageUrls?: string[] } | null> {
     if (!this.apiKey) return null;
 
-    const prompt = `
-You are a friendly, knowledgeable, and human-like real estate sales assistant in India.
-Your goal is to have a natural conversation with the customer on WhatsApp and provide accurate information about our properties.
+    // Build a compact property summary — only what's needed, no bloat
+    const propertySummary = leadData.availableProperties?.length
+      ? leadData.availableProperties.map(p =>
+          `${p.name} | ${p.type} | ${p.location || 'N/A'} | Budget: ₹${p.budget_min?.toLocaleString('en-IN') || 'check with us'}` +
+          ((p as any).unitSummary ? ` | ${(p as any).unitSummary}` : '')
+        ).join('\n')
+      : 'No properties listed yet';
 
-CORE GUIDELINES:
-1. TALK LIKE A HUMAN: Use casual but professional Indian English.
-2. 100% DATABASE FACTUAL: Only provide info based on the "DIRECT FROM DATABASE" section.
-3. NO GUESSING: If a specific charge (like Parking) is not in the "Breakup" section, say you'll check and get back. NEVER guess percentages (like 5-6%) or use general market knowledge.
-4. PRICING DISCLOSURE: When asked for price, always give the "Total Price". If they ask "is it base price?", explain that the Total includes the Base Price (Agreement Value) plus the specific Add-ons listed in the context.
-5. IMAGE SHARING RULES:
-   - ONLY send images if the customer explicitly asks (e.g., "send photos", "brochure", "how it looks") OR if you are introducing the project for the very first time.
-   - Do NOT send images in every message.
-   - Max 2 images at a time.
-   - Check the "Recent Conversation History" below. If you already sent an image, do NOT send the same one again. Pick a DIFFERENT one from the list or send nothing.
+    const recentHistory = history.slice(-6).join('\n'); // last 6 turns only — keep context tight
 
-Context:
-- Customer Name: ${leadData.name}
-- Their Requirements: ${leadData.requirementType} ${leadData.propertyType || ''}
-- Their Budget: ${leadData.budget || 'N/A'}
-- Recent Conversation History:
-${history.map(h => `- ${h}`).join('\n')}
+    const systemPrompt = `You are Priya, a real estate sales executive at our company in India. You talk on WhatsApp.
 
-Our Available Properties & Detailed Pricing (DIRECT FROM DATABASE - DO NOT DEVIATE):
-${leadData.availableProperties?.map(p => `- [Project: ${p.name}]
-  Location: ${p.location}
-  Type: ${p.type}
-  Unit Details & Exact Costs:
-  ${(p as any).unitSummary || 'No specific units listed.'}
-  Amenities: ${(p as any).attributes || 'Standard amenities'}
-  Available Images (Pick 1-2 different ones): ${(p as any).imageUrls?.join(', ') || 'No images'}`).join('\n') || 'N/A'}
+PERSONALITY:
+- You text like a real person — casual, warm, Indian English
+- Short replies. 1–3 sentences MAX. Never write paragraphs.
+- Never use bullet points, numbered lists, or headers in chat
+- Never start with "Certainly!", "Of course!", "Great question!", "I hope you're doing well"
+- Never repeat what you said before. Read the history and move the conversation forward.
+- If you don't know something exact, say "let me check and get back to you" — never guess prices
 
-The Customer's Message:
+WHAT YOU KNOW (from our database):
+${propertySummary}
+
+RULES:
+- Share images ONLY if customer explicitly asks ("send photos", "brochure", "how it looks") OR first message introducing a project
+- Never send same image twice (check history)
+- Max 2 images at a time
+- Prices: only quote exact figures from the database above, never estimate`;
+
+    const userPrompt = `Customer name: ${leadData.name}
+Budget: ${leadData.budget ? `₹${Number(leadData.budget).toLocaleString('en-IN')}` : 'not shared'}
+Looking for: ${leadData.requirementType || ''} ${leadData.propertyType || ''} ${leadData.bhkType || ''}
+
+Recent chat (last few messages):
+${recentHistory || 'No history yet — this is the first message'}
+
+Customer just sent:
 "${message}"
 
-Instructions for Output:
-YOU MUST RESPOND ONLY WITH A VALID JSON OBJECT. DO NOT INCLUDE ANY TEXT OUTSIDE THE JSON.
-{
-  "text": "Your human-like response text here",
-  "imageUrls": ["List 1-2 DIFFERENT image URLs from the 'Available Images' section ONLY IF rules above allow."]
-}
+Reply as Priya. Short. Human. WhatsApp style. If images are relevant, include their URLs.
 
-Response:`.trim();
+Respond ONLY as JSON:
+{"text": "your reply here", "imageUrls": []}`;
 
     try {
       const response = await axios.post(
@@ -192,11 +193,12 @@ Response:`.trim();
         {
           model: MODELS.CHAT_REALTIME,
           messages: [
-            { role: 'system', content: 'You are a professional real estate assistant. You are strictly data-driven and never hallucinate prices.' },
-            { role: 'user', content: prompt },
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt },
           ],
-          temperature: 0.1,
-          max_tokens: 512,
+          response_format: { type: 'json_object' },
+          temperature: 0.55,  // natural variation — avoids repetitive robotic phrasing
+          max_tokens: 160,    // hard cap — forces short WhatsApp-length replies
         },
         {
           headers: {
@@ -207,29 +209,22 @@ Response:`.trim();
         },
       );
 
-      let content = response.data?.choices?.[0]?.message?.content?.trim();
+      const content = response.data?.choices?.[0]?.message?.content?.trim();
       if (!content) return null;
-
-      // Clean up markdown code blocks if AI included them
-      if (content.startsWith('```')) {
-        content = content.replace(/^```json\n?/, '').replace(/```$/, '').trim();
-      }
 
       try {
         const parsed = JSON.parse(content);
         let imageUrls: string[] | undefined = undefined;
-        if (Array.isArray(parsed.imageUrls)) {
-          imageUrls = parsed.imageUrls.filter((url: any) => typeof url === 'string' && url.startsWith('http'));
-        } else if (typeof parsed.imageUrl === 'string' && parsed.imageUrl.startsWith('http')) {
-          imageUrls = [parsed.imageUrl];
+        if (Array.isArray(parsed.imageUrls) && parsed.imageUrls.length > 0) {
+          imageUrls = (parsed.imageUrls as unknown[])
+            .filter((url): url is string => typeof url === 'string' && url.startsWith('http'))
+            .slice(0, 2); // max 2 images
         }
 
-        return {
-          text: typeof parsed.text === 'string' ? parsed.text : content,
-          imageUrls
-        };
+        const text = typeof parsed.text === 'string' ? parsed.text.trim() : content;
+        return { text, imageUrls: imageUrls?.length ? imageUrls : undefined };
       } catch (e) {
-        this.logger.warn('AI Chat Response was not valid JSON, falling back to raw text', content);
+        this.logger.warn('[AI Chat] Response not valid JSON, using raw text');
         return { text: content };
       }
     } catch (error) {
