@@ -1,510 +1,829 @@
 export const getQuotationHtml = (quotation: any): string => {
 
-  const fmt = (amount: number | string): string => {
-    const num = typeof amount === 'string' ? parseFloat(amount) : amount;
-    if (isNaN(num)) return '₹\u00a00';
-    return '₹\u00a0' + num.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  // ─── Formatters ───────────────────────────────────────────────────────────────
+
+  const fmt = (n: number | string): string => {
+    const num = typeof n === 'string' ? parseFloat(n) : n;
+    if (isNaN(num) || num === 0) return '₹ 0';
+    return '₹ ' + num.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
   };
 
-  const fmtDate = (d: any): string | null =>
-    d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' }) : null;
+  const fmtDate = (d: any): string =>
+    d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' }) : '';
 
-  const today = fmtDate(new Date())!;
+  // ─── Amount in words (Indian system) ─────────────────────────────────────────
+
+  const toWords = (n: number): string => {
+    if (!n || isNaN(n) || n <= 0) return '';
+    const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine',
+      'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+    const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+    const two = (x: number) => x < 20 ? ones[x] : tens[Math.floor(x / 10)] + (x % 10 ? ' ' + ones[x % 10] : '');
+    const three = (x: number) => x < 100 ? two(x) : ones[Math.floor(x / 100)] + ' Hundred' + (x % 100 ? ' and ' + two(x % 100) : '');
+    const cr = Math.floor(n / 10000000);
+    const lk = Math.floor((n % 10000000) / 100000);
+    const th = Math.floor((n % 100000) / 1000);
+    const rm = Math.floor(n % 1000);
+    let r = '';
+    if (cr) r += three(cr) + ' Crore ';
+    if (lk) r += two(lk) + ' Lakh ';
+    if (th) r += two(th) + ' Thousand ';
+    if (rm) r += three(rm);
+    return 'Rupees ' + r.trim() + ' Only';
+  };
+
+  // ─── Data ─────────────────────────────────────────────────────────────────────
+
+  const today     = fmtDate(new Date());
   const issueDate = fmtDate(quotation.issueDate) || today;
   const expiryDate = fmtDate(quotation.expiryDate);
 
-  // Build pricing rows — skip zero/missing entries
-  const pricingRows: { label: string; amount: number }[] = [
-    { label: 'Base price', amount: parseFloat(quotation.basePrice) || 0 },
-    ...(quotation.plc ? [{ label: 'Preferential location charge (PLC)', amount: parseFloat(quotation.plc) || 0 }] : []),
-    ...(quotation.parking ? [{ label: 'Parking charges', amount: parseFloat(quotation.parking) || 0 }] : []),
-    ...(quotation.clubMembership ? [{ label: 'Club membership', amount: parseFloat(quotation.clubMembership) || 0 }] : []),
-    ...(Array.isArray(quotation.otherCharges)
-      ? (quotation.otherCharges as { label: string; amount: any }[]).map(c => ({ label: c.label, amount: parseFloat(c.amount) || 0 }))
-      : []),
-  ].filter(r => r.amount > 0);
+  const basePrice          = parseFloat(quotation.basePrice)          || 0;
+  const plc                = parseFloat(quotation.plc)                || 0;
+  const parking            = parseFloat(quotation.parking)            || 0;
+  const clubMembership     = parseFloat(quotation.clubMembership)     || 0;
+  const gstRate            = parseFloat(quotation.gstRate)            || 5;
+  const gstAmount          = parseFloat(quotation.gstAmount)          || 0;
+  const stampDuty          = parseFloat(quotation.stampDuty)          || 0;
+  const registrationCharges = parseFloat(quotation.registrationCharges) || 0;
+  const discount           = parseFloat(quotation.discount)           || 0;
 
-  const subtotal = pricingRows.reduce((s, r) => s + r.amount, 0);
-  const gstRate = quotation.gstRate ?? 5;
-  const gstAmount = quotation.gstAmount != null ? parseFloat(quotation.gstAmount) : subtotal * (gstRate / 100);
-  const stampDuty = parseFloat(quotation.stampDuty) || 0;
-  const discount = parseFloat(quotation.discount) || 0;
-  const grandTotal = subtotal + gstAmount + stampDuty - discount;
+  const otherCharges: { label: string; amount: number }[] = Array.isArray(quotation.otherCharges)
+    ? quotation.otherCharges.map((c: any) => ({ label: c.label, amount: parseFloat(c.amount) || 0 })).filter((c: any) => c.amount > 0)
+    : [];
 
-  const pricingRowsHtml = pricingRows.map((row, i) => `
-    <tr class="${i % 2 === 1 ? 'row-alt' : ''}">
-      <td class="row-label">${row.label}</td>
-      <td class="row-amount">${fmt(row.amount)}</td>
-    </tr>`).join('');
+  const otherChargesTotal  = otherCharges.reduce((s, c) => s + c.amount, 0);
+  const agreementValue     = basePrice + plc + parking + clubMembership + otherChargesTotal;
+  const grandTotal         = agreementValue + gstAmount + stampDuty + registrationCharges - discount;
+
+  // Price per sq.ft
+  const carpetAreaNum = quotation.carpetArea ? parseFloat(quotation.carpetArea) : 0;
+  const pricePerSqft  = carpetAreaNum > 0 && basePrice > 0 ? Math.round(basePrice / carpetAreaNum) : 0;
+
+  // ─── Unit meta rows ───────────────────────────────────────────────────────────
 
   const unitMeta: { label: string; value: string }[] = [
-    { label: 'Project', value: quotation.projectName || '' },
-    { label: 'Unit no.', value: quotation.unitNumber || '' },
-    { label: 'Floor / Tower', value: quotation.floorTower || '' },
-    { label: 'Type', value: quotation.unitType || '' },
-    { label: 'Carpet area', value: quotation.carpetArea ? `${Number(quotation.carpetArea).toLocaleString('en-IN')} sq ft` : '' },
-    { label: 'Super built-up', value: quotation.superBuiltUp ? `${Number(quotation.superBuiltUp).toLocaleString('en-IN')} sq ft` : '' },
+    { label: 'Project',       value: quotation.projectName || '' },
+    { label: 'Unit No.',      value: quotation.unitNumber  || '' },
+    { label: 'Floor / Tower', value: quotation.floorTower  || '' },
+    { label: 'Unit Type',     value: quotation.unitType    || '' },
+    { label: 'Carpet Area',   value: carpetAreaNum  > 0 ? `${carpetAreaNum.toLocaleString('en-IN')} sq.ft`  : '' },
+    { label: 'Super Built-up',value: quotation.superBuiltUp ? `${Number(quotation.superBuiltUp).toLocaleString('en-IN')} sq.ft` : '' },
+    { label: 'Possession',    value: quotation.possession  || '' },
   ].filter(m => m.value);
 
   const unitMetaHtml = unitMeta.map(m => `
     <tr>
       <td class="meta-label">${m.label}</td>
+      <td class="meta-sep">:</td>
       <td class="meta-value">${m.value}</td>
     </tr>`).join('');
 
-  const pillItems = [
-    quotation.paymentPlan ? { label: 'Payment plan', value: quotation.paymentPlan } : null,
-    expiryDate ? { label: 'Valid until', value: expiryDate } : null,
-    quotation.possession ? { label: 'Est. possession', value: quotation.possession } : null,
-  ].filter(Boolean) as { label: string; value: string }[];
+  // ─── Pricing rows ─────────────────────────────────────────────────────────────
 
-  const pillsHtml = pillItems.map(p => `
+  const pricingRows: { label: string; sub?: string; amount: number }[] = [
+    { label: 'Basic Sale Price', sub: pricePerSqft > 0 ? `@ ₹ ${pricePerSqft.toLocaleString('en-IN')} per sq.ft × ${carpetAreaNum.toLocaleString('en-IN')} sq.ft` : undefined, amount: basePrice },
+    ...(plc            > 0 ? [{ label: 'Preferential Location Charges (PLC)',   amount: plc }]            : []),
+    ...(parking        > 0 ? [{ label: 'Parking Charges',                       amount: parking }]        : []),
+    ...(clubMembership > 0 ? [{ label: 'Club Membership',                       amount: clubMembership }] : []),
+    ...otherCharges.map(c => ({ label: c.label, amount: c.amount })),
+  ].filter(r => r.amount > 0);
+
+  const pricingRowsHtml = pricingRows.map((row, i) => `
+    <tr class="${i % 2 === 1 ? 'row-alt' : ''}">
+      <td class="row-label">
+        ${row.label}
+        ${row.sub ? `<span class="row-sub">${row.sub}</span>` : ''}
+      </td>
+      <td class="row-amount">${fmt(row.amount)}</td>
+    </tr>`).join('');
+
+  // ─── Statutory rows ───────────────────────────────────────────────────────────
+
+  const statutoryRows: { label: string; amount: number; deduct?: boolean }[] = [
+    { label: `GST @ ${gstRate}% on Agreement Value`, amount: gstAmount },
+    ...(stampDuty           > 0 ? [{ label: 'Stamp Duty',              amount: stampDuty }]           : []),
+    ...(registrationCharges > 0 ? [{ label: 'Registration Charges',    amount: registrationCharges }] : []),
+    ...(discount            > 0 ? [{ label: 'Discount / Concession',   amount: discount, deduct: true }] : []),
+  ];
+
+  const statutoryRowsHtml = statutoryRows.map((row, i) => `
+    <tr class="${row.deduct ? 'row-deduct' : (i % 2 === 1 ? 'row-alt' : '')}">
+      <td class="row-label row-stat-label">${row.label}</td>
+      <td class="row-amount row-stat-amount">${row.deduct ? '− ' : ''}${fmt(row.amount)}</td>
+    </tr>`).join('');
+
+  // ─── Highlight pills ──────────────────────────────────────────────────────────
+
+  const pills: { label: string; value: string }[] = [
+    ...(pricePerSqft      > 0            ? [{ label: 'Rate / sq.ft', value: `₹ ${pricePerSqft.toLocaleString('en-IN')}` }] : []),
+    ...(quotation.paymentPlan             ? [{ label: 'Payment Plan',  value: quotation.paymentPlan }]       : []),
+    ...(quotation.possession              ? [{ label: 'Possession',    value: quotation.possession }]        : []),
+    ...(expiryDate                        ? [{ label: 'Valid Until',   value: expiryDate }]                  : []),
+  ];
+
+  const pillsHtml = pills.map(p => `
     <div class="pill">
       <div class="pill-label">${p.label}</div>
       <div class="pill-value">${p.value}</div>
     </div>`).join('');
 
+  // ─── RERA / company extras ────────────────────────────────────────────────────
+
+  const reraNo  = quotation.reraNumber   || quotation.tenantReraNumber   || 'RERA/XXXXX/XXXXX/XXXX';
+  const gstin   = quotation.tenantGstin  || '&mdash;';
+
+  // ─── HTML ─────────────────────────────────────────────────────────────────────
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Cost Sheet — ${quotation.quotationNumber || 'CS-0001'}</title>
+  <title>Cost Sheet &mdash; ${quotation.quotationNumber || 'CS-0001'}</title>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600&family=Inter:wght@400;500;600&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --brand:    #027b88;
-      --brand-dk: #015f69;
-      --brand-lt: #e5f4f6;
-      --brand-md: #9fd2d8;
-      --ink:      #0c1c1f;
-      --muted:    #5a7b80;
-      --line:     #dce8ea;
-      --surface:  #f3fafb;
-      --white:    #ffffff;
-      --red:      #c0392b;
+      --navy:     #1B2D4F;
+      --navy-lt:  #243B60;
+      --gold:     #C9A227;
+      --gold-lt:  #FDF8EC;
+      --gold-bd:  #E8D5A3;
+      --green:    #065F46;
+      --red:      #B91C1C;
+      --line:     #E2E8F0;
+      --surface:  #F8FAFC;
+      --ink:      #1A202C;
+      --muted:    #718096;
+      --white:    #FFFFFF;
     }
 
     body {
       font-family: 'Inter', sans-serif;
       background: var(--white);
       color: var(--ink);
-      font-size: 13px;
+      font-size: 12px;
       line-height: 1.6;
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
     }
 
-    /* ── Left brand stripe ── */
-    .stripe {
+    /* ── Watermark ── */
+    .watermark {
       position: fixed;
-      left: 0; top: 0; bottom: 0;
-      width: 5px;
-      background: var(--brand);
+      top: 48%;
+      left: 50%;
+      transform: translate(-50%, -50%) rotate(-32deg);
+      font-size: 88px;
+      font-weight: 800;
+      color: rgba(27, 45, 79, 0.035);
+      letter-spacing: 10px;
+      text-transform: uppercase;
+      pointer-events: none;
+      z-index: 0;
+      white-space: nowrap;
+      user-select: none;
     }
 
-    /* ── Page wrapper ── */
-    .page {
-      margin-left: 5px;
-      padding: 44px 52px 60px 52px;
-    }
+    .page { position: relative; z-index: 1; }
 
     /* ══ HEADER ══ */
     .header {
+      background: var(--navy);
+      padding: 26px 40px;
       display: flex;
       justify-content: space-between;
       align-items: flex-start;
-      margin-bottom: 28px;
     }
+
+    .hdr-left {}
 
     .company-name {
-      font-family: 'Playfair Display', serif;
-      font-size: 26px;
-      font-weight: 600;
-      color: var(--brand-dk);
-      letter-spacing: -0.3px;
-      line-height: 1.1;
+      font-size: 22px;
+      font-weight: 800;
+      color: var(--white);
+      letter-spacing: -0.4px;
+      line-height: 1.15;
     }
 
-    .company-sub {
-      font-size: 11px;
-      color: var(--muted);
+    .company-tagline {
+      font-size: 10.5px;
+      font-weight: 500;
+      color: var(--gold);
+      letter-spacing: 0.6px;
       margin-top: 5px;
-      letter-spacing: 0.2px;
     }
 
-    .doc-meta { text-align: right; }
+    .hdr-right { text-align: right; }
 
-    .doc-type {
-      font-size: 9px;
-      font-weight: 600;
-      letter-spacing: 2.5px;
+    .doc-type-label {
+      font-size: 8.5px;
+      font-weight: 700;
+      letter-spacing: 3px;
       text-transform: uppercase;
-      color: var(--brand);
-      margin-bottom: 5px;
+      color: var(--gold);
+      margin-bottom: 4px;
     }
 
     .doc-number {
-      font-family: 'Playfair Display', serif;
-      font-size: 26px;
-      font-weight: 600;
-      color: var(--ink);
-      line-height: 1.1;
-      letter-spacing: -0.3px;
+      font-size: 21px;
+      font-weight: 800;
+      color: var(--white);
+      letter-spacing: -0.4px;
     }
 
     .doc-dates {
-      margin-top: 6px;
-      font-size: 11px;
-      color: var(--muted);
+      margin-top: 5px;
+      font-size: 10.5px;
+      color: rgba(255,255,255,0.5);
       line-height: 1.9;
     }
 
-    .expiry { color: var(--red); font-weight: 500; }
+    .doc-expiry { color: #FCA5A5; font-weight: 600; }
 
-    /* ── Rule ── */
-    hr.rule { border: none; border-top: 1px solid var(--line); margin: 0 0 28px; }
+    /* ══ RERA STRIP ══ */
+    .rera-strip {
+      background: var(--navy-lt);
+      padding: 9px 40px;
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0;
+      border-top: 1px solid rgba(255,255,255,0.08);
+    }
 
-    /* ══ INFO STRIP ══ */
-    .info-strip {
+    .ri {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding-right: 20px;
+      margin-right: 20px;
+      border-right: 1px solid rgba(255,255,255,0.12);
+    }
+
+    .ri:last-child { border-right: none; margin-right: 0; padding-right: 0; }
+
+    .ri-label {
+      font-size: 8.5px;
+      font-weight: 700;
+      letter-spacing: 1.8px;
+      text-transform: uppercase;
+      color: var(--gold);
+    }
+
+    .ri-value {
+      font-size: 10.5px;
+      font-weight: 600;
+      color: rgba(255,255,255,0.9);
+    }
+
+    /* ══ CONTENT ══ */
+    .content { padding: 24px 40px 0; }
+
+    /* ══ INFO GRID ══ */
+    .info-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 18px;
-      margin-bottom: 32px;
+      gap: 14px;
+      margin-bottom: 22px;
     }
 
     .info-card {
-      background: var(--surface);
       border: 1px solid var(--line);
-      border-top: 3px solid var(--brand);
-      border-radius: 0 0 8px 8px;
-      padding: 16px 18px;
+      border-radius: 8px;
+      overflow: hidden;
     }
 
-    .card-title {
-      font-size: 9px;
-      font-weight: 600;
-      letter-spacing: 2px;
-      text-transform: uppercase;
-      color: var(--brand);
-      margin-bottom: 10px;
+    .info-card-hdr {
+      background: var(--navy);
+      padding: 7px 16px;
     }
+
+    .info-card-title {
+      font-size: 8.5px;
+      font-weight: 700;
+      letter-spacing: 2.5px;
+      text-transform: uppercase;
+      color: var(--gold);
+    }
+
+    .info-card-body { padding: 14px 16px; }
 
     .buyer-name {
       font-size: 15px;
-      font-weight: 600;
+      font-weight: 700;
       color: var(--ink);
       margin-bottom: 5px;
     }
 
     .buyer-detail {
-      font-size: 12px;
+      font-size: 11.5px;
       color: var(--muted);
-      line-height: 1.8;
+      line-height: 1.9;
     }
 
     table.unit-table { width: 100%; border-collapse: collapse; }
 
-    .meta-label {
-      font-size: 11px;
-      color: var(--muted);
-      padding: 3px 0;
-      width: 44%;
-      vertical-align: top;
+    .meta-label { font-size: 10.5px; color: var(--muted); padding: 3px 0; width: 38%; }
+    .meta-sep   { font-size: 10.5px; color: var(--line);  padding: 3px 4px; }
+    .meta-value { font-size: 11px;   font-weight: 600; color: var(--ink); padding: 3px 0; }
+
+    /* ══ SECTION HEADER ══ */
+    .sec-hdr {
+      background: var(--navy);
+      padding: 8px 16px;
+      border-radius: 6px 6px 0 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
     }
 
-    .meta-value {
-      font-size: 12px;
-      font-weight: 500;
-      color: var(--ink);
-      padding: 3px 0;
-    }
-
-    /* ══ SECTION HEADING ══ */
-    .sec-head {
-      font-size: 9px;
-      font-weight: 600;
-      letter-spacing: 2px;
+    .sec-title {
+      font-size: 8.5px;
+      font-weight: 700;
+      letter-spacing: 2.5px;
       text-transform: uppercase;
-      color: var(--brand);
-      padding-bottom: 8px;
-      border-bottom: 2px solid var(--brand-md);
-      margin-bottom: 0;
+      color: var(--white);
+    }
+
+    .sec-note {
+      font-size: 10px;
+      color: rgba(255,255,255,0.45);
     }
 
     /* ══ PRICING TABLE ══ */
-    .pricing-table { width: 100%; border-collapse: collapse; }
-
-    .pricing-table thead tr { background: var(--brand); }
-
-    .pricing-table thead th {
-      padding: 11px 16px;
-      font-size: 10px;
-      font-weight: 600;
-      letter-spacing: 1px;
-      text-transform: uppercase;
-      color: var(--white);
-      text-align: left;
+    .pricing-table {
+      width: 100%;
+      border-collapse: collapse;
+      border: 1px solid var(--line);
+      border-top: none;
+      margin-bottom: 20px;
     }
 
-    .pricing-table thead th:last-child { text-align: right; }
-
     .pricing-table tbody tr { border-bottom: 1px solid var(--line); }
+    .pricing-table tbody tr:last-child { border-bottom: none; }
 
     .row-alt { background: var(--surface); }
 
-    .row-label { padding: 12px 16px; font-size: 13px; color: var(--ink); }
+    .row-label {
+      padding: 11px 16px;
+      font-size: 12px;
+      color: var(--ink);
+    }
+
+    .row-sub {
+      display: block;
+      font-size: 10px;
+      color: var(--muted);
+      font-weight: 400;
+      margin-top: 2px;
+    }
 
     .row-amount {
-      padding: 12px 16px;
+      padding: 11px 16px;
       text-align: right;
-      font-size: 13px;
-      font-weight: 500;
+      font-size: 12px;
+      font-weight: 600;
       color: var(--ink);
       white-space: nowrap;
     }
 
-    /* ══ TOTALS ══ */
-    .totals-outer { display: flex; justify-content: flex-end; }
+    /* Agreement Value highlight */
+    .row-agr { background: var(--gold-lt) !important; }
+    .row-agr td { border-top: 2px solid var(--gold-bd) !important; border-bottom: 2px solid var(--gold-bd) !important; }
+    .row-agr .row-label { font-size: 12.5px; font-weight: 700; color: var(--green); }
+    .row-agr .row-amount { font-size: 12.5px; font-weight: 800; color: var(--green); }
 
-    .totals-table { width: 300px; border-collapse: collapse; }
+    /* Statutory rows */
+    .row-stat-label  { color: var(--muted); font-size: 11.5px; }
+    .row-stat-amount { color: var(--muted); font-weight: 500; }
 
-    .totals-table td {
-      padding: 9px 16px;
-      font-size: 13px;
-      border-bottom: 1px solid var(--line);
+    /* Deduct row */
+    .row-deduct .row-stat-label  { color: var(--red); font-weight: 600; }
+    .row-deduct .row-stat-amount { color: var(--red); font-weight: 700; }
+
+    /* ══ GRAND TOTAL BLOCK ══ */
+    .grand-block {
+      background: var(--navy);
+      border-radius: 10px;
+      padding: 22px 28px;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
     }
 
-    .totals-table tr:last-child td { border-bottom: none; }
+    .gt-label {
+      font-size: 8.5px;
+      font-weight: 700;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: var(--gold);
+      margin-bottom: 8px;
+    }
 
-    .t-label { color: var(--muted); }
-
-    .t-value { text-align: right; font-weight: 500; white-space: nowrap; }
-
-    .t-deduct .t-value { color: var(--red); }
-
-    .t-grand td {
-      background: var(--brand);
+    .gt-amount {
+      font-size: 32px;
+      font-weight: 800;
       color: var(--white);
-      font-size: 14px;
-      font-weight: 600;
-      padding: 13px 16px;
-      border-bottom: none;
+      letter-spacing: -1.5px;
+      line-height: 1;
     }
 
-    .t-grand td:last-child { text-align: right; }
+    .gt-words {
+      font-size: 10px;
+      color: rgba(255,255,255,0.4);
+      margin-top: 8px;
+      font-style: italic;
+      line-height: 1.5;
+      max-width: 380px;
+    }
 
-    /* ══ PILLS ══ */
+    .gt-right { text-align: right; }
+
+    .gt-badge {
+      display: inline-block;
+      background: var(--gold);
+      color: var(--navy);
+      font-size: 8.5px;
+      font-weight: 800;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      padding: 5px 13px;
+      border-radius: 4px;
+      margin-bottom: 8px;
+    }
+
+    .gt-incl {
+      font-size: 10px;
+      color: rgba(255,255,255,0.3);
+      line-height: 1.8;
+      text-align: right;
+    }
+
+    /* ══ HIGHLIGHTS ══ */
     .pills-row {
       display: flex;
-      flex-wrap: wrap;
       gap: 10px;
-      margin-top: 28px;
+      flex-wrap: wrap;
+      margin-bottom: 20px;
     }
 
     .pill {
-      border: 1px solid var(--brand-md);
-      background: var(--brand-lt);
+      flex: 1;
+      min-width: 110px;
+      border: 1px solid var(--gold-bd);
+      background: var(--gold-lt);
       border-radius: 6px;
-      padding: 9px 14px;
+      padding: 10px 14px;
     }
 
     .pill-label {
-      font-size: 9px;
-      font-weight: 600;
+      font-size: 8.5px;
+      font-weight: 700;
       letter-spacing: 1.5px;
       text-transform: uppercase;
-      color: var(--brand);
-      margin-bottom: 3px;
+      color: #92400E;
+      margin-bottom: 4px;
     }
 
     .pill-value {
-      font-size: 13px;
-      font-weight: 600;
+      font-size: 12.5px;
+      font-weight: 700;
       color: var(--ink);
     }
 
     /* ══ NOTES ══ */
     .notes-block {
-      margin-top: 28px;
+      border: 1px solid var(--line);
+      border-left: 4px solid var(--navy);
+      border-radius: 0 6px 6px 0;
       padding: 14px 18px;
+      margin-bottom: 20px;
       background: var(--surface);
-      border-left: 3px solid var(--brand);
-      border-radius: 0 8px 8px 0;
     }
 
     .notes-title {
-      font-size: 9px;
-      font-weight: 600;
+      font-size: 8.5px;
+      font-weight: 700;
       letter-spacing: 2px;
       text-transform: uppercase;
-      color: var(--brand);
+      color: var(--navy);
       margin-bottom: 7px;
     }
 
-    .notes-block p {
-      font-size: 12px;
+    .notes-text {
+      font-size: 11px;
       color: var(--muted);
       white-space: pre-wrap;
-      line-height: 1.7;
+      line-height: 1.8;
+    }
+
+    /* ══ DISCLAIMER ══ */
+    .disclaimer {
+      background: #FFFBEB;
+      border: 1px solid #FDE68A;
+      border-radius: 6px;
+      padding: 11px 16px;
+      margin-bottom: 20px;
+    }
+
+    .disclaimer-title {
+      font-size: 8.5px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: #92400E;
+      margin-bottom: 5px;
+    }
+
+    .disclaimer-text {
+      font-size: 10px;
+      color: #78350F;
+      line-height: 1.75;
     }
 
     /* ══ SIGNATURES ══ */
-    .sig-strip {
+    .sig-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 48px;
-      margin-top: 56px;
+      gap: 18px;
+      margin-bottom: 24px;
     }
 
-    .sig-box { border-top: 1px solid var(--line); padding-top: 10px; }
+    .sig-box {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+    }
 
-    .sig-label { font-size: 11px; color: var(--muted); }
+    .sig-hdr {
+      background: var(--surface);
+      border-bottom: 1px solid var(--line);
+      padding: 7px 16px;
+    }
 
-    .sig-name { font-size: 13px; font-weight: 600; color: var(--ink); margin-top: 2px; }
+    .sig-hdr-title {
+      font-size: 8.5px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .sig-body { padding: 20px 16px 16px; }
+
+    .sig-seal {
+      width: 60px;
+      height: 60px;
+      border: 2px dashed var(--line);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 8px;
+      color: #CBD5E0;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      text-align: center;
+      margin-bottom: 28px;
+      line-height: 1.3;
+    }
+
+    .sig-space { height: 48px; margin-bottom: 8px; }
+
+    .sig-line {
+      border-top: 1.5px solid var(--ink);
+      padding-top: 6px;
+    }
+
+    .sig-name { font-size: 12px; font-weight: 700; color: var(--ink); }
+    .sig-role { font-size: 10px; color: var(--muted); margin-top: 2px; }
+    .sig-date { font-size: 10px; color: var(--muted); margin-top: 6px; }
 
     /* ══ FOOTER ══ */
     .footer {
-      margin-top: 44px;
-      padding-top: 14px;
-      border-top: 1px solid var(--line);
+      background: var(--navy);
+      padding: 14px 40px;
       display: flex;
       justify-content: space-between;
-      align-items: flex-end;
+      align-items: center;
+      gap: 20px;
     }
 
-    .footer-left { font-size: 11px; color: var(--muted); line-height: 1.8; }
+    .footer-company {
+      font-size: 11.5px;
+      font-weight: 700;
+      color: var(--white);
+      margin-bottom: 3px;
+    }
 
-    .footer-right { text-align: right; font-size: 10px; color: #a8c8cb; line-height: 1.8; }
+    .footer-detail {
+      font-size: 10px;
+      color: rgba(255,255,255,0.45);
+      line-height: 1.8;
+    }
+
+    .footer-right { text-align: right; }
+
+    .footer-rera {
+      font-size: 9.5px;
+      font-weight: 600;
+      color: var(--gold);
+      margin-bottom: 3px;
+    }
+
+    .footer-gen {
+      font-size: 9px;
+      color: rgba(255,255,255,0.3);
+      line-height: 1.9;
+      letter-spacing: 0.3px;
+    }
   </style>
 </head>
 <body>
 
-<div class="stripe"></div>
+<div class="watermark">COST SHEET</div>
 
 <div class="page">
 
-  <!-- ── Header ── -->
+  <!-- ══ HEADER ══ -->
   <div class="header">
-    <div>
-      <div class="company-name">${quotation.tenantName || 'Softaro CRM'}</div>
-      <div class="company-sub">${quotation.tenantTagline || 'Sales &amp; Marketing'}</div>
+    <div class="hdr-left">
+      <div class="company-name">${quotation.tenantName || 'Your Company'}</div>
+      <div class="company-tagline">${quotation.tenantTagline || 'Real Estate &amp; Property Development'}</div>
     </div>
-    <div class="doc-meta">
-      <div class="doc-type">Cost Sheet</div>
+    <div class="hdr-right">
+      <div class="doc-type-label">Cost Sheet</div>
       <div class="doc-number">${quotation.quotationNumber || 'CS-0001'}</div>
       <div class="doc-dates">
-        <div>Issued: ${issueDate}</div>
-        ${expiryDate ? `<div class="expiry">Valid until: ${expiryDate}</div>` : ''}
+        <div>Date of Issue: ${issueDate}</div>
+        ${expiryDate ? `<div class="doc-expiry">Valid Until: ${expiryDate}</div>` : ''}
       </div>
     </div>
   </div>
 
-  <hr class="rule" />
+  <!-- ══ RERA STRIP ══ -->
+  <div class="rera-strip">
+    ${quotation.projectName ? `
+    <div class="ri">
+      <span class="ri-label">Project</span>
+      <span class="ri-value">${quotation.projectName}</span>
+    </div>` : ''}
+    <div class="ri">
+      <span class="ri-label">RERA No.</span>
+      <span class="ri-value">${reraNo}</span>
+    </div>
+    ${quotation.unitNumber ? `
+    <div class="ri">
+      <span class="ri-label">Unit</span>
+      <span class="ri-value">${quotation.unitNumber}</span>
+    </div>` : ''}
+    <div class="ri">
+      <span class="ri-label">All Amounts In</span>
+      <span class="ri-value">Indian Rupees (INR)</span>
+    </div>
+  </div>
 
-  <!-- ── Buyer + Unit ── -->
-  <div class="info-strip">
+  <!-- ══ CONTENT ══ -->
+  <div class="content">
 
-    <div class="info-card">
-      <div class="card-title">Prepared for</div>
-      <div class="buyer-name">${quotation.lead?.name || 'Buyer Name'}</div>
-      <div class="buyer-detail">
-        ${[quotation.lead?.phone, quotation.lead?.email, quotation.lead?.address].filter(Boolean).join('<br/>')}
+    <!-- Info Grid -->
+    <div class="info-grid">
+
+      <div class="info-card">
+        <div class="info-card-hdr"><div class="info-card-title">Prepared For</div></div>
+        <div class="info-card-body">
+          <div class="buyer-name">${quotation.lead?.name || 'Prospective Buyer'}</div>
+          <div class="buyer-detail">
+            ${[quotation.lead?.phone, quotation.lead?.email].filter(Boolean).join('<br/>')}
+          </div>
+        </div>
       </div>
+
+      <div class="info-card">
+        <div class="info-card-hdr"><div class="info-card-title">Unit Specifications</div></div>
+        <div class="info-card-body">
+          <table class="unit-table">
+            ${unitMetaHtml || '<tr><td class="meta-label" colspan="3" style="color:var(--muted);">No unit details provided</td></tr>'}
+          </table>
+        </div>
+      </div>
+
     </div>
 
-    <div class="info-card">
-      <div class="card-title">Unit details</div>
-      <table class="unit-table">
-        ${unitMetaHtml}
+    <!-- Pricing Breakup -->
+    ${pricingRows.length > 0 ? `
+    <div>
+      <div class="sec-hdr">
+        <span class="sec-title">Pricing Breakup</span>
+        <span class="sec-note">Agreement Value Computation</span>
+      </div>
+      <table class="pricing-table">
+        <tbody>
+          ${pricingRowsHtml}
+          <tr class="row-agr">
+            <td class="row-label">Agreement Value</td>
+            <td class="row-amount">${fmt(agreementValue)}</td>
+          </tr>
+          ${statutoryRowsHtml}
+        </tbody>
       </table>
+    </div>` : ''}
+
+    <!-- Grand Total -->
+    <div class="grand-block">
+      <div class="gt-left">
+        <div class="gt-label">Total Amount Payable</div>
+        <div class="gt-amount">${fmt(grandTotal)}</div>
+        ${grandTotal > 0 ? `<div class="gt-words">${toWords(Math.round(grandTotal))}</div>` : ''}
+      </div>
+      <div class="gt-right">
+        <div class="gt-badge">All Inclusive</div>
+        <div class="gt-incl">
+          Base · PLC · Parking<br/>
+          GST · Stamp Duty · Registration
+        </div>
+      </div>
     </div>
 
-  </div>
+    <!-- Key Highlights -->
+    ${pills.length > 0 ? `
+    <div class="pills-row">
+      ${pillsHtml}
+    </div>` : ''}
 
-  <!-- ── Pricing ── -->
-  <div class="sec-head">Pricing breakup</div>
+    <!-- Notes & Terms -->
+    ${(quotation.notes || quotation.terms) ? `
+    <div class="notes-block">
+      <div class="notes-title">Notes &amp; Terms</div>
+      ${quotation.notes  ? `<p class="notes-text">${quotation.notes}</p>`                              : ''}
+      ${quotation.terms  ? `<p class="notes-text" style="margin-top:8px;">${quotation.terms}</p>`    : ''}
+    </div>` : ''}
 
-  <table class="pricing-table">
-    <thead>
-      <tr>
-        <th>Description</th>
-        <th style="text-align:right;">Amount</th>
-      </tr>
-    </thead>
-    <tbody>
-      ${pricingRowsHtml}
-    </tbody>
-  </table>
-
-  <!-- ── Totals ── -->
-  <div class="totals-outer">
-    <table class="totals-table">
-      <tr>
-        <td class="t-label">Sub-total</td>
-        <td class="t-value">${fmt(subtotal)}</td>
-      </tr>
-      <tr>
-        <td class="t-label">GST @ ${gstRate}%</td>
-        <td class="t-value">${fmt(gstAmount)}</td>
-      </tr>
-      ${stampDuty > 0 ? `
-      <tr>
-        <td class="t-label">Stamp duty &amp; registration</td>
-        <td class="t-value">${fmt(stampDuty)}</td>
-      </tr>` : ''}
-      ${discount > 0 ? `
-      <tr class="t-deduct">
-        <td class="t-label">Discount</td>
-        <td class="t-value">− ${fmt(discount)}</td>
-      </tr>` : ''}
-      <tr class="t-grand">
-        <td>Total payable</td>
-        <td>${fmt(grandTotal)}</td>
-      </tr>
-    </table>
-  </div>
-
-  <!-- ── Pills ── -->
-  ${pillsHtml ? `<div class="pills-row">${pillsHtml}</div>` : ''}
-
-  <!-- ── Notes ── -->
-  ${quotation.notes || quotation.terms ? `
-  <div class="notes-block">
-    <div class="notes-title">Notes &amp; terms</div>
-    ${quotation.notes ? `<p>${quotation.notes}</p>` : ''}
-    ${quotation.terms ? `<p style="margin-top:6px;">${quotation.terms}</p>` : ''}
-  </div>` : ''}
-
-  <!-- ── Signatures ── -->
-  <div class="sig-strip">
-    <div class="sig-box">
-      <div class="sig-label">Authorised signatory</div>
-      <div class="sig-name">${quotation.tenantName || 'Company Name'}</div>
+    <!-- Disclaimer -->
+    <div class="disclaimer">
+      <div class="disclaimer-title">Important Disclaimer</div>
+      <div class="disclaimer-text">
+        This cost sheet is indicative and prepared for discussion purposes only. All prices are subject to revision by management without prior notice.
+        Final amounts will be confirmed in the registered Agreement for Sale / Allotment Letter. GST, stamp duty, registration charges and other statutory levies are
+        applicable as per government norms prevailing at the time of execution. This document does not constitute a legal offer or binding commitment.
+        Subject to RERA guidelines — ${reraNo}.
+      </div>
     </div>
-    <div class="sig-box">
-      <div class="sig-label">Buyer acknowledgement</div>
-      <div class="sig-name" style="color:var(--muted);font-weight:400;">Signature &amp; date</div>
-    </div>
-  </div>
 
-  <!-- ── Footer ── -->
+    <!-- Signatures -->
+    <div class="sig-grid">
+
+      <div class="sig-box">
+        <div class="sig-hdr"><div class="sig-hdr-title">For &mdash; ${quotation.tenantName || 'Company'}</div></div>
+        <div class="sig-body">
+          <div class="sig-seal">COMPANY<br/>SEAL</div>
+          <div class="sig-line">
+            <div class="sig-name">${quotation.tenantName || 'Authorised Signatory'}</div>
+            <div class="sig-role">Authorised Signatory</div>
+            <div class="sig-date">Date: ___________________</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="sig-box">
+        <div class="sig-hdr"><div class="sig-hdr-title">Buyer / Allottee Acknowledgement</div></div>
+        <div class="sig-body">
+          <div class="sig-space"></div>
+          <div class="sig-line">
+            <div class="sig-name">${quotation.lead?.name || 'Buyer Name'}</div>
+            <div class="sig-role">Signature &amp; Thumb Impression</div>
+            <div class="sig-date">Date: ___________________</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+  </div><!-- /content -->
+
+  <!-- ══ FOOTER ══ -->
   <div class="footer">
     <div class="footer-left">
-      <div style="font-weight:600;color:var(--ink);">${quotation.tenantName || 'Softaro CRM'}</div>
-      ${quotation.tenantAddress ? `<div>${quotation.tenantAddress}</div>` : ''}
-      ${quotation.tenantPhone ? `<div>${quotation.tenantPhone}</div>` : ''}
-      ${quotation.tenantEmail ? `<div>${quotation.tenantEmail}</div>` : ''}
+      <div class="footer-company">${quotation.tenantName || 'Your Company'}</div>
+      <div class="footer-detail">
+        ${[quotation.tenantAddress, quotation.tenantPhone, quotation.tenantEmail].filter(Boolean).join('&nbsp;&nbsp;·&nbsp;&nbsp;')}
+      </div>
     </div>
     <div class="footer-right">
-      <div>This is a computer-generated document.</div>
-      <div>Generated on ${today} · Softaro CRM</div>
+      <div class="footer-rera">RERA: ${reraNo}&nbsp;&nbsp;|&nbsp;&nbsp;GSTIN: ${gstin}</div>
+      <div class="footer-gen">
+        Computer Generated Document &nbsp;·&nbsp; No Signature Required<br/>
+        Generated on ${today} &nbsp;·&nbsp; ${quotation.quotationNumber || 'CS-0001'}
+      </div>
     </div>
   </div>
 
-</div>
+</div><!-- /page -->
+
 </body>
 </html>`;
 };
