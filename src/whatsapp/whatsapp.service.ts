@@ -473,18 +473,15 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
             const minPrice = totals.length ? Math.min(...totals) : 'N/A';
             const maxPrice = totals.length ? Math.max(...totals) : 'N/A';
             
-            const unitSummary = unitDetailsWithBreakups.length 
-                ? `Available Units & Pricing:
-${unitDetailsWithBreakups.map(u => {
-    let text = `- Unit ${u.unitCode}: Total Price ₹${u.total.toLocaleString('en-IN')} (Base: ₹${Number(u.price).toLocaleString('en-IN')})`;
-    if (u.carpetArea) text += `\n    Carpet Area: ${u.carpetArea} sqft`;
-    if (u.reraArea) text += ` | RERA Area: ${u.reraArea} sqft`;
-    if (u.breakups.length > 0) {
-        text += `\n    Breakup: ${u.breakups.map(b => `${b.label}: ₹${Number(b.amount).toLocaleString('en-IN')}`).join(', ')}`;
-    }
-    return text;
-}).join('\n')}`
-                : 'Pricing details available on request.';
+            // Compact unit summary — one line per unit so AI can scan without getting lost in details
+        const unitSummary = unitDetailsWithBreakups.length
+                ? unitDetailsWithBreakups.slice(0, 6).map(u => {
+                    const parts: string[] = [`Unit ${u.unitCode}: ₹${u.total.toLocaleString('en-IN')}`];
+                    if (u.carpetArea) parts.push(`${u.carpetArea}sqft`);
+                    if (u.breakups.length) parts.push(`incl. ${u.breakups.map(b => b.label).join(', ')}`);
+                    return parts.join(' | ');
+                  }).join('\n')
+                : 'Pricing on request';
 
             // Fetch Attributes (Amenities/Features)
             const attrs = await this.db
@@ -522,19 +519,32 @@ ${unitDetailsWithBreakups.map(u => {
             };
         }));
 
-        // 3. Fetch Recent Message History (last 5 messages)
+        // 3. Fetch recent history — skip the very latest (that's the current incoming message
+        //    we just saved), so the AI doesn't see the same message twice
         const recentMessages = await this.db
             .select()
             .from(whatsappMessages)
             .where(and(eq(whatsappMessages.tenantId, tenantId), eq(whatsappMessages.leadId, leadId)))
             .orderBy(desc(whatsappMessages.createdAt))
-            .limit(5);
+            .offset(1)   // skip the current message (just inserted above)
+            .limit(14);  // fetch 14 → gives up to 12 real turns after filtering
 
-        const history = recentMessages.reverse().map(m => {
-            const content = m.content as any;
-            const text = content.text?.body || '[Non-text message]';
-            return `${m.direction === 'inbound' ? 'Customer' : 'Assistant'}: ${text}`;
-        });
+        // Build structured role objects — this gives the LLM TRUE conversational memory
+        // instead of a flat string it has to "read", it sees actual message turns
+        const history = recentMessages
+            .reverse()
+            .map(m => {
+                const content = m.content as any;
+                // Inbound: content is raw WhatsApp payload (text.body)
+                // Outbound: content is the API payload we sent (also text.body)
+                const text = content?.text?.body || '';
+                if (!text) return null; // skip image/template messages in history
+                return {
+                    role: m.direction === 'inbound' ? 'user' as const : 'assistant' as const,
+                    content: text,
+                };
+            })
+            .filter((m): m is { role: 'user' | 'assistant'; content: string } => m !== null);
 
         const input: LeadQualificationInput = {
             name: lead.name,

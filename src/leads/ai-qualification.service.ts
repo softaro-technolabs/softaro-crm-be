@@ -139,66 +139,66 @@ export class AiQualificationService {
     tenantId: string,
     message: string,
     leadData: LeadQualificationInput,
-    history: string[]
+    history: Array<{ role: 'user' | 'assistant'; content: string }>
   ): Promise<{ text: string; imageUrls?: string[] } | null> {
     if (!this.apiKey) return null;
 
-    // Build a compact property summary — only what's needed, no bloat
+    // Compact property summary — concise lines the AI can scan quickly
     const propertySummary = leadData.availableProperties?.length
-      ? leadData.availableProperties.map(p =>
-          `${p.name} | ${p.type} | ${p.location || 'N/A'} | Budget: ₹${p.budget_min?.toLocaleString('en-IN') || 'check with us'}` +
-          ((p as any).unitSummary ? ` | ${(p as any).unitSummary}` : '')
-        ).join('\n')
-      : 'No properties listed yet';
+      ? leadData.availableProperties.map(p => {
+          const unitSummary = (p as any).unitSummary || 'Pricing on request';
+          const attrs = (p as any).attributes ? ` | Amenities: ${(p as any).attributes}` : '';
+          const images = (p as any).imageUrls?.length
+            ? ` | Images: ${(p as any).imageUrls.slice(0, 3).join(', ')}`
+            : '';
+          return `▸ ${p.name} (${p.type}, ${p.location || 'N/A'}):\n${unitSummary}${attrs}${images}`;
+        }).join('\n\n')
+      : 'No properties in database yet.';
 
-    const recentHistory = history.slice(-6).join('\n'); // last 6 turns only — keep context tight
+    const systemPrompt = `You are Priya, a real estate sales executive texting customers on WhatsApp in India.
 
-    const systemPrompt = `You are Priya, a real estate sales executive at our company in India. You talk on WhatsApp.
+HOW YOU TALK:
+- Short. 1–3 sentences MAX. Never write paragraphs.
+- Casual, warm Indian English — like a real person texting, not a formal email.
+- No bullet points. No numbered lists. No headers. Plain conversational text.
+- Never start with "Certainly!", "Of course!", "Sure!", "Great question!", "Absolutely!" — just reply naturally.
+- When customer says "yes" / "ok" / "sure" → immediately give the NEXT piece of info. Never ask them to confirm again.
+- Never repeat something you already said in the conversation above.
+- Always move the chat forward — ask one short follow-up question or share the next key detail.
 
-PERSONALITY:
-- You text like a real person — casual, warm, Indian English
-- Short replies. 1–3 sentences MAX. Never write paragraphs.
-- Never use bullet points, numbered lists, or headers in chat
-- Never start with "Certainly!", "Of course!", "Great question!", "I hope you're doing well"
-- Never repeat what you said before. Read the history and move the conversation forward.
-- If you don't know something exact, say "let me check and get back to you" — never guess prices
+PRICING RULES:
+- Only quote exact figures from the property database below. Never guess or estimate.
+- If asked about something not in the data (like parking charges), say "let me check that for you" — never invent numbers.
 
-WHAT YOU KNOW (from our database):
+IMAGES:
+- Only send images if customer explicitly asks ("send photos", "show me", "brochure") or on first project introduction.
+- Max 2 images per reply. Never repeat an image already sent.
+
+PROPERTY DATABASE:
 ${propertySummary}
 
-RULES:
-- Share images ONLY if customer explicitly asks ("send photos", "brochure", "how it looks") OR first message introducing a project
-- Never send same image twice (check history)
-- Max 2 images at a time
-- Prices: only quote exact figures from the database above, never estimate`;
+Customer: ${leadData.name} | Budget: ${leadData.budget ? `₹${Number(leadData.budget).toLocaleString('en-IN')}` : 'not shared'} | Looking for: ${[leadData.requirementType, leadData.bhkType, leadData.propertyType].filter(Boolean).join(' ')}
 
-    const userPrompt = `Customer name: ${leadData.name}
-Budget: ${leadData.budget ? `₹${Number(leadData.budget).toLocaleString('en-IN')}` : 'not shared'}
-Looking for: ${leadData.requirementType || ''} ${leadData.propertyType || ''} ${leadData.bhkType || ''}
+ALWAYS respond with valid JSON only — no extra text:
+{"text": "your reply", "imageUrls": []}`;
 
-Recent chat (last few messages):
-${recentHistory || 'No history yet — this is the first message'}
-
-Customer just sent:
-"${message}"
-
-Reply as Priya. Short. Human. WhatsApp style. If images are relevant, include their URLs.
-
-Respond ONLY as JSON:
-{"text": "your reply here", "imageUrls": []}`;
+    // Build the messages array: system + real conversation turns + current message
+    // This gives the model TRUE conversational memory — it sees what it already said
+    const conversationMessages = [
+      { role: 'system' as const, content: systemPrompt },
+      ...history.slice(-12), // last 12 turns as real message objects
+      { role: 'user' as const, content: message },
+    ];
 
     try {
       const response = await axios.post(
         API_URL,
         {
           model: MODELS.CHAT_REALTIME,
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userPrompt },
-          ],
+          messages: conversationMessages,
           response_format: { type: 'json_object' },
-          temperature: 0.55,  // natural variation — avoids repetitive robotic phrasing
-          max_tokens: 160,    // hard cap — forces short WhatsApp-length replies
+          temperature: 0.6,  // natural variation — prevents robotic repetition
+          max_tokens: 160,   // hard cap forces short WhatsApp-length replies
         },
         {
           headers: {
@@ -214,16 +214,15 @@ Respond ONLY as JSON:
 
       try {
         const parsed = JSON.parse(content);
-        let imageUrls: string[] | undefined = undefined;
-        if (Array.isArray(parsed.imageUrls) && parsed.imageUrls.length > 0) {
-          imageUrls = (parsed.imageUrls as unknown[])
-            .filter((url): url is string => typeof url === 'string' && url.startsWith('http'))
-            .slice(0, 2); // max 2 images
-        }
+        const imageUrls = Array.isArray(parsed.imageUrls)
+          ? (parsed.imageUrls as unknown[])
+              .filter((url): url is string => typeof url === 'string' && url.startsWith('http'))
+              .slice(0, 2)
+          : [];
 
         const text = typeof parsed.text === 'string' ? parsed.text.trim() : content;
-        return { text, imageUrls: imageUrls?.length ? imageUrls : undefined };
-      } catch (e) {
+        return { text, imageUrls: imageUrls.length ? imageUrls : undefined };
+      } catch {
         this.logger.warn('[AI Chat] Response not valid JSON, using raw text');
         return { text: content };
       }
