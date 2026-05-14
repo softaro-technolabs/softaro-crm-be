@@ -1217,52 +1217,179 @@ export class LeadsService {
   // ─── Export Leads to Excel ───────────────────────────────────────────────────
 
   async exportLeadsToXlsx(tenantId: string, query: LeadListQueryDto): Promise<Buffer> {
-    // Fetch up to 5000 leads for export
-    const exportQuery: LeadListQueryDto = { ...query, limit: 5000, page: 1 };
-    const { data: leadRows } = await this.listLeads(tenantId, exportQuery);
-
-    let XLSX: typeof import('xlsx');
-    try {
-      XLSX = await import('xlsx');
-    } catch {
-      throw new InternalServerErrorException('Spreadsheet library not available.');
+    // ── 1. Fetch all lead data with every field ──────────────────────────────
+    const baseFilters: SQL[] = [eq(leads.tenantId, tenantId)];
+    if (query.statusId)        baseFilters.push(eq(leads.statusId, query.statusId));
+    if (query.assignedToUserId) baseFilters.push(eq(leads.assignedToUserId, query.assignedToUserId));
+    if (query.search) {
+      const sf = PaginationUtil.buildSearchFilter({ fields: [leads.name, leads.email, leads.phone], term: query.search });
+      if (sf) baseFilters.push(sf);
     }
+    const whereClause = PaginationUtil.buildFilters(baseFilters);
 
-    const rows = leadRows.map((row: any) => ({
-      'ID': row.lead?.id ?? row.id ?? '',
-      'Name': row.lead?.name ?? row.name ?? '',
-      'Phone': row.lead?.phone ?? row.phone ?? '',
-      'Email': row.lead?.email ?? row.email ?? '',
-      'Requirement': row.lead?.requirementType ?? row.requirementType ?? '',
-      'Property Type': row.lead?.propertyType ?? row.propertyType ?? '',
-      'Category': row.lead?.propertyCategory ?? row.propertyCategory ?? '',
-      'BHK': row.lead?.bhkType ?? row.bhkType ?? '',
-      'Budget': row.lead?.budget ?? row.budget ?? '',
-      'Lead Source': row.lead?.leadSource ?? row.leadSource ?? '',
-      'Capture Channel': row.lead?.captureChannel ?? row.captureChannel ?? '',
-      'Lead Score': row.lead?.leadScore ?? row.leadScore ?? 0,
-      'Lead Label': row.lead?.leadLabel ?? row.leadLabel ?? '',
-      'Status': row.status?.name ?? '',
-      'Assigned To': row.assignee?.name ?? '',
-      'Last Contacted': row.lead?.lastContactedAt ?? row.lastContactedAt ?? '',
-      'Next Follow Up': row.lead?.nextFollowUpAt ?? row.nextFollowUpAt ?? '',
-      'Notes': row.lead?.notes ?? row.notes ?? '',
-      'Created At': row.lead?.createdAt ?? row.createdAt ?? '',
-    }));
+    const rows = await this.db
+      .select({
+        id:               leads.id,
+        name:             leads.name,
+        phone:            leads.phone,
+        email:            leads.email,
+        requirementType:  leads.requirementType,
+        propertyType:     leads.propertyType,
+        propertyCategory: leads.propertyCategory,
+        bhkType:          leads.bhkType,
+        budget:           leads.budget,
+        leadSource:       leads.leadSource,
+        captureChannel:   leads.captureChannel,
+        leadScore:        leads.leadScore,
+        leadLabel:        leads.leadLabel,
+        notes:            leads.notes,
+        lastContactedAt:  leads.lastContactedAt,
+        nextFollowUpAt:   leads.nextFollowUpAt,
+        createdAt:        leads.createdAt,
+        statusName:       leadStatuses.name,
+        assignedToName:   users.name,
+      })
+      .from(leads)
+      .leftJoin(leadStatuses, eq(leads.statusId, leadStatuses.id))
+      .leftJoin(users,        eq(leads.assignedToUserId, users.id))
+      .where(whereClause || undefined)
+      .orderBy(desc(leads.createdAt))
+      .limit(5000);
 
-    const worksheet = XLSX.utils.json_to_sheet(rows);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Leads');
+    // ── 2. Build styled workbook with ExcelJS ────────────────────────────────
+    const ExcelJS = await import('exceljs');
+    const workbook  = new ExcelJS.default.Workbook();
 
-    // Set column widths
-    worksheet['!cols'] = [
-      { wch: 36 }, { wch: 25 }, { wch: 18 }, { wch: 30 },
-      { wch: 12 }, { wch: 15 }, { wch: 15 }, { wch: 8 },
-      { wch: 15 }, { wch: 15 }, { wch: 18 }, { wch: 12 },
-      { wch: 10 }, { wch: 20 }, { wch: 25 }, { wch: 20 },
-      { wch: 20 }, { wch: 40 }, { wch: 22 },
+    workbook.creator  = 'Softaro CRM';
+    workbook.created  = new Date();
+    workbook.modified = new Date();
+
+    const sheet = workbook.addWorksheet('Leads', {
+      views: [{ state: 'frozen', ySplit: 1 }], // freeze header row
+      pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1 },
+    });
+
+    // ── Column definitions ───────────────────────────────────────────────────
+    sheet.columns = [
+      { header: 'Name',          key: 'name',            width: 28 },
+      { header: 'Phone',         key: 'phone',           width: 18 },
+      { header: 'Email',         key: 'email',           width: 32 },
+      { header: 'Status',        key: 'statusName',      width: 20 },
+      { header: 'Assigned To',   key: 'assignedToName',  width: 22 },
+      { header: 'AI Label',      key: 'leadLabel',       width: 12 },
+      { header: 'AI Score',      key: 'leadScore',       width: 12 },
+      { header: 'Requirement',   key: 'requirementType', width: 16 },
+      { header: 'Property Type', key: 'propertyType',    width: 16 },
+      { header: 'Category',      key: 'propertyCategory',width: 16 },
+      { header: 'BHK',           key: 'bhkType',         width: 10 },
+      { header: 'Budget (₹)',    key: 'budget',          width: 16 },
+      { header: 'Lead Source',   key: 'leadSource',      width: 18 },
+      { header: 'Next Follow Up',key: 'nextFollowUpAt',  width: 22 },
+      { header: 'Last Contacted',key: 'lastContactedAt', width: 22 },
+      { header: 'Notes',         key: 'notes',           width: 40 },
+      { header: 'Created At',    key: 'createdAt',       width: 22 },
     ];
 
-    return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
+    // ── Style header row ─────────────────────────────────────────────────────
+    const headerRow = sheet.getRow(1);
+    headerRow.height = 32;
+    headerRow.eachCell((cell) => {
+      cell.fill   = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1B2D4F' } }; // navy
+      cell.font   = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11, name: 'Calibri' };
+      cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: false };
+      cell.border = {
+        bottom: { style: 'medium', color: { argb: 'FFC9A227' } }, // gold bottom border
+      };
+    });
+
+    // ── AI Label color helper ────────────────────────────────────────────────
+    const labelFill = (label: string | null): string => {
+      if (label === 'hot')  return 'FFFDE8E8'; // light rose
+      if (label === 'warm') return 'FFFEF3C7'; // light amber
+      if (label === 'cold') return 'FFDBEAFE'; // light blue
+      return 'FFFFFFFF';
+    };
+    const labelFont = (label: string | null): string => {
+      if (label === 'hot')  return 'FFC0392B';
+      if (label === 'warm') return 'FFD97706';
+      if (label === 'cold') return 'FF2563EB';
+      return 'FF374151';
+    };
+
+    // ── Add data rows ────────────────────────────────────────────────────────
+    const fmt = (d: Date | string | null | undefined) =>
+      d ? new Date(d as string).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+
+    rows.forEach((r, idx) => {
+      const isEven   = idx % 2 === 0;
+      const rowBg    = isEven ? 'FFF8FAFD' : 'FFFFFFFF'; // very subtle alternating stripe
+      const dataRow  = sheet.addRow({
+        name:             r.name           ?? '',
+        phone:            r.phone          ?? '',
+        email:            r.email          ?? '',
+        statusName:       r.statusName     ?? '',
+        assignedToName:   r.assignedToName ?? '',
+        leadLabel:        r.leadLabel      ? (r.leadLabel as string).toUpperCase() : '—',
+        leadScore:        r.leadScore      ?? '',
+        requirementType:  r.requirementType  ?? '',
+        propertyType:     r.propertyType     ?? '',
+        propertyCategory: r.propertyCategory ?? '',
+        bhkType:          r.bhkType          ?? '',
+        budget:           r.budget           ? Number(r.budget) : '',
+        leadSource:       r.leadSource       ?? '',
+        nextFollowUpAt:   fmt(r.nextFollowUpAt),
+        lastContactedAt:  fmt(r.lastContactedAt),
+        notes:            r.notes ?? '',
+        createdAt:        fmt(r.createdAt),
+      });
+
+      dataRow.height = 22;
+
+      dataRow.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+        // Alternating row background
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowBg } };
+
+        // Thin border on every cell
+        cell.border = {
+          top:    { style: 'thin', color: { argb: 'FFE5E7EB' } },
+          bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+          left:   { style: 'thin', color: { argb: 'FFE5E7EB' } },
+          right:  { style: 'thin', color: { argb: 'FFE5E7EB' } },
+        };
+
+        cell.font      = { name: 'Calibri', size: 10, color: { argb: 'FF111827' } };
+        cell.alignment = { vertical: 'middle', wrapText: false };
+
+        // AI Label column (col 6) — colored badge style
+        if (colNumber === 6) {
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: labelFill(r.leadLabel) } };
+          cell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: labelFont(r.leadLabel) } };
+          cell.alignment = { vertical: 'middle', horizontal: 'center' };
+        }
+
+        // AI Score column (col 7) — center align
+        if (colNumber === 7) {
+          cell.alignment = { vertical: 'middle', horizontal: 'center' };
+          cell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF1B2D4F' } };
+        }
+
+        // Budget column (col 12) — right align, number format
+        if (colNumber === 12 && typeof cell.value === 'number') {
+          cell.numFmt    = '₹#,##0';
+          cell.alignment = { vertical: 'middle', horizontal: 'right' };
+        }
+      });
+    });
+
+    // ── Summary row at the bottom ────────────────────────────────────────────
+    sheet.addRow([]); // blank spacer
+    const summaryRow = sheet.addRow([`Total Leads: ${rows.length}`, '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', `Exported: ${new Date().toLocaleString('en-IN')}`]);
+    summaryRow.height = 20;
+    summaryRow.eachCell({ includeEmpty: false }, (cell) => {
+      cell.font  = { name: 'Calibri', size: 10, bold: true, italic: true, color: { argb: 'FF6B7280' } };
+      cell.fill  = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3F4F6' } };
+    });
+
+    return Buffer.from(await workbook.xlsx.writeBuffer() as ArrayBuffer);
   }
 }
