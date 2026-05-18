@@ -42,6 +42,7 @@ import { AuditLogsModule } from './audit-logs/audit-logs.module';
 import { CallLogsModule } from './call-logs/call-logs.module';
 import { LeadOptionsModule } from './lead-options/lead-options.module';
 import { PropertyEntityTypesModule } from './property-entity-types/property-entity-types.module';
+import { WebhooksModule } from './webhooks/webhooks.module';
 
 @Module({
   imports: [
@@ -95,6 +96,7 @@ import { PropertyEntityTypesModule } from './property-entity-types/property-enti
     CallLogsModule,
     LeadOptionsModule,
     PropertyEntityTypesModule,
+    WebhooksModule,
   ],
   providers: [
     MigrationService,
@@ -107,6 +109,9 @@ import { PropertyEntityTypesModule } from './property-entity-types/property-enti
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
-    consumer.apply(TenantMiddleware).forRoutes('*');
+    consumer
+      .apply(TenantMiddleware)
+      .exclude('webhooks/(.*)')   // webhook routes handle tenant resolution themselves
+      .forRoutes('*');
   }
 }

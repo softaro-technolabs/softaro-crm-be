@@ -926,12 +926,26 @@ export class LeadsService {
     if (!source) {
       return undefined;
     }
-    const normalized = source.toLowerCase();
-    const allowed = ['facebook', 'google', 'referral', 'website', 'walk_in', 'other'];
-    if (allowed.includes(normalized)) {
+    const normalized = source.toLowerCase().replace(/[^a-z0-9_]/g, '_');
+    const allowed: CreateLeadDto['leadSource'][] = [
+      'facebook', 'instagram', 'google', 'youtube', 'linkedin',
+      'whatsapp', 'referral', 'website', 'walk_in',
+      '99acres', 'magicbricks', 'housing_com', 'indiamart', 'sulekha',
+      'ivr_call', 'chatbot', 'other',
+    ];
+    if (allowed.includes(normalized as CreateLeadDto['leadSource'])) {
       return normalized as CreateLeadDto['leadSource'];
     }
-    return 'other';
+    // Fuzzy match common variations
+    if (normalized.includes('99') || normalized.includes('acres'))    return '99acres';
+    if (normalized.includes('magic') || normalized.includes('brick')) return 'magicbricks';
+    if (normalized.includes('housing') || normalized.includes('proptiger')) return 'housing_com';
+    if (normalized.includes('india') || normalized.includes('mart')) return 'indiamart';
+    if (normalized.includes('sulekha'))  return 'sulekha';
+    if (normalized.includes('facebook') || normalized.includes('fb')) return 'facebook';
+    if (normalized.includes('google'))   return 'google';
+    if (normalized.includes('whatsapp')) return 'whatsapp';
+    return 'other' as CreateLeadDto['leadSource'];
   }
 
   private serializeBudget(value?: number | null) {
