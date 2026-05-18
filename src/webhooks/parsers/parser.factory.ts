@@ -18,7 +18,7 @@ export function parsePortalEmail(
 
   if (!body) return null;
 
-  if (sender.includes('99acres.com')) {
+  if (sender.includes('99acres.com') || sender.includes('nnacres')) {
     return parse99AcresEmail(body);
   }
   if (sender.includes('housing.com') || sender.includes('proptiger.com') || sender.includes('rea.com')) {

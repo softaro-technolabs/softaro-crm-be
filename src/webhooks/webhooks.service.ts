@@ -117,6 +117,8 @@ export class WebhooksService {
 
     if (!parsed) {
       this.logger.warn(`[Webhook] Could not parse email from ${sender} for tenant ${tenantSlug}`);
+      // TEMP: log body so we can capture verification emails (e.g. Gmail forwarding code)
+      this.logger.warn(`[Webhook] BODY_PLAIN: ${(bodyPlain ?? '').substring(0, 1000)}`);
       await this.auditLogsService.log(
         tenant.id, 'webhook.email_parse_failed', 'webhook', null,
         { sender, subject: payload.subject, tenantSlug }, 'system',
