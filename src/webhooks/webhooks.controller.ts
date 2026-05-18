@@ -202,9 +202,16 @@ function resolveOriginalSender(rawSender: string, headers: string, subject: stri
     return fromHeader[1].toLowerCase();
   }
 
-  // 4. Subject-based heuristic for known portals
-  const sub = subject.toLowerCase();
-  if (sub.includes('99acres') || sub.includes('buyer response') || sub.includes('new enquiry')) {
+  // 4. Subject-based heuristic for known portals (strip Fwd:/Re: prefix first)
+  const sub = subject.toLowerCase().replace(/^(fwd?:|re:|fw:)\s*/gi, '').trim();
+  if (
+    sub.includes('99acres') ||
+    sub.includes('buyer response') ||
+    sub.includes('dealer response') ||
+    sub.includes('new enquiry') ||
+    sub.includes('new lead') ||
+    sub.includes('property enquiry')
+  ) {
     return 'noreply@99acres.com';
   }
   if (sub.includes('housing.com') || sub.includes('proptiger')) {
