@@ -87,8 +87,16 @@ export class WebhooksService {
     subject?: string;
     bodyPlain?: string;
     bodyHtml?: string;
+    rawHeaders?: string;
   }): Promise<{ success: boolean; message: string }> {
-    const { recipient, sender, bodyPlain, bodyHtml } = payload;
+    const { recipient, sender, bodyPlain, bodyHtml, rawHeaders } = payload;
+
+    // When Gmail forwards an email the body/plain can be empty because the
+    // original content is wrapped as an RFC822 attachment. In that case, try
+    // to pull text from the HTML or from the raw charsets/content block.
+    const effectivePlain = bodyPlain?.trim()
+      || this.extractForwardedBody(bodyHtml ?? '', rawHeaders ?? '')
+      || '';
 
     // Resolve tenant from recipient address: {tenant-slug}@leads.yourdomain.com
     const tenantSlug = recipient.split('@')[0]?.toLowerCase();
@@ -113,12 +121,10 @@ export class WebhooksService {
       return { success: false, message: 'Tenant inactive' };
     }
 
-    const parsed = parsePortalEmail(sender, bodyPlain ?? '', bodyHtml);
+    const parsed = parsePortalEmail(sender, effectivePlain, bodyHtml);
 
     if (!parsed) {
-      this.logger.warn(`[Webhook] Could not parse email from ${sender} for tenant ${tenantSlug}`);
-      // TEMP: log body so we can capture verification emails (e.g. Gmail forwarding code)
-      this.logger.warn(`[Webhook] BODY_PLAIN: ${(bodyPlain ?? '').substring(0, 1000)}`);
+      this.logger.warn(`[Webhook] Could not parse email from ${sender} | subject: "${payload.subject}" | bodyLen: ${effectivePlain.length}`);
       await this.auditLogsService.log(
         tenant.id, 'webhook.email_parse_failed', 'webhook', null,
         { sender, subject: payload.subject, tenantSlug }, 'system',
@@ -160,5 +166,30 @@ export class WebhooksService {
       this.logger.error(`[Webhook] Failed to create lead: ${msg}`);
       return { success: false, message: msg };
     }
+  }
+
+  // ── Private helpers ────────────────────────────────────────────────────────
+
+  /**
+   * When Gmail (or another service) forwards an email, the original body is
+   * sometimes wrapped as an RFC822 attachment — leaving text/plain empty.
+   * This method tries to recover usable text from the HTML body or raw headers.
+   */
+  private extractForwardedBody(html: string, _headers: string): string {
+    if (!html) return '';
+
+    // Strip HTML tags and decode entities to get readable plain text
+    return html
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/(?:p|div|tr|td|li|h[1-6])>/gi, '\n')
+      .replace(/<[^>]+>/g, '')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&#39;/g, "'")
+      .replace(/&quot;/g, '"')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
   }
 }

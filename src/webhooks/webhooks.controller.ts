@@ -84,19 +84,27 @@ export class WebhooksController {
     const recipient = envelopeTo
       ?? body['recipient'] ?? body['to']   ?? body['To']   ?? '';
 
-    const sender    = envelopeFrom
+    const rawSender = envelopeFrom
       ?? body['sender']    ?? body['from'] ?? body['From'] ?? '';
 
     const subject   = body['subject']    ?? body['Subject']       ?? '';
     const bodyPlain = body['text']       ?? body['body-plain']    ?? body['stripped-text'] ?? '';
     const bodyHtml  = body['html']       ?? body['body-html']     ?? body['stripped-html'] ?? '';
+    const rawHeaders = body['headers']   ?? '';
 
-    if (!recipient || !sender) {
+    if (!recipient || !rawSender) {
       this.logger.warn(`[Webhook] Missing recipient or sender — body keys: ${Object.keys(body).join(', ')}`);
       return { success: false, message: 'Missing recipient or sender' };
     }
 
-    this.logger.log(`[Webhook] Inbound email: ${sender} → ${recipient}`);
+    // ── Resolve effective sender ──────────────────────────────────────────────
+    // When Gmail forwards an email it rewrites the SMTP envelope sender to
+    // something like: satweek+caf_=slug=leads.domain.com@gmail.com
+    // The ORIGINAL sender (e.g. nnacres-services@99acres.com) is preserved
+    // inside the raw email headers as "X-Forwarded-To" / "From" / "X-Original-From".
+    const sender = resolveOriginalSender(rawSender, rawHeaders, subject);
+
+    this.logger.log(`[Webhook] Inbound email: ${rawSender} → ${recipient} (resolved sender: ${sender})`);
 
     return this.webhooksService.handleInboundEmail({
       recipient,
@@ -104,6 +112,7 @@ export class WebhooksController {
       subject,
       bodyPlain,
       bodyHtml,
+      rawHeaders,
     });
   }
 
@@ -162,4 +171,54 @@ export class WebhooksController {
       body.message  && `Message : ${body.message}`,
     ].filter(Boolean).join('\n');
   }
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/**
+ * When Gmail (or any forwarder) rewrites the SMTP envelope sender, the original
+ * portal sender is still embedded in the raw email headers.
+ * This function tries to recover it so our portal parsers still work.
+ *
+ * Priority:
+ *  1. X-Original-From header
+ *  2. Reply-To header  (99acres sets this to their own address)
+ *  3. "From:" line inside raw headers
+ *  4. Subject-based heuristic (last resort)
+ *  5. rawSender as-is
+ */
+function resolveOriginalSender(rawSender: string, headers: string, subject: string): string {
+  // 1. X-Original-From
+  const xOriginal = headers.match(/^X-Original-From:\s*.*?([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})/im);
+  if (xOriginal?.[1]) return xOriginal[1].toLowerCase();
+
+  // 2. Reply-To
+  const replyTo = headers.match(/^Reply-To:\s*.*?([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})/im);
+  if (replyTo?.[1]) return replyTo[1].toLowerCase();
+
+  // 3. "From:" header line (skip if it matches the rewritten Gmail address)
+  const fromHeader = headers.match(/^From:\s*.*?([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})/im);
+  if (fromHeader?.[1] && !fromHeader[1].includes('gmail.com') && !fromHeader[1].includes('+caf_')) {
+    return fromHeader[1].toLowerCase();
+  }
+
+  // 4. Subject-based heuristic for known portals
+  const sub = subject.toLowerCase();
+  if (sub.includes('99acres') || sub.includes('buyer response') || sub.includes('new enquiry')) {
+    return 'noreply@99acres.com';
+  }
+  if (sub.includes('housing.com') || sub.includes('proptiger')) {
+    return 'noreply@housing.com';
+  }
+  if (sub.includes('magicbricks')) {
+    return 'noreply@magicbricks.com';
+  }
+  if (sub.includes('indiamart')) {
+    return 'noreply@indiamart.com';
+  }
+  if (sub.includes('sulekha')) {
+    return 'noreply@sulekha.com';
+  }
+
+  return rawSender;
 }
