@@ -45,13 +45,33 @@ async function bootstrap() {
     .split(',')
     .map((o) => o.trim());
 
+  // Wildcard subdomain patterns — entries starting with "*." are treated as
+  // suffix matches so any subdomain is allowed automatically, e.g.
+  //   *.softarotechnolabs.com  →  rk-group.softarotechnolabs.com  ✓
+  //   *.softarotechnolabs.local →  rk-group.softarotechnolabs.local ✓
+  const wildcardSuffixes = allowedOrigins
+    .filter((o) => o.startsWith('*.'))
+    .map((o) => o.slice(1)); // keep the leading dot: ".softarotechnolabs.com"
+
+  const isOriginAllowed = (origin: string): boolean => {
+    if (allowedOrigins.includes('*') || allowedOrigins.includes(origin)) return true;
+
+    // Check wildcard suffix patterns (scheme + optional port aware)
+    for (const suffix of wildcardSuffixes) {
+      try {
+        const url = new URL(origin);
+        // suffix is like ".softarotechnolabs.com"; host must end with it
+        if (url.hostname.endsWith(suffix) || url.host.endsWith(suffix)) return true;
+      } catch { /* invalid origin — fall through */ }
+    }
+    return false;
+  };
+
   app.enableCors({
     origin: (origin, callback) => {
       // Allow requests with no origin (mobile apps, curl, Postman, server-to-server)
       if (!origin) return callback(null, true);
-      if (allowedOrigins.includes(origin) || allowedOrigins.includes('*')) {
-        return callback(null, true);
-      }
+      if (isOriginAllowed(origin)) return callback(null, true);
       return callback(new Error(`CORS: origin ${origin} not allowed`), false);
     },
     credentials: true,
