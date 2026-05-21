@@ -39,32 +39,38 @@ async function bootstrap() {
     })
   );
 
-  // ─── CORS (origin-scoped) ────────────────────────────────────────────────────
-  const allowedOrigins = configService
-    .get<string>('ALLOWED_ORIGINS', 'http://localhost:5174,http://localhost:3000')
-    .split(',')
-    .map((o) => o.trim());
+  // ─── CORS ────────────────────────────────────────────────────────────────────
+  // Exact origins always allowed
+  const exactOrigins = [
+    'http://localhost:3000',
+    'http://localhost:5173',
+    'http://localhost:5174',
+    'https://estateos.softarotechnolabs.com',
+    'https://www.estateos.softarotechnolabs.com',
+  ];
 
-  // Wildcard subdomain patterns — entries starting with "*." are treated as
-  // suffix matches so any subdomain is allowed automatically, e.g.
-  //   *.softarotechnolabs.com  →  rk-group.softarotechnolabs.com  ✓
-  //   *.softarotechnolabs.local →  rk-group.softarotechnolabs.local ✓
-  const wildcardSuffixes = allowedOrigins
-    .filter((o) => o.startsWith('*.'))
-    .map((o) => o.slice(1)); // keep the leading dot: ".softarotechnolabs.com"
+  // Any subdomain of these base domains is allowed (agent portals)
+  const wildcardDomains = [
+    '.softarotechnolabs.com',
+    '.softarotechnolabs.local',
+  ];
+
+  // Merge with anything extra set via ALLOWED_ORIGINS env (optional override)
+  const envOrigins = configService
+    .get<string>('ALLOWED_ORIGINS', '')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
 
   const isOriginAllowed = (origin: string): boolean => {
-    if (allowedOrigins.includes('*') || allowedOrigins.includes(origin)) return true;
-
-    // Check wildcard suffix patterns (scheme + optional port aware)
-    for (const suffix of wildcardSuffixes) {
-      try {
-        const url = new URL(origin);
-        // suffix is like ".softarotechnolabs.com"; host must end with it
-        if (url.hostname.endsWith(suffix) || url.host.endsWith(suffix)) return true;
-      } catch { /* invalid origin — fall through */ }
+    if ([...exactOrigins, ...envOrigins].includes(origin)) return true;
+    if (envOrigins.includes('*')) return true;
+    try {
+      const { hostname } = new URL(origin);
+      return wildcardDomains.some((d) => hostname === d.slice(1) || hostname.endsWith(d));
+    } catch {
+      return false;
     }
-    return false;
   };
 
   app.enableCors({
