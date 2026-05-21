@@ -4,7 +4,8 @@ import { randomUUID } from 'crypto';
 
 import { DRIZZLE } from '../database/database.constants';
 import type { DrizzleDatabase } from '../database/database.types';
-import { tenants, userTenants, leads } from '../database/schema';
+import { tenants, userTenants, leads, siteVisits, leadActivities, leadStatuses } from '../database/schema';
+import { and } from 'drizzle-orm';
 import { desc } from 'drizzle-orm';
 import { CreateTenantDto, UpdateTenantDto, TenantListQueryDto } from './tenants.dto';
 import { PaginationUtil } from '../common/utils/pagination.util';
@@ -180,6 +181,66 @@ export class TenantsService {
       .where(eq(leads.tenantId, tenantId))
       .orderBy(desc(leads.createdAt))
       .limit(50);
+  }
+
+  /**
+   * Create a site visit record directly from the public portal — no auth required.
+   * Inserts the visit + a lead-timeline activity, and moves the lead status to
+   * "site_visit_scheduled" if that status exists for the tenant.
+   */
+  async publicCreateSiteVisit(
+    tenantId: string,
+    dto: { leadId: string; propertyId?: string; visitDate: string; notes?: string }
+  ) {
+    const id  = randomUUID();
+    const now = new Date();
+
+    await this.db.transaction(async (tx) => {
+      // 1. Insert site visit
+      await tx.insert(siteVisits).values({
+        id,
+        tenantId,
+        leadId:     dto.leadId,
+        propertyId: dto.propertyId ?? null,
+        visitDate:  new Date(dto.visitDate),
+        notes:      dto.notes ?? null,
+        status:     'scheduled',
+        createdAt:  now,
+        updatedAt:  now,
+      });
+
+      // 2. Add lead timeline activity
+      await tx.insert(leadActivities).values({
+        id:               randomUUID(),
+        tenantId,
+        leadId:           dto.leadId,
+        type:             'meeting',
+        title:            'Site Visit Requested',
+        note:             dto.notes || 'Site visit requested via agent portal.',
+        metadata:         { siteVisitId: id, visitDate: dto.visitDate, source: 'agent_portal' },
+        happenedAt:       now,
+        createdByUserId:  null,
+        createdAt:        now,
+      });
+
+      // 3. Advance lead status to "site_visit_scheduled" if it exists
+      const [statusRow] = await tx
+        .select({ id: leadStatuses.id })
+        .from(leadStatuses)
+        .where(and(
+          eq(leadStatuses.tenantId, tenantId),
+          eq(leadStatuses.slug, 'site_visit_scheduled'),
+        ))
+        .limit(1);
+
+      if (statusRow) {
+        await tx.update(leads)
+          .set({ statusId: statusRow.id, updatedAt: now })
+          .where(and(eq(leads.id, dto.leadId), eq(leads.tenantId, tenantId)));
+      }
+    });
+
+    return { id, visitDate: dto.visitDate };
   }
 }
 

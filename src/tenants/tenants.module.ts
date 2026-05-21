@@ -6,9 +6,10 @@ import { DatabaseModule } from '../database/database.module';
 import { UsersModule } from '../users/users.module';
 import { RolesModule } from '../roles/roles.module';
 import { PropertiesModule } from '../properties/properties.module';
+import { LeadsModule } from '../leads/leads.module';
 
 @Module({
-  imports: [DatabaseModule, UsersModule, RolesModule, PropertiesModule],
+  imports: [DatabaseModule, UsersModule, RolesModule, PropertiesModule, LeadsModule],
   controllers: [TenantsController, PublicTenantsController],
   providers: [TenantsService],
   exports: [TenantsService]
