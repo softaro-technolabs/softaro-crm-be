@@ -601,10 +601,14 @@ export class AttendanceService {
     if (query.userId) filters.push(eq(leaveRequests.userId, query.userId));
     if (query.status) filters.push(eq(leaveRequests.status, query.status as any));
 
-    const [results, totalRows] = await Promise.all([
+    const [rows, totalRows] = await Promise.all([
       this.db
-        .select()
+        .select({
+          request: leaveRequests,
+          user: { id: users.id, name: users.name, email: users.email },
+        })
         .from(leaveRequests)
+        .leftJoin(users, eq(leaveRequests.userId, users.id))
         .where(and(...filters))
         .orderBy(desc(leaveRequests.createdAt))
         .limit(limit)
@@ -615,6 +619,7 @@ export class AttendanceService {
         .where(and(...filters)),
     ]);
 
+    const results = rows.map((r) => ({ ...r.request, user: r.user }));
     const total = totalRows.length ? Number(totalRows[0].count) : 0;
     return PaginationUtil.buildPaginatedResult(results, total, page, limit);
   }
