@@ -1,6 +1,7 @@
 import {
   index,
   integer,
+  numeric,
   pgEnum,
   pgTable,
   text,
@@ -32,6 +33,11 @@ export const siteVisits = pgTable(
     feedback: text('feedback'),
     rating: integer('rating'), // 1-5
     notes: text('notes'),
+    // Location proof columns (for attendance integration)
+    checkInLatitude: numeric('check_in_latitude', { precision: 10, scale: 7 }),
+    checkInLongitude: numeric('check_in_longitude', { precision: 10, scale: 7 }),
+    checkInSelfieUrl: varchar('check_in_selfie_url', { length: 2000 }),
+    actualVisitTime: timestamp('actual_visit_time', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull()
   },

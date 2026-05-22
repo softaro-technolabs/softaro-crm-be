@@ -30,3 +30,4 @@ export * from './audit-logs.schema';
 export * from './call-logs.schema';
 export * from './whatsapp-templates.schema';
 export * from './property-entity-types.schema';
+export * from './attendance.schema';

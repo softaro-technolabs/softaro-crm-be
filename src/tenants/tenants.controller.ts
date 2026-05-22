@@ -1,17 +1,41 @@
-import { Body, Controller, Get, Param, Post, Put, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { TenantsService } from './tenants.service';
-import { CreateTenantDto, UpdateTenantDto, TenantListQueryDto } from './tenants.dto';
+import { CreateTenantDto, UpdateTenantDto, UpdateTenantSettingsDto, TenantListQueryDto } from './tenants.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { SuperAdminGuard } from '../auth/super-admin.guard';
+import { RequestContextService } from '../common/utils/request-context.service';
 
 @ApiTags('Tenants')
 @Controller('tenants')
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class TenantsController {
-  constructor(private readonly tenantsService: TenantsService) {}
+  constructor(
+    private readonly tenantsService: TenantsService,
+    private readonly requestContext: RequestContextService,
+  ) {}
+
+  // ── Self-service settings (no SuperAdmin required) ─────────────────────────
+
+  @Get('me/settings')
+  @ApiOperation({ summary: 'Get current tenant settings (branding, contact, etc.)' })
+  async getMySettings() {
+    const tenantId = this.requestContext.getTenantId();
+    if (!tenantId) throw new Error('Tenant context not found');
+    return this.tenantsService.findById(tenantId);
+  }
+
+  @Patch('me/settings')
+  @ApiOperation({ summary: 'Update current tenant settings (branding, contact, portal config)' })
+  async updateMySettings(@Body() dto: UpdateTenantSettingsDto) {
+    const tenantId = this.requestContext.getTenantId();
+    if (!tenantId) throw new Error('Tenant context not found');
+    return this.tenantsService.update(tenantId, dto);
+  }
+
+  // ── Super Admin endpoints ──────────────────────────────────────────────────
 
   @Post()
   @UseGuards(SuperAdminGuard)

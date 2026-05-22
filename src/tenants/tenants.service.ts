@@ -5,7 +5,7 @@ import { randomUUID } from 'crypto';
 import { DRIZZLE } from '../database/database.constants';
 import type { DrizzleDatabase } from '../database/database.types';
 import { tenants, userTenants, leads, siteVisits, leadActivities, leadStatuses } from '../database/schema';
-import { and } from 'drizzle-orm';
+import { and, gte, lte } from 'drizzle-orm';
 import { desc } from 'drizzle-orm';
 import { CreateTenantDto, UpdateTenantDto, TenantListQueryDto } from './tenants.dto';
 import { PaginationUtil } from '../common/utils/pagination.util';
@@ -181,6 +181,57 @@ export class TenantsService {
       .where(eq(leads.tenantId, tenantId))
       .orderBy(desc(leads.createdAt))
       .limit(50);
+  }
+
+  /** Today's scheduled site visits with lead name + phone */
+  async getTodayVisits(tenantId: string) {
+    const now   = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+    const end   = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+
+    const rows = await this.db
+      .select({
+        id:           siteVisits.id,
+        visitDate:    siteVisits.visitDate,
+        status:       siteVisits.status,
+        notes:        siteVisits.notes,
+        leadId:       siteVisits.leadId,
+        propertyId:   siteVisits.propertyId,
+        leadName:     leads.name,
+        leadPhone:    leads.phone,
+        leadBhk:      leads.bhkType,
+        leadBudget:   leads.budget,
+      })
+      .from(siteVisits)
+      .leftJoin(leads, eq(leads.id, siteVisits.leadId))
+      .where(and(
+        eq(siteVisits.tenantId, tenantId),
+        gte(siteVisits.visitDate, start),
+        lte(siteVisits.visitDate, end),
+      ))
+      .orderBy(siteVisits.visitDate);
+
+    return rows;
+  }
+
+  /** Recent leads — last 20 for the agent portal quick view */
+  async getRecentLeads(tenantId: string) {
+    return this.db
+      .select({
+        id:          leads.id,
+        name:        leads.name,
+        phone:       leads.phone,
+        email:       leads.email,
+        budget:      leads.budget,
+        bhkType:     leads.bhkType,
+        leadSource:  leads.leadSource,
+        createdAt:   leads.createdAt,
+        locationPreference: leads.locationPreference,
+      })
+      .from(leads)
+      .where(eq(leads.tenantId, tenantId))
+      .orderBy(desc(leads.createdAt))
+      .limit(20);
   }
 
   /**

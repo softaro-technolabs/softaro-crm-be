@@ -43,6 +43,7 @@ import { CallLogsModule } from './call-logs/call-logs.module';
 import { LeadOptionsModule } from './lead-options/lead-options.module';
 import { PropertyEntityTypesModule } from './property-entity-types/property-entity-types.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
+import { AttendanceModule } from './attendance/attendance.module';
 
 @Module({
   imports: [
@@ -97,6 +98,7 @@ import { WebhooksModule } from './webhooks/webhooks.module';
     LeadOptionsModule,
     PropertyEntityTypesModule,
     WebhooksModule,
+    AttendanceModule,
   ],
   providers: [
     MigrationService,

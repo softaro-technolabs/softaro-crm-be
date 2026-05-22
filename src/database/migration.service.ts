@@ -506,6 +506,10 @@ export class MigrationService {
         // ─── Waterpark Reviews (New) ──────────────────────────────────
         await this.runWaterparkMigrations(client);
         // ─────────────────────────────────────────────────────────────
+
+        // ─── Attendance System (New) ──────────────────────────────────
+        await this.runAttendanceMigrations(client);
+        // ─────────────────────────────────────────────────────────────
       } finally {
         client.release();
       }
@@ -1358,15 +1362,260 @@ export class MigrationService {
       const manualColumns = ['review_title', 'review_text'];
       for (const col of manualColumns) {
         const colCheck = await client.query(`
-          SELECT is_nullable 
-          FROM information_schema.columns 
-          WHERE table_name = 'waterpark_reviews' 
+          SELECT is_nullable
+          FROM information_schema.columns
+          WHERE table_name = 'waterpark_reviews'
           AND column_name = '${col}'
           AND table_schema = 'public'
         `);
         if (colCheck.rows.length > 0 && colCheck.rows[0].is_nullable === 'NO') {
           this.logger.log(`Altering waterpark_reviews.${col} to be optional...`);
           await client.query(`ALTER TABLE "waterpark_reviews" ALTER COLUMN "${col}" DROP NOT NULL`);
+        }
+      }
+    }
+  }
+
+  /**
+   * Create attendance system tables + enums + site-visits column extensions.
+   * Idempotent — safe to run multiple times.
+   */
+  private async runAttendanceMigrations(client: any) {
+    // ── 1) Create enums (only if missing) ─────────────────────────────────────
+    await client.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'attendance_location_type') THEN
+          CREATE TYPE "attendance_location_type" AS ENUM ('office', 'property_site', 'custom');
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'attendance_status') THEN
+          CREATE TYPE "attendance_status" AS ENUM ('present', 'absent', 'half_day', 'on_leave', 'holiday', 'week_off');
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'attendance_checkin_location_type') THEN
+          CREATE TYPE "attendance_checkin_location_type" AS ENUM ('office', 'property_site', 'field', 'remote');
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'leave_type') THEN
+          CREATE TYPE "leave_type" AS ENUM ('casual', 'sick', 'earned', 'half_day', 'work_from_home', 'compensatory');
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'leave_request_status') THEN
+          CREATE TYPE "leave_request_status" AS ENUM ('pending', 'approved', 'rejected', 'cancelled');
+        END IF;
+      END $$;
+    `);
+
+    // ── 2) attendance_settings ────────────────────────────────────────────────
+    const settingsExists = await client.query(`SELECT to_regclass('public.attendance_settings') as t`);
+    if (!settingsExists.rows[0]?.t) {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS "attendance_settings" (
+          "id" varchar(36) PRIMARY KEY,
+          "tenant_id" varchar(36) NOT NULL,
+          "default_check_in_radius_meters" integer NOT NULL DEFAULT 200,
+          "require_selfie" boolean NOT NULL DEFAULT true,
+          "require_location" boolean NOT NULL DEFAULT true,
+          "allow_remote_check_in" boolean NOT NULL DEFAULT false,
+          "working_hours" jsonb,
+          "late_threshold_minutes" integer DEFAULT 15,
+          "half_day_threshold_hours" numeric(4,2) DEFAULT '4',
+          "full_day_threshold_hours" numeric(4,2) DEFAULT '8',
+          "auto_checkout_enabled" boolean NOT NULL DEFAULT true,
+          "auto_checkout_time" varchar(5) DEFAULT '21:00',
+          "site_visit_auto_attendance" boolean NOT NULL DEFAULT true,
+          "created_at" timestamptz NOT NULL DEFAULT now(),
+          "updated_at" timestamptz NOT NULL DEFAULT now()
+        );
+      `);
+      await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS "attendance_settings_tenant_uq" ON "attendance_settings" ("tenant_id");`);
+      this.logger.log('✓ attendance_settings table created');
+    }
+
+    // ── 3) attendance_locations ───────────────────────────────────────────────
+    const locationsExists = await client.query(`SELECT to_regclass('public.attendance_locations') as t`);
+    if (!locationsExists.rows[0]?.t) {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS "attendance_locations" (
+          "id" varchar(36) PRIMARY KEY,
+          "tenant_id" varchar(36) NOT NULL,
+          "name" varchar(255) NOT NULL,
+          "type" "attendance_location_type" NOT NULL,
+          "latitude" numeric(10,7) NOT NULL,
+          "longitude" numeric(10,7) NOT NULL,
+          "radius_meters" integer NOT NULL DEFAULT 200,
+          "address" varchar(500),
+          "property_entity_id" varchar(36) REFERENCES "property_entities"("id") ON DELETE SET NULL,
+          "is_active" boolean NOT NULL DEFAULT true,
+          "created_at" timestamptz NOT NULL DEFAULT now(),
+          "updated_at" timestamptz NOT NULL DEFAULT now()
+        );
+      `);
+      await client.query(`CREATE INDEX IF NOT EXISTS "attendance_locations_tenant_idx" ON "attendance_locations" ("tenant_id");`);
+      await client.query(`CREATE INDEX IF NOT EXISTS "attendance_locations_tenant_type_idx" ON "attendance_locations" ("tenant_id", "type");`);
+      await client.query(`CREATE INDEX IF NOT EXISTS "attendance_locations_tenant_active_idx" ON "attendance_locations" ("tenant_id", "is_active");`);
+      await client.query(`CREATE INDEX IF NOT EXISTS "attendance_locations_property_idx" ON "attendance_locations" ("property_entity_id");`);
+      this.logger.log('✓ attendance_locations table created');
+    }
+
+    // ── 4) attendance_records ─────────────────────────────────────────────────
+    const recordsExists = await client.query(`SELECT to_regclass('public.attendance_records') as t`);
+    if (!recordsExists.rows[0]?.t) {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS "attendance_records" (
+          "id" varchar(36) PRIMARY KEY,
+          "tenant_id" varchar(36) NOT NULL,
+          "user_id" varchar(36) NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+          "date" date NOT NULL,
+          "status" "attendance_status" NOT NULL DEFAULT 'present',
+          "first_check_in_at" timestamptz,
+          "last_check_out_at" timestamptz,
+          "total_working_minutes" integer DEFAULT 0,
+          "total_field_minutes" integer DEFAULT 0,
+          "total_office_minutes" integer DEFAULT 0,
+          "is_late" boolean NOT NULL DEFAULT false,
+          "late_by_minutes" integer DEFAULT 0,
+          "overtime_minutes" integer DEFAULT 0,
+          "leave_request_id" varchar(36),
+          "remarks" varchar(1000),
+          "metadata" jsonb,
+          "created_at" timestamptz NOT NULL DEFAULT now(),
+          "updated_at" timestamptz NOT NULL DEFAULT now()
+        );
+      `);
+      await client.query(`CREATE INDEX IF NOT EXISTS "attendance_records_tenant_idx" ON "attendance_records" ("tenant_id");`);
+      await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS "attendance_records_tenant_user_date_uq" ON "attendance_records" ("tenant_id", "user_id", "date");`);
+      await client.query(`CREATE INDEX IF NOT EXISTS "attendance_records_tenant_date_idx" ON "attendance_records" ("tenant_id", "date");`);
+      await client.query(`CREATE INDEX IF NOT EXISTS "attendance_records_tenant_status_idx" ON "attendance_records" ("tenant_id", "status");`);
+      await client.query(`CREATE INDEX IF NOT EXISTS "attendance_records_user_date_idx" ON "attendance_records" ("user_id", "date");`);
+      this.logger.log('✓ attendance_records table created');
+    }
+
+    // ── 5) attendance_check_ins ───────────────────────────────────────────────
+    const checkInsExists = await client.query(`SELECT to_regclass('public.attendance_check_ins') as t`);
+    if (!checkInsExists.rows[0]?.t) {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS "attendance_check_ins" (
+          "id" varchar(36) PRIMARY KEY,
+          "tenant_id" varchar(36) NOT NULL,
+          "user_id" varchar(36) NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+          "attendance_record_id" varchar(36) NOT NULL REFERENCES "attendance_records"("id") ON DELETE CASCADE,
+          "check_in_at" timestamptz NOT NULL,
+          "check_out_at" timestamptz,
+          "check_in_latitude" numeric(10,7),
+          "check_in_longitude" numeric(10,7),
+          "check_out_latitude" numeric(10,7),
+          "check_out_longitude" numeric(10,7),
+          "check_in_location_id" varchar(36) REFERENCES "attendance_locations"("id") ON DELETE SET NULL,
+          "check_out_location_id" varchar(36) REFERENCES "attendance_locations"("id") ON DELETE SET NULL,
+          "check_in_selfie_url" varchar(2000),
+          "check_out_selfie_url" varchar(2000),
+          "check_in_address" varchar(500),
+          "check_out_address" varchar(500),
+          "duration_minutes" integer,
+          "location_type" "attendance_checkin_location_type",
+          "site_visit_id" varchar(36) REFERENCES "site_visits"("id") ON DELETE SET NULL,
+          "device_info" jsonb,
+          "is_auto_checkout" boolean NOT NULL DEFAULT false,
+          "created_at" timestamptz NOT NULL DEFAULT now()
+        );
+      `);
+      await client.query(`CREATE INDEX IF NOT EXISTS "attendance_check_ins_tenant_idx" ON "attendance_check_ins" ("tenant_id");`);
+      await client.query(`CREATE INDEX IF NOT EXISTS "attendance_check_ins_record_idx" ON "attendance_check_ins" ("attendance_record_id");`);
+      await client.query(`CREATE INDEX IF NOT EXISTS "attendance_check_ins_tenant_user_idx" ON "attendance_check_ins" ("tenant_id", "user_id");`);
+      await client.query(`CREATE INDEX IF NOT EXISTS "attendance_check_ins_tenant_checkin_time_idx" ON "attendance_check_ins" ("tenant_id", "check_in_at");`);
+      await client.query(`CREATE INDEX IF NOT EXISTS "attendance_check_ins_site_visit_idx" ON "attendance_check_ins" ("site_visit_id");`);
+      this.logger.log('✓ attendance_check_ins table created');
+    }
+
+    // ── 6) location_tracking_logs ─────────────────────────────────────────────
+    const trackingExists = await client.query(`SELECT to_regclass('public.location_tracking_logs') as t`);
+    if (!trackingExists.rows[0]?.t) {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS "location_tracking_logs" (
+          "id" varchar(36) PRIMARY KEY,
+          "tenant_id" varchar(36) NOT NULL,
+          "user_id" varchar(36) NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+          "check_in_id" varchar(36) REFERENCES "attendance_check_ins"("id") ON DELETE CASCADE,
+          "latitude" numeric(10,7) NOT NULL,
+          "longitude" numeric(10,7) NOT NULL,
+          "accuracy_meters" numeric(8,2),
+          "battery_level" integer,
+          "recorded_at" timestamptz NOT NULL,
+          "created_at" timestamptz NOT NULL DEFAULT now()
+        );
+      `);
+      await client.query(`CREATE INDEX IF NOT EXISTS "location_tracking_tenant_user_time_idx" ON "location_tracking_logs" ("tenant_id", "user_id", "recorded_at");`);
+      await client.query(`CREATE INDEX IF NOT EXISTS "location_tracking_checkin_idx" ON "location_tracking_logs" ("check_in_id");`);
+      await client.query(`CREATE INDEX IF NOT EXISTS "location_tracking_tenant_time_idx" ON "location_tracking_logs" ("tenant_id", "recorded_at");`);
+      this.logger.log('✓ location_tracking_logs table created');
+    }
+
+    // ── 7) leave_requests ─────────────────────────────────────────────────────
+    const leavesExists = await client.query(`SELECT to_regclass('public.leave_requests') as t`);
+    if (!leavesExists.rows[0]?.t) {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS "leave_requests" (
+          "id" varchar(36) PRIMARY KEY,
+          "tenant_id" varchar(36) NOT NULL,
+          "user_id" varchar(36) NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+          "leave_type" "leave_type" NOT NULL,
+          "start_date" date NOT NULL,
+          "end_date" date NOT NULL,
+          "reason" varchar(1000),
+          "status" "leave_request_status" NOT NULL DEFAULT 'pending',
+          "reviewed_by_user_id" varchar(36) REFERENCES "users"("id") ON DELETE SET NULL,
+          "reviewed_at" timestamptz,
+          "reviewer_remarks" varchar(1000),
+          "metadata" jsonb,
+          "created_at" timestamptz NOT NULL DEFAULT now(),
+          "updated_at" timestamptz NOT NULL DEFAULT now()
+        );
+      `);
+      await client.query(`CREATE INDEX IF NOT EXISTS "leave_requests_tenant_idx" ON "leave_requests" ("tenant_id");`);
+      await client.query(`CREATE INDEX IF NOT EXISTS "leave_requests_tenant_user_idx" ON "leave_requests" ("tenant_id", "user_id");`);
+      await client.query(`CREATE INDEX IF NOT EXISTS "leave_requests_tenant_status_idx" ON "leave_requests" ("tenant_id", "status");`);
+      await client.query(`CREATE INDEX IF NOT EXISTS "leave_requests_tenant_dates_idx" ON "leave_requests" ("tenant_id", "start_date", "end_date");`);
+      this.logger.log('✓ leave_requests table created');
+    }
+
+    // ── 8) leave_balances ─────────────────────────────────────────────────────
+    const balancesExists = await client.query(`SELECT to_regclass('public.leave_balances') as t`);
+    if (!balancesExists.rows[0]?.t) {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS "leave_balances" (
+          "id" varchar(36) PRIMARY KEY,
+          "tenant_id" varchar(36) NOT NULL,
+          "user_id" varchar(36) NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+          "leave_type" "leave_type" NOT NULL,
+          "year" integer NOT NULL,
+          "total_allowed" numeric(5,1) NOT NULL DEFAULT '0',
+          "used" numeric(5,1) NOT NULL DEFAULT '0',
+          "remaining" numeric(5,1) NOT NULL DEFAULT '0',
+          "carried_over" numeric(5,1) DEFAULT '0',
+          "created_at" timestamptz NOT NULL DEFAULT now(),
+          "updated_at" timestamptz NOT NULL DEFAULT now()
+        );
+      `);
+      await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS "leave_balances_tenant_user_type_year_uq" ON "leave_balances" ("tenant_id", "user_id", "leave_type", "year");`);
+      await client.query(`CREATE INDEX IF NOT EXISTS "leave_balances_tenant_idx" ON "leave_balances" ("tenant_id");`);
+      this.logger.log('✓ leave_balances table created');
+    }
+
+    // ── 9) site_visits column extensions (for attendance integration) ─────────
+    const siteVisitsExists = await client.query(`SELECT to_regclass('public.site_visits') as t`);
+    if (siteVisitsExists.rows[0]?.t) {
+      const newColumns = [
+        { name: 'check_in_latitude', ddl: 'numeric(10,7)' },
+        { name: 'check_in_longitude', ddl: 'numeric(10,7)' },
+        { name: 'check_in_selfie_url', ddl: 'varchar(2000)' },
+        { name: 'actual_visit_time', ddl: 'timestamptz' },
+      ];
+      for (const col of newColumns) {
+        const colCheck = await client.query(`
+          SELECT column_name FROM information_schema.columns
+          WHERE table_name = 'site_visits' AND column_name = '${col.name}' AND table_schema = 'public'
+        `);
+        if (colCheck.rows.length === 0) {
+          this.logger.log(`Adding site_visits.${col.name} column...`);
+          await client.query(`ALTER TABLE "site_visits" ADD COLUMN "${col.name}" ${col.ddl};`);
         }
       }
     }

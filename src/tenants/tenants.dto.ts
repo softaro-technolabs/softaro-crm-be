@@ -141,6 +141,61 @@ export class UpdateTenantDto {
 
 
 
+/**
+ * DTO for tenant users to update their own branding/portal settings.
+ * Excludes sensitive fields like plan, status, slug.
+ */
+export class UpdateTenantSettingsDto {
+  @ApiPropertyOptional({ example: 'My Real Estate' })
+  @IsOptional()
+  @IsString()
+  @MinLength(2)
+  name?: string;
+
+  @ApiPropertyOptional({ example: 'https://example.com/logo.png' })
+  @IsOptional()
+  @IsString()
+  logo?: string;
+
+  @ApiPropertyOptional({ example: 'Premium real estate solutions' })
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @ApiPropertyOptional({ example: '#0e7490', description: 'Brand primary color (hex)' })
+  @IsOptional()
+  @IsString()
+  primaryColor?: string;
+
+  @ApiPropertyOptional({ example: '#f59e0b', description: 'Brand secondary color (hex)' })
+  @IsOptional()
+  @IsString()
+  secondaryColor?: string;
+
+  @ApiPropertyOptional({ example: 'contact@myrealestate.com' })
+  @IsOptional()
+  @IsEmail()
+  contactEmail?: string;
+
+  @ApiPropertyOptional({ example: '+919876543210' })
+  @IsOptional()
+  @IsString()
+  contactPhone?: string;
+
+  @ApiPropertyOptional({ example: '123 Main St, Pune' })
+  @IsOptional()
+  @IsString()
+  address?: string;
+
+  @ApiPropertyOptional({ description: 'Social media links', example: { facebook: 'https://fb.com/my', instagram: 'https://instagram.com/my' } })
+  @IsOptional()
+  socialLinks?: any;
+
+  @ApiPropertyOptional({ description: 'Agent website configuration', example: { heroTitle: 'Find Your Dream Home' } })
+  @IsOptional()
+  websiteConfig?: any;
+}
+
 export class TenantListQueryDto extends BaseListQueryDto {
   @ApiPropertyOptional({
     enum: ['name', 'slug', 'plan', 'status', 'createdAt'],

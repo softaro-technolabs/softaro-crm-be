@@ -1,10 +1,11 @@
 import {
   Controller, Get, Post, Param, Body,
-  NotFoundException, BadRequestException
+  NotFoundException, BadRequestException, UseGuards, Req
 } from '@nestjs/common';
-import { ApiOperation, ApiTags, ApiBody } from '@nestjs/swagger';
+import { ApiOperation, ApiTags, ApiBody, ApiBearerAuth } from '@nestjs/swagger';
 import { IsString, IsNotEmpty, IsOptional, IsEmail, MaxLength, IsDateString, IsNumber, Min } from 'class-validator';
 import { Type } from 'class-transformer';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
 import { TenantsService } from './tenants.service';
 import { PropertiesService } from '../properties/properties.service';
@@ -279,5 +280,29 @@ export class PublicTenantsController {
     });
 
     return { success: true, message: 'Site visit booked! Agent will confirm shortly.' };
+  }
+
+  // ── GET :slug/today-visits — today's visits (authenticated agent) ──────────
+
+  @Get(':slug/today-visits')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Get today's site visits with lead + property details (agent auth required)" })
+  async getTodayVisits(@Param('slug') slug: string) {
+    const tenant = await this.tenantsService.findBySlug(slug);
+    if (!tenant) throw new NotFoundException('Agent not found');
+    return this.tenantsService.getTodayVisits(tenant.id);
+  }
+
+  // ── GET :slug/recent-leads — recent leads list (authenticated agent) ────────
+
+  @Get(':slug/recent-leads')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get recent leads for agent portal (agent auth required)' })
+  async getRecentLeads(@Param('slug') slug: string) {
+    const tenant = await this.tenantsService.findBySlug(slug);
+    if (!tenant) throw new NotFoundException('Agent not found');
+    return this.tenantsService.getRecentLeads(tenant.id);
   }
 }
