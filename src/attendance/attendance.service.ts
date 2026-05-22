@@ -392,10 +392,14 @@ export class AttendanceService {
     if (query.endDate) filters.push(lte(attendanceRecords.date, query.endDate));
     if (query.status) filters.push(eq(attendanceRecords.status, query.status as any));
 
-    const [results, totalRows] = await Promise.all([
+    const [rows, totalRows] = await Promise.all([
       this.db
-        .select()
+        .select({
+          record: attendanceRecords,
+          user: { id: users.id, name: users.name, email: users.email },
+        })
         .from(attendanceRecords)
+        .leftJoin(users, eq(attendanceRecords.userId, users.id))
         .where(and(...filters))
         .orderBy(desc(attendanceRecords.date))
         .limit(limit)
@@ -406,18 +410,23 @@ export class AttendanceService {
         .where(and(...filters)),
     ]);
 
+    const results = rows.map((r) => ({ ...r.record, user: r.user }));
     const total = totalRows.length ? Number(totalRows[0].count) : 0;
     return PaginationUtil.buildPaginatedResult(results, total, page, limit);
   }
 
   async getRecordDetail(tenantId: string, recordId: string) {
-    const [record] = await this.db
-      .select()
+    const [row] = await this.db
+      .select({
+        record: attendanceRecords,
+        user: { id: users.id, name: users.name, email: users.email },
+      })
       .from(attendanceRecords)
+      .leftJoin(users, eq(attendanceRecords.userId, users.id))
       .where(and(eq(attendanceRecords.id, recordId), eq(attendanceRecords.tenantId, tenantId)))
       .limit(1);
 
-    if (!record) throw new NotFoundException('Record not found');
+    if (!row) throw new NotFoundException('Record not found');
 
     const checkIns = await this.db
       .select()
@@ -425,7 +434,7 @@ export class AttendanceService {
       .where(eq(attendanceCheckIns.attendanceRecordId, recordId))
       .orderBy(attendanceCheckIns.checkInAt);
 
-    return { ...record, checkIns };
+    return { ...row.record, user: row.user, checkIns };
   }
 
   async regularizeRecord(tenantId: string, recordId: string, dto: RegularizeAttendanceDto) {
@@ -450,10 +459,17 @@ export class AttendanceService {
   // ── Reports ──────────────────────────────────────────────────────────────
 
   async getDailySummary(tenantId: string, dateStr: string) {
-    const records = await this.db
-      .select()
+    const rows = await this.db
+      .select({
+        record: attendanceRecords,
+        user: { id: users.id, name: users.name, email: users.email },
+      })
       .from(attendanceRecords)
-      .where(and(eq(attendanceRecords.tenantId, tenantId), eq(attendanceRecords.date, dateStr)));
+      .leftJoin(users, eq(attendanceRecords.userId, users.id))
+      .where(and(eq(attendanceRecords.tenantId, tenantId), eq(attendanceRecords.date, dateStr)))
+      .orderBy(attendanceRecords.date);
+
+    const records = rows.map((r) => ({ ...r.record, user: r.user }));
 
     const present = records.filter(r => r.status === 'present').length;
     const absent = records.filter(r => r.status === 'absent').length;
