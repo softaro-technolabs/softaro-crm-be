@@ -12,6 +12,7 @@ import {
   locationTrackingLogs,
   leaveRequests,
   leaveBalances,
+  users,
 } from '../database/schema';
 import {
   CheckInDto,
@@ -475,6 +476,16 @@ export class AttendanceService {
         ),
       );
 
+    // Collect unique user IDs and fetch their names in one query
+    const userIds = [...new Set(openCheckIns.map((ci) => ci.userId))];
+    const userRows = userIds.length
+      ? await this.db
+          .select({ id: users.id, name: users.name, email: users.email })
+          .from(users)
+          .where(sql`${users.id} = ANY(ARRAY[${sql.join(userIds.map((id) => sql`${id}`), sql`, `)}]::text[])`)
+      : [];
+    const userMap = Object.fromEntries(userRows.map((u) => [u.id, u]));
+
     // For each, get the latest location ping
     const agentLocations = await Promise.all(
       openCheckIns.map(async (ci) => {
@@ -485,8 +496,12 @@ export class AttendanceService {
           .orderBy(desc(locationTrackingLogs.recordedAt))
           .limit(1);
 
+        const user = userMap[ci.userId];
+
         return {
           userId: ci.userId,
+          userName: user?.name ?? null,
+          userEmail: user?.email ?? null,
           checkInId: ci.id,
           checkInAt: ci.checkInAt,
           locationType: ci.locationType,
