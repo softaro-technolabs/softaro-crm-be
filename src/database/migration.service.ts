@@ -510,6 +510,17 @@ export class MigrationService {
         // ─── Attendance System (New) ──────────────────────────────────
         await this.runAttendanceMigrations(client);
         // ─────────────────────────────────────────────────────────────
+
+        // ─── Modules icon column ───────────────────────────────────────
+        const iconColExists = await client.query(`
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'modules' AND column_name = 'icon'
+        `);
+        if (iconColExists.rowCount === 0) {
+          await client.query(`ALTER TABLE "modules" ADD COLUMN "icon" varchar(100)`);
+          this.logger.log('Added icon column to modules table');
+        }
+        // ─────────────────────────────────────────────────────────────
       } finally {
         client.release();
       }

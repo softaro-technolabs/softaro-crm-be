@@ -8,7 +8,8 @@ export const modules = pgTable(
     name: varchar('name', { length: 255 }).notNull(),
     defaultRoute: varchar('default_route', { length: 255 }).notNull(),
     parentId: varchar('parent_id', { length: 36 }),
-    sequence: integer('sequence').default(0)
+    sequence: integer('sequence').default(0),
+    icon: varchar('icon', { length: 100 }),
   },
   (table) => ({
     slugUnique: uniqueIndex('modules_slug_uq').on(table.slug)
