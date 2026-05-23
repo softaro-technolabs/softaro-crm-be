@@ -520,6 +520,13 @@ export class MigrationService {
           await client.query(`ALTER TABLE "modules" ADD COLUMN "icon" varchar(100)`);
           this.logger.log('Added icon column to modules table');
         }
+
+        // ─── Seed module icons (set icon = slug so frontend can map them) ──
+        // Only updates rows where icon is NULL so it is idempotent.
+        await client.query(`
+          UPDATE "modules" SET "icon" = "slug" WHERE "icon" IS NULL
+        `);
+        this.logger.log('Seeded module icon values from slugs');
         // ─────────────────────────────────────────────────────────────
       } finally {
         client.release();

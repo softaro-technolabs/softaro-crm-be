@@ -279,6 +279,7 @@ export class AuthService {
         name: module.name,
         route: module.defaultRoute,
         parentId: module.parentId,
+        icon: module.icon,
         isEnabled: tenantModule ? tenantModule.isEnabled : true
       }));
 
@@ -289,7 +290,8 @@ export class AuthService {
           slug: item.slug,
           name: item.name,
           route: item.route,
-          parentId: item.parentId
+          parentId: item.parentId,
+          icon: item.icon
         }));
 
       const allPermissions = enabledModules.flatMap((module) =>
@@ -343,6 +345,7 @@ export class AuthService {
       name: module.name,
       route: module.defaultRoute,
       parentId: module.parentId,
+      icon: module.icon,
       isEnabled: tenantModule?.isEnabled ?? true
     }));
     const enabledModules = normalizedModulesWithFlag
@@ -352,7 +355,8 @@ export class AuthService {
         slug: item.slug,
         name: item.name,
         route: item.route,
-        parentId: item.parentId
+        parentId: item.parentId,
+        icon: item.icon
       }));
 
     const permissions = Array.from(new Set(permissionsList));
