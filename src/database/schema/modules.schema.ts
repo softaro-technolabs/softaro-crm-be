@@ -1,4 +1,4 @@
-import { pgTable, varchar, uniqueIndex, integer } from 'drizzle-orm/pg-core';
+import { pgTable, varchar, uniqueIndex, integer, boolean } from 'drizzle-orm/pg-core';
 
 export const modules = pgTable(
   'modules',
@@ -10,6 +10,7 @@ export const modules = pgTable(
     parentId: varchar('parent_id', { length: 36 }),
     sequence: integer('sequence').default(0),
     icon: varchar('icon', { length: 100 }),
+    isActive: boolean('is_active').default(true).notNull(),
   },
   (table) => ({
     slugUnique: uniqueIndex('modules_slug_uq').on(table.slug)

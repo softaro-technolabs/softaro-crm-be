@@ -19,11 +19,16 @@ export class ModulesService {
       })
       .from(modules)
       .leftJoin(tenantModules, and(eq(modules.id, tenantModules.moduleId), eq(tenantModules.tenantId, tenantId)))
+      .where(eq(modules.isActive, true))
       .orderBy(asc(modules.sequence));
   }
 
   async getAllModules() {
-    const rows = await this.db.select().from(modules).orderBy(asc(modules.sequence));
+    const rows = await this.db
+      .select()
+      .from(modules)
+      .where(eq(modules.isActive, true))
+      .orderBy(asc(modules.sequence));
     return rows.map((module) => ({
       module,
       tenantModule: {

@@ -527,6 +527,16 @@ export class MigrationService {
           UPDATE "modules" SET "icon" = "slug" WHERE "icon" IS NULL
         `);
         this.logger.log('Seeded module icon values from slugs');
+
+        // ─── Add is_active flag to modules ────────────────────────────────
+        const isActiveColExists = await client.query(`
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'modules' AND column_name = 'is_active'
+        `);
+        if (isActiveColExists.rowCount === 0) {
+          await client.query(`ALTER TABLE "modules" ADD COLUMN "is_active" boolean NOT NULL DEFAULT true`);
+          this.logger.log('Added is_active column to modules table');
+        }
         // ─────────────────────────────────────────────────────────────
       } finally {
         client.release();
