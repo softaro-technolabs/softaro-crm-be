@@ -74,7 +74,7 @@ export class AppwriteStorageService {
             const response = await axios.get(url, { responseType: 'stream' });
             return {
                 stream: response.data,
-                contentType: response.headers['content-type'] || 'application/octet-stream',
+                contentType: String(response.headers['content-type']) || 'application/octet-stream',
             };
         } catch (error) {
             this.logger.error(`Failed to stream file ${fileId}`, error);
