@@ -36,7 +36,7 @@ export class AttendanceController {
   constructor(
     private readonly attendanceService: AttendanceService,
     private readonly requestContext: RequestContextService,
-  ) {}
+  ) { }
 
   private getTenantAndUser(tenantId: string) {
     this.requestContext.verifyTenantAccess(tenantId);
@@ -237,3 +237,4 @@ export class AttendanceController {
     return this.attendanceService.getLeaveBalances(tenantId, targetUserId, year ? parseInt(year) : undefined);
   }
 }
+
