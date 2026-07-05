@@ -47,12 +47,15 @@ async function bootstrap() {
     'http://localhost:5174',
     'https://estateos.softarotechnolabs.com',
     'https://www.estateos.softarotechnolabs.com',
+    'https://sureplot.in',
+    'https://www.sureplot.in',
   ];
 
   // Any subdomain of these base domains is allowed (agent portals)
   const wildcardDomains = [
     '.softarotechnolabs.com',
     '.softarotechnolabs.local',
+    '.sureplot.in',
   ];
 
   // Merge with anything extra set via ALLOWED_ORIGINS env (optional override)
