@@ -76,7 +76,12 @@ export default defineConfig({
     'quotations',
     'quotation_items',
     'waterpark_reviews',
-    'property_entity_types'
+    'property_entity_types',
+    'whatsapp_accounts',
+    'whatsapp_messages',
+    'whatsapp_sessions',
+    'whatsapp_message_queue',
+    'whatsapp_scheduled_messages'
   ],
 });
 
