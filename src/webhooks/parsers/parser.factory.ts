@@ -1,6 +1,8 @@
 import { parse99AcresEmail }    from './99acres.parser';
 import { parseHousingEmail }     from './housing.parser';
 import { parseMagicBricksEmail } from './magicbricks.parser';
+import { parseIndiaMartEmail }   from './indiamart.parser';
+import { parseSulekhaEmail }     from './sulekha.parser';
 import type { ParsedPortalLead } from './portal-lead.interface';
 
 /**
@@ -27,14 +29,14 @@ export function parsePortalEmail(
   if (sender.includes('magicbricks.com')) {
     return parseMagicBricksEmail(body);
   }
-  if (sender.includes('indiamart.com')) {
-    // IndiaMart uses a similar key:value format — try 99acres parser as fallback
-    const result = parse99AcresEmail(body);
+  if (sender.includes('indiamart.com') || sender.includes('intermesh')) {
+    // Dedicated parser first; 99acres key-value parser as a safety net
+    const result = parseIndiaMartEmail(body) ?? parse99AcresEmail(body);
     if (result) result.leadSource = 'indiamart';
     return result;
   }
   if (sender.includes('sulekha.com')) {
-    const result = parse99AcresEmail(body);
+    const result = parseSulekhaEmail(body) ?? parse99AcresEmail(body);
     if (result) result.leadSource = 'sulekha';
     return result;
   }
