@@ -6,6 +6,7 @@ import { quotations, quotationItems, leads, tenants, contacts, deals, leadActivi
 import { CreateQuotationDto, UpdateQuotationDto, QuotationListQueryDto, ConvertToDealDto } from './quotations.dto';
 import { DRIZZLE } from '../database/database.constants';
 import { MailService } from '../common/services/mail.service';
+import { computeCostSheet, roundMoney } from '../common/utils/cost-sheet.util';
 import { PdfGeneratorService } from './pdf-generator.service';
 import { getQuotationEmailTemplate } from '../common/mail-templates/quotation-email.template';
 
@@ -27,6 +28,41 @@ export class QuotationsService {
       note,
       metadata,
       happenedAt: new Date(),
+    });
+  }
+
+  /**
+   * Computes cost-sheet totals for a property quotation using the shared engine
+   * (discount applied BEFORE tax, GST computed server-side — never trusted from the client).
+   * parking / club / other charges are treated as part of the taxable agreement value.
+   */
+  private computeQuotationCostSheet(src: {
+    basePrice?: number | string | null;
+    plc?: number | string | null;
+    parking?: number | string | null;
+    clubMembership?: number | string | null;
+    otherCharges?: any[] | null;
+    gstRate?: number | string | null;
+    stampDuty?: number | string | null;
+    registrationCharges?: number | string | null;
+    discount?: number | string | null;
+  }) {
+    const n = (v: unknown) => {
+      const x = typeof v === 'string' ? parseFloat(v) : Number(v);
+      return Number.isFinite(x) ? x : 0;
+    };
+    const otherTotal = Array.isArray(src.otherCharges)
+      ? src.otherCharges.reduce((s, c) => s + n(c?.amount), 0)
+      : 0;
+    const additional = n(src.plc) + n(src.parking) + n(src.clubMembership) + otherTotal;
+
+    return computeCostSheet({
+      basePrice: n(src.basePrice),
+      additionalCharges: additional,
+      discount: n(src.discount),
+      gstPercentage: n(src.gstRate),
+      stampDutyAmount: n(src.stampDuty),
+      registrationCharges: n(src.registrationCharges)
     });
   }
 
@@ -109,6 +145,10 @@ export class QuotationsService {
 
     const quotationId = uuidv4();
 
+    // Cost-sheet path: recompute all money server-side (discount before tax, GST from rate).
+    const hasCostSheet = dto.basePrice !== undefined && dto.basePrice !== null;
+    const costSheet = hasCostSheet ? this.computeQuotationCostSheet(dto) : null;
+
     await this.db.transaction(async (tx: any) => {
       if (dto.propertyUnitId) {
         const [unit] = await tx.select().from(propertyUnits).where(eq(propertyUnits.id, dto.propertyUnitId)).limit(1);
@@ -127,10 +167,10 @@ export class QuotationsService {
         issueDate: new Date(),
         expiryDate: expiryDate ? new Date(expiryDate) : null,
         currency: currency || 'INR',
-        subTotal: dto.basePrice ? (Number(dto.basePrice) + Number(dto.plc || 0) + Number(dto.parking || 0) + Number(dto.clubMembership || 0)).toString() : subTotal,
-        taxTotal: dto.gstAmount ? dto.gstAmount.toString() : calculatedTax,
-        discountTotal: dto.discount ? dto.discount.toString() : calculatedDiscount,
-        grandTotal: dto.basePrice ? (Number(dto.basePrice) + Number(dto.plc || 0) + Number(dto.parking || 0) + Number(dto.clubMembership || 0) + Number(dto.gstAmount || 0) + Number(dto.stampDuty || 0) + Number(dto.registrationCharges || 0) - Number(dto.discount || 0)).toString() : calculatedGrand,
+        subTotal: costSheet ? roundMoney(costSheet.agreementValue + costSheet.discount).toString() : subTotal,
+        taxTotal: costSheet ? costSheet.gstAmount.toString() : calculatedTax,
+        discountTotal: costSheet ? costSheet.discount.toString() : calculatedDiscount,
+        grandTotal: costSheet ? costSheet.grandTotal.toString() : calculatedGrand,
         notes,
         terms,
         projectName: dto.projectName,
@@ -146,7 +186,8 @@ export class QuotationsService {
         parking: dto.parking?.toString(),
         clubMembership: dto.clubMembership?.toString(),
         gstRate: dto.gstRate?.toString(),
-        gstAmount: dto.gstAmount?.toString(),
+        // Always store the server-computed GST — never the client-supplied amount.
+        gstAmount: costSheet ? costSheet.gstAmount.toString() : dto.gstAmount?.toString(),
         stampDuty: dto.stampDuty?.toString(),
         registrationCharges: dto.registrationCharges?.toString(),
         discount: dto.discount?.toString(),
@@ -232,25 +273,35 @@ export class QuotationsService {
         }
       }
 
-      // If Cost Sheet fields are provided, override totals
+      // If Cost Sheet fields are involved, recompute all totals server-side by merging
+      // the incoming changes over the existing values, then routing through the shared engine.
       const bp = dto.basePrice !== undefined ? Number(dto.basePrice) : (existing.basePrice ? Number(existing.basePrice) : null);
+      let recomputedGst: string | null = null;
       if (bp !== null) {
-        const plc = dto.plc !== undefined ? Number(dto.plc) : Number(existing.plc || 0);
-        const pkg = dto.parking !== undefined ? Number(dto.parking) : Number(existing.parking || 0);
-        const club = dto.clubMembership !== undefined ? Number(dto.clubMembership) : Number(existing.clubMembership || 0);
-        const gstA = dto.gstAmount !== undefined ? Number(dto.gstAmount) : Number(existing.gstAmount || 0);
-        const sd = dto.stampDuty !== undefined ? Number(dto.stampDuty) : Number(existing.stampDuty || 0);
-        const reg = dto.registrationCharges !== undefined ? Number(dto.registrationCharges) : Number(existing.registrationCharges || 0);
-        const disc = dto.discount !== undefined ? Number(dto.discount) : Number(existing.discount || 0);
+        const pick = (dtoVal: any, existingVal: any) => (dtoVal !== undefined ? dtoVal : existingVal);
+        const costSheet = this.computeQuotationCostSheet({
+          basePrice: bp,
+          plc: pick(dto.plc, existing.plc),
+          parking: pick(dto.parking, existing.parking),
+          clubMembership: pick(dto.clubMembership, existing.clubMembership),
+          otherCharges: pick(dto.otherCharges, existing.otherCharges),
+          gstRate: pick(dto.gstRate, existing.gstRate),
+          stampDuty: pick(dto.stampDuty, existing.stampDuty),
+          registrationCharges: pick(dto.registrationCharges, existing.registrationCharges),
+          discount: pick(dto.discount, existing.discount)
+        });
 
-        finalSub = (bp + plc + pkg + club).toString();
-        finalTax = gstA.toString();
-        finalDiscount = disc.toString();
-        finalGrand = (bp + plc + pkg + club + gstA + sd + reg - disc).toString();
+        finalSub = roundMoney(costSheet.agreementValue + costSheet.discount).toString();
+        finalTax = costSheet.gstAmount.toString();
+        finalDiscount = costSheet.discount.toString();
+        finalGrand = costSheet.grandTotal.toString();
+        recomputedGst = costSheet.gstAmount.toString();
       }
 
       await tx.update(quotations).set({
         ...updates,
+        // Persist the server-computed GST so the stored value and PDF always agree.
+        ...(recomputedGst !== null ? { gstAmount: recomputedGst } : {}),
         subTotal: finalSub,
         taxTotal: finalTax,
         discountTotal: finalDiscount,

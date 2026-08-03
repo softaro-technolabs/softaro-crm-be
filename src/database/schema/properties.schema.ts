@@ -84,6 +84,10 @@ export const propertyUnits = pgTable(
     unitCode: varchar('unit_code', { length: 80 }).notNull(),
     price: numeric('price', { precision: 15, scale: 2 }),
     pricePerSqft: numeric('price_per_sqft', { precision: 15, scale: 2 }),
+    // Super built-up / saleable area — the basis for base price (price = pricePerSqft × saleableArea).
+    saleableArea: numeric('saleable_area', { precision: 10, scale: 2 }),
+    // When true, `price` was entered manually and overrides the computed rate × saleableArea value.
+    priceOverridden: boolean('price_overridden').default(false).notNull(),
     carpetArea: numeric('carpet_area', { precision: 10, scale: 2 }),
     balconyArea: numeric('balcony_area', { precision: 10, scale: 2 }),
     reraArea: numeric('rera_area', { precision: 10, scale: 2 }),

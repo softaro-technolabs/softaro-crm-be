@@ -293,7 +293,12 @@ export class CreatePropertyUnitDto {
   @MaxLength(80)
   unitCode!: string;
 
-  @ApiPropertyOptional({ minimum: 0, type: Number, example: 9500000 })
+  @ApiPropertyOptional({
+    minimum: 0,
+    type: Number,
+    example: 9500000,
+    description: 'Base price. Leave empty to auto-compute as pricePerSqft × saleableArea. Send a value to override.'
+  })
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
@@ -306,6 +311,13 @@ export class CreatePropertyUnitDto {
   @IsNumber()
   @Min(0)
   pricePerSqft?: number;
+
+  @ApiPropertyOptional({ minimum: 0, type: Number, example: 1350, description: 'Super built-up / saleable area — base price is computed from this.' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  saleableArea?: number;
 
   @ApiPropertyOptional({ minimum: 0, type: Number, example: 1250 })
   @IsOptional()
@@ -383,6 +395,13 @@ export class UpdatePropertyUnitDto {
   @IsNumber()
   @Min(0)
   pricePerSqft?: number;
+
+  @ApiPropertyOptional({ minimum: 0, type: Number, description: 'Super built-up / saleable area — base price is recomputed from this unless price is overridden.' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  saleableArea?: number;
 
   @ApiPropertyOptional({ minimum: 0, type: Number })
   @IsOptional()
@@ -675,7 +694,7 @@ export class UpdateLeadPropertyInterestDto {
   notes?: string | null;
 }
 
-export class LeadPropertyInterestListQueryDto {
+export class LeadPropertyInterestListQueryDto extends BaseListQueryDto {
   @ApiPropertyOptional({ format: 'uuid', description: 'Filter by lead id' })
   @IsOptional()
   @IsUUID(4)
@@ -690,30 +709,20 @@ export class LeadPropertyInterestListQueryDto {
   @IsOptional()
   @IsIn(LEAD_INTEREST_LEVELS)
   interestLevel?: LeadInterestLevel;
-
-  @ApiPropertyOptional({ minimum: 1, default: 50 })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @IsPositive()
-  limit?: number;
-
-  @ApiPropertyOptional({ minimum: 1, default: 1 })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @IsPositive()
-  page?: number;
 }
 
 export class PricingBreakupItemDto {
-  @ApiProperty({ maxLength: 120, example: 'base price' })
+  @ApiProperty({
+    maxLength: 120,
+    example: 'Floor Rise (PLC)',
+    description: 'An ADDITIONAL charge on top of base price (PLC, floor rise, parking…). Do NOT put base price here — it is counted separately.'
+  })
   @IsString()
   @IsNotEmpty()
   @MaxLength(120)
   label!: string;
 
-  @ApiProperty({ minimum: 0, type: Number, example: 8000000 })
+  @ApiProperty({ minimum: 0, type: Number, example: 150000 })
   @Type(() => Number)
   @IsNumber()
   @Min(0)
@@ -721,9 +730,12 @@ export class PricingBreakupItemDto {
 }
 
 export class ReplacePricingBreakupsDto {
-  @ApiProperty({ type: 'array', items: { $ref: '#/components/schemas/PricingBreakupItemDto' } })
+  @ApiProperty({
+    type: 'array',
+    items: { $ref: '#/components/schemas/PricingBreakupItemDto' },
+    description: 'Full set of additional charges for the unit. Send an empty array to clear all breakups.'
+  })
   @IsArray()
-  @ArrayNotEmpty()
   @ArrayMaxSize(50)
   @ArrayUnique((i: PricingBreakupItemDto) => i.label)
   @ValidateNested({ each: true })
@@ -732,20 +744,23 @@ export class ReplacePricingBreakupsDto {
 }
 
 export class ProjectPricingConfigDto {
-  @ApiProperty({ description: 'GST percentage', example: 5 })
+  @ApiPropertyOptional({ description: 'GST percentage. Falls back to the project default when omitted.', example: 5 })
+  @IsOptional()
   @IsNumber()
   @Min(0)
-  gstPercentage!: number;
+  gstPercentage?: number;
 
-  @ApiProperty({ description: 'Stamp Duty percentage', example: 6 })
+  @ApiPropertyOptional({ description: 'Stamp Duty percentage. Falls back to the project default when omitted.', example: 6 })
+  @IsOptional()
   @IsNumber()
   @Min(0)
-  stampDutyPercentage!: number;
+  stampDutyPercentage?: number;
 
-  @ApiProperty({ description: 'Registration Charges (Fixed)', example: 30000 })
+  @ApiPropertyOptional({ description: 'Registration Charges (Fixed). Falls back to the project default when omitted.', example: 30000 })
+  @IsOptional()
   @IsNumber()
   @Min(0)
-  registrationCharges!: number;
+  registrationCharges?: number;
 
   @ApiPropertyOptional({ description: 'Other fixed charges like Clubhouse, Electricity, etc.', example: 200000 })
   @IsOptional()
@@ -771,10 +786,11 @@ export class GenerateCostSheetDto {
   @Min(0)
   lumpsumDiscount?: number;
 
-  @ApiProperty({ type: ProjectPricingConfigDto })
+  @ApiPropertyOptional({ type: ProjectPricingConfigDto, description: 'Tax config overrides. Any omitted field falls back to the project defaults.' })
+  @IsOptional()
   @ValidateNested()
   @Type(() => ProjectPricingConfigDto)
-  config!: ProjectPricingConfigDto;
+  config?: ProjectPricingConfigDto;
 }
 
 export class CostSheetResponseDto {

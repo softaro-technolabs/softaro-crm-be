@@ -57,7 +57,10 @@ export const getQuotationHtml = (quotation: any): string => {
 
   const otherTotal     = otherCharges.reduce((s, c) => s + c.amount, 0);
   const agreementValue = basePrice + plc + parking + clubMembership + otherTotal;
-  const grandTotal     = agreementValue + gstAmount + stampDuty + registrationCharges - discount;
+  // Discount is applied to the agreement value BEFORE tax; gstAmount is already computed
+  // server-side on this net value, so it is simply added here (never taxed on the discount).
+  const netAgreement   = Math.max(0, agreementValue - discount);
+  const grandTotal     = netAgreement + gstAmount + stampDuty + registrationCharges;
 
   const carpetAreaNum = quotation.carpetArea ? parseFloat(quotation.carpetArea) : 0;
   const pricePerSqft  = carpetAreaNum > 0 && basePrice > 0 ? Math.round(basePrice / carpetAreaNum) : 0;
@@ -109,7 +112,7 @@ export const getQuotationHtml = (quotation: any): string => {
   // ─── Statutory rows ───────────────────────────────────────────────────────────
 
   const statutoryRows: { label: string; amount: number; deduct?: boolean }[] = [
-    { label: `GST @ ${gstRate}% on Agreement Value`, amount: gstAmount },
+    { label: `GST @ ${gstRate}% on Net Agreement Value`, amount: gstAmount },
     ...(stampDuty           > 0 ? [{ label: 'Stamp Duty',            amount: stampDuty }]           : []),
     ...(registrationCharges > 0 ? [{ label: 'Registration Charges',  amount: registrationCharges }] : []),
     ...(discount            > 0 ? [{ label: 'Discount / Concession', amount: discount, deduct: true }] : []),

@@ -20,6 +20,7 @@ import {
   users
 } from '../database/schema';
 import { PaginationUtil } from '../common/utils/pagination.util';
+import { computeCostSheet, roundMoney } from '../common/utils/cost-sheet.util';
 
 import type {
   CreateLeadPropertyInterestDto,
@@ -121,7 +122,7 @@ export class PropertiesService {
 
     const [attributes, media, parentRow] = await Promise.all([
       this.listEntityAttributeValues(tenantId, entityId),
-      this.listMedia(tenantId, { entityId }),
+      this.listMedia(tenantId, { entityId, entityOnly: true }),
       row.entity.parentId
         ? this.db
           .select({ id: propertyEntities.id, name: propertyEntities.name })
@@ -466,7 +467,11 @@ export class PropertiesService {
     ]);
 
     const breakupsTotal = pricingBreakups.reduce((sum, item) => sum + Number(item.amount || 0), 0);
-    const totalPrice = Number(row.unit.price || 0) + breakupsTotal;
+    const basePrice =
+      row.unit.price != null
+        ? Number(row.unit.price)
+        : roundMoney(Number(row.unit.pricePerSqft || 0) * Number(row.unit.saleableArea || 0));
+    const totalPrice = roundMoney(basePrice + breakupsTotal);
 
     return { ...row, attributes, media, pricingBreakups, totalPrice };
   }
@@ -490,14 +495,22 @@ export class PropertiesService {
     const id = randomUUID();
     const now = new Date();
 
+    const { price, priceOverridden } = this.resolveUnitPrice({
+      price: dto.price,
+      pricePerSqft: dto.pricePerSqft,
+      saleableArea: dto.saleableArea
+    });
+
     await this.db.transaction(async (tx) => {
       await tx.insert(propertyUnits).values({
         id,
         tenantId,
         entityId: dto.entityId,
         unitCode: dto.unitCode,
-        price: dto.price !== undefined ? dto.price.toString() : null,
+        price,
+        priceOverridden,
         pricePerSqft: dto.pricePerSqft !== undefined ? dto.pricePerSqft.toString() : null,
+        saleableArea: dto.saleableArea !== undefined ? dto.saleableArea.toString() : null,
         carpetArea: dto.carpetArea !== undefined ? dto.carpetArea.toString() : null,
         balconyArea: dto.balconyArea !== undefined ? dto.balconyArea.toString() : null,
         reraArea: dto.reraArea !== undefined ? dto.reraArea.toString() : null,
@@ -526,16 +539,37 @@ export class PropertiesService {
   }
 
   async updateUnit(tenantId: string, unitId: string, dto: UpdatePropertyUnitDto) {
-    await this.ensureUnitExists(tenantId, unitId);
+    const existing = await this.ensureUnitExists(tenantId, unitId);
 
     const updateData: Partial<typeof propertyUnits.$inferInsert> = {};
     if (dto.unitCode !== undefined) updateData.unitCode = dto.unitCode;
-    if (dto.price !== undefined) updateData.price = dto.price !== null ? dto.price.toString() : null;
     if (dto.pricePerSqft !== undefined) updateData.pricePerSqft = dto.pricePerSqft !== null ? dto.pricePerSqft.toString() : null;
+    if (dto.saleableArea !== undefined) updateData.saleableArea = dto.saleableArea !== null ? dto.saleableArea.toString() : null;
     if (dto.carpetArea !== undefined) updateData.carpetArea = dto.carpetArea !== null ? dto.carpetArea.toString() : null;
     if (dto.balconyArea !== undefined) updateData.balconyArea = dto.balconyArea !== null ? dto.balconyArea.toString() : null;
     if (dto.reraArea !== undefined) updateData.reraArea = dto.reraArea !== null ? dto.reraArea.toString() : null;
     if (dto.unitStatus !== undefined) updateData.unitStatus = dto.unitStatus;
+
+    // Re-derive base price. An explicit `price` in the body overrides; otherwise, if the
+    // rate or saleable area changed and price was not manually overridden, recompute it.
+    const effectiveRate = dto.pricePerSqft !== undefined ? dto.pricePerSqft : (existing.pricePerSqft != null ? Number(existing.pricePerSqft) : null);
+    const effectiveArea = dto.saleableArea !== undefined ? dto.saleableArea : (existing.saleableArea != null ? Number(existing.saleableArea) : null);
+
+    if (dto.price !== undefined && dto.price !== null) {
+      // Manual override
+      updateData.price = dto.price.toString();
+      updateData.priceOverridden = true;
+    } else if (dto.price === null) {
+      // Explicitly clear the override → fall back to computed value
+      const resolved = this.resolveUnitPrice({ pricePerSqft: effectiveRate, saleableArea: effectiveArea });
+      updateData.price = resolved.price;
+      updateData.priceOverridden = false;
+    } else if (!existing.priceOverridden && (dto.pricePerSqft !== undefined || dto.saleableArea !== undefined)) {
+      // Rate/area changed on a computed unit → recompute
+      const resolved = this.resolveUnitPrice({ pricePerSqft: effectiveRate, saleableArea: effectiveArea });
+      updateData.price = resolved.price;
+      updateData.priceOverridden = false;
+    }
 
     if (Object.keys(updateData).length > 0) {
       updateData.updatedAt = new Date();
@@ -841,7 +875,7 @@ export class PropertiesService {
     return this.listUnitAttributeValues(tenantId, unitId);
   }
 
-  async listMedia(tenantId: string, query: { entityId: string; unitId?: string }) {
+  async listMedia(tenantId: string, query: { entityId: string; unitId?: string; entityOnly?: boolean }) {
     await this.ensureEntityExists(tenantId, query.entityId);
     if (query.unitId) await this.ensureUnitExists(tenantId, query.unitId);
 
@@ -850,6 +884,8 @@ export class PropertiesService {
       eq(propertyMedia.entityId, query.entityId)
     ];
     if (query.unitId) filters.push(eq(propertyMedia.unitId, query.unitId));
+    // Entity-level media only (exclude media attached to a specific unit).
+    else if (query.entityOnly) filters.push(isNull(propertyMedia.unitId));
 
     let whereClause = filters[0];
     for (let i = 1; i < filters.length; i += 1) whereClause = and(whereClause, filters[i]) as SQL;
@@ -955,6 +991,19 @@ export class PropertiesService {
     await this.ensureLeadExists(tenantId, dto.leadId);
     await this.ensureUnitExists(tenantId, dto.unitId);
 
+    const [duplicate] = await this.db
+      .select({ id: leadPropertyInterests.id })
+      .from(leadPropertyInterests)
+      .where(
+        and(
+          eq(leadPropertyInterests.tenantId, tenantId),
+          eq(leadPropertyInterests.leadId, dto.leadId),
+          eq(leadPropertyInterests.unitId, dto.unitId)
+        )
+      )
+      .limit(1);
+    if (duplicate) throw new BadRequestException('This lead is already linked to this unit');
+
     const id = randomUUID();
     const now = new Date();
     await this.db.insert(leadPropertyInterests).values({
@@ -1049,6 +1098,27 @@ export class PropertiesService {
     return this.getUnitPricingBreakups(tenantId, unitId);
   }
 
+  /**
+   * Derives the stored base price. When `price` is provided it is treated as a manual
+   * override; otherwise base price is computed as pricePerSqft × saleableArea so the
+   * three numbers can never disagree.
+   */
+  private resolveUnitPrice(input: {
+    price?: number | null;
+    pricePerSqft?: number | null;
+    saleableArea?: number | null;
+  }): { price: string | null; priceOverridden: boolean } {
+    if (input.price !== undefined && input.price !== null) {
+      return { price: input.price.toString(), priceOverridden: true };
+    }
+    const rate = input.pricePerSqft;
+    const area = input.saleableArea;
+    if (rate !== undefined && rate !== null && area !== undefined && area !== null) {
+      return { price: roundMoney(Number(rate) * Number(area)).toString(), priceOverridden: false };
+    }
+    return { price: null, priceOverridden: false };
+  }
+
   private async ensureEntityExists(tenantId: string, entityId: string) {
     const [row] = await this.db
       .select()
@@ -1086,14 +1156,17 @@ export class PropertiesService {
         unitCode: propertyUnits.unitCode,
         price: propertyUnits.price,
         pricePerSqft: propertyUnits.pricePerSqft,
+        saleableArea: propertyUnits.saleableArea,
         carpetArea: propertyUnits.carpetArea,
         reraArea: propertyUnits.reraArea,
+        entityId: propertyEntities.id,
         entityGst: propertyEntities.defaultGstPercentage,
         entityStampDuty: propertyEntities.defaultStampDutyPercentage,
         entityRegistration: propertyEntities.defaultRegistrationCharges,
       })
       .from(propertyUnits)
-      .leftJoin(propertyEntities, eq(propertyUnits.entityId, propertyEntities.id))
+      // Inner join: a unit must belong to a valid entity for a cost sheet to make sense.
+      .innerJoin(propertyEntities, and(eq(propertyUnits.entityId, propertyEntities.id), eq(propertyEntities.tenantId, tenantId)))
       .where(and(eq(propertyUnits.tenantId, tenantId), eq(propertyUnits.id, dto.unitId)))
       .limit(1);
 
@@ -1104,45 +1177,47 @@ export class PropertiesService {
       .from(propertyPricingBreakups)
       .where(and(eq(propertyPricingBreakups.tenantId, tenantId), eq(propertyPricingBreakups.unitId, dto.unitId)));
 
-    // Use RERA area if available, else Carpet Area (used for per-sqft discount conversion only)
-    const area = Number(unit.reraArea || unit.carpetArea || 0);
+    const config = dto.config ?? {};
 
-    // unit.price is the total base price entered at unit creation (e.g. ₹1,02,60,000)
-    // discountPerSqft is converted to a total discount: discountPerSqft × area
-    const grossBasePrice = Number(unit.price || 0);
-    const sqftDiscountTotal = (dto.discountPerSqft || 0) * area;
-    const totalDiscount = sqftDiscountTotal + (dto.lumpsumDiscount || 0);
-    const basePrice = Math.max(0, grossBasePrice - totalDiscount);
+    // Area basis for the per-sqft discount: saleable → RERA → carpet.
+    const area = Number(unit.saleableArea || unit.reraArea || unit.carpetArea || 0);
 
+    // Base price: use the stored (possibly overridden) price; fall back to rate × area
+    // so units priced per-sqft (price left null) still produce a correct sheet.
+    const grossBasePrice =
+      unit.price != null ? Number(unit.price) : roundMoney(Number(unit.pricePerSqft || 0) * area);
+
+    const totalDiscount = (dto.discountPerSqft || 0) * area + (dto.lumpsumDiscount || 0);
     const plcAmount = breakups.reduce((sum, b) => sum + Number(b.amount || 0), 0);
-    const agreementValue = basePrice + plcAmount;
 
-    // Use entity defaults if not provided in dto
-    const gstPct = dto.config.gstPercentage ?? Number(unit.entityGst || 5);
-    const sdPct = dto.config.stampDutyPercentage ?? Number(unit.entityStampDuty || 6);
-    const regCharges = dto.config.registrationCharges ?? Number(unit.entityRegistration || 30000);
-    const otherCharges = dto.config.otherFixedCharges ?? 0;
+    // Tax config: request overrides win, otherwise fall back to the project defaults.
+    const gstPct = config.gstPercentage ?? Number(unit.entityGst ?? 5);
+    const sdPct = config.stampDutyPercentage ?? Number(unit.entityStampDuty ?? 6);
+    const regCharges = config.registrationCharges ?? Number(unit.entityRegistration ?? 30000);
+    const otherCharges = config.otherFixedCharges ?? 0;
 
-    const gstAmount = (agreementValue * gstPct) / 100;
-    const stampDutyAmount = (agreementValue * sdPct) / 100;
-    const registrationCharges = regCharges;
-    const otherFixedCharges = otherCharges;
-
-    const totalTax = gstAmount + stampDutyAmount + registrationCharges;
-    const grandTotal = agreementValue + totalTax + otherFixedCharges;
+    const sheet = computeCostSheet({
+      basePrice: grossBasePrice,
+      additionalCharges: plcAmount,
+      otherCharges,
+      discount: totalDiscount,
+      gstPercentage: gstPct,
+      stampDutyPercentage: sdPct,
+      registrationCharges: regCharges
+    });
 
     return {
       unitId: unit.id,
       unitCode: unit.unitCode,
-      basePrice,
-      plcAmount,
-      agreementValue,
-      gstAmount,
-      stampDutyAmount,
-      registrationCharges,
-      otherFixedCharges,
-      totalTax,
-      grandTotal,
+      basePrice: sheet.agreementValue - sheet.additionalCharges, // base after discount
+      plcAmount: sheet.additionalCharges,
+      agreementValue: sheet.agreementValue,
+      gstAmount: sheet.gstAmount,
+      stampDutyAmount: sheet.stampDutyAmount,
+      registrationCharges: sheet.registrationCharges,
+      otherFixedCharges: sheet.otherCharges,
+      totalTax: sheet.totalCharges,
+      grandTotal: sheet.grandTotal,
       areaUsed: area
     };
   }
