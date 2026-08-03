@@ -7,6 +7,7 @@ import { CreateQuotationDto, UpdateQuotationDto, QuotationListQueryDto, ConvertT
 import { DRIZZLE } from '../database/database.constants';
 import { MailService } from '../common/services/mail.service';
 import { computeCostSheet, roundMoney } from '../common/utils/cost-sheet.util';
+import { ChannelPartnersService } from '../channel-partners/channel-partners.service';
 import { PdfGeneratorService } from './pdf-generator.service';
 import { getQuotationEmailTemplate } from '../common/mail-templates/quotation-email.template';
 
@@ -16,6 +17,7 @@ export class QuotationsService {
     @Inject(DRIZZLE) private readonly db: DrizzleDatabase,
     private readonly pdfGenerator: PdfGeneratorService,
     private readonly mailService: MailService,
+    private readonly channelPartnersService: ChannelPartnersService,
   ) {}
 
   private async logActivity(tx: any, tenantId: string, leadId: string, type: any, title: string, note?: string, metadata?: any) {
@@ -605,7 +607,14 @@ export class QuotationsService {
         { quotationId: id, dealId, dealNumber }
       );
 
-      return { success: true, dealId, dealNumber, contactId };
+      // 6. If the lead was registered by a channel partner, accrue their commission incentive.
+      const incentive = await this.channelPartnersService.accrueIncentiveForDeal(tx, tenantId, {
+        leadId: lead.id,
+        dealId,
+        dealTotal: Number(quotation.grandTotal || 0)
+      });
+
+      return { success: true, dealId, dealNumber, contactId, incentiveId: incentive?.id ?? null };
     });
   }
 }

@@ -1085,15 +1085,18 @@ export class PropertiesService {
       await tx
         .delete(propertyPricingBreakups)
         .where(and(eq(propertyPricingBreakups.tenantId, tenantId), eq(propertyPricingBreakups.unitId, unitId)));
-      await tx.insert(propertyPricingBreakups).values(
-        dto.items.map((i) => ({
-          id: randomUUID(),
-          tenantId,
-          unitId,
-          label: i.label,
-          amount: i.amount.toString()
-        }))
-      );
+      // An empty array clears all breakups — skip the insert (Drizzle rejects .values([])).
+      if (dto.items.length > 0) {
+        await tx.insert(propertyPricingBreakups).values(
+          dto.items.map((i) => ({
+            id: randomUUID(),
+            tenantId,
+            unitId,
+            label: i.label,
+            amount: i.amount.toString()
+          }))
+        );
+      }
     });
     return this.getUnitPricingBreakups(tenantId, unitId);
   }

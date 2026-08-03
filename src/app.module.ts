@@ -19,6 +19,7 @@ import { KeepAliveModule } from './keep-alive/keep-alive.module';
 import { ModulesModule } from './modules/modules.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { PermissionsModule } from './permissions/permissions.module';
+import { ChannelPartnersModule } from './channel-partners/channel-partners.module';
 import { PropertiesModule } from './properties/properties.module';
 import { RolesModule } from './roles/roles.module';
 import { TenantsModule } from './tenants/tenants.module';
@@ -77,6 +78,7 @@ import { AttendanceModule } from './attendance/attendance.module';
     ModulesModule,
     LeadsModule,
     PropertiesModule,
+    ChannelPartnersModule,
     KeepAliveModule,
     ChatModule,
     NotificationsModule,

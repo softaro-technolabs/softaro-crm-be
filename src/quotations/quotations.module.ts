@@ -4,9 +4,10 @@ import { QuotationsService } from './quotations.service';
 import { PdfGeneratorService } from './pdf-generator.service';
 import { CommonModule } from '../common/common.module';
 import { DatabaseModule } from '../database/database.module';
+import { ChannelPartnersModule } from '../channel-partners/channel-partners.module';
 
 @Module({
-  imports: [CommonModule, DatabaseModule],
+  imports: [CommonModule, DatabaseModule, ChannelPartnersModule],
   controllers: [QuotationsController],
   providers: [QuotationsService, PdfGeneratorService],
   exports: [QuotationsService, PdfGeneratorService]
