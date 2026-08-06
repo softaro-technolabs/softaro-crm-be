@@ -23,7 +23,7 @@ export function parsePortalEmail(
   if (sender.includes('99acres.com') || sender.includes('nnacres')) {
     return parse99AcresEmail(body);
   }
-  if (sender.includes('housing.com') || sender.includes('proptiger.com') || sender.includes('rea.com')) {
+  if (sender.includes('housing.com') || sender.includes('housing-mailer.com') || sender.includes('proptiger.com') || sender.includes('rea.com')) {
     return parseHousingEmail(body);
   }
   if (sender.includes('magicbricks.com')) {

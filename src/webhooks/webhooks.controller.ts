@@ -202,6 +202,14 @@ function resolveOriginalSender(rawSender: string, headers: string, subject: stri
     return fromHeader[1].toLowerCase();
   }
 
+  // 3b. Check if the rewritten Gmail address embeds a known portal domain
+  const rawLower = rawSender.toLowerCase();
+  if (rawLower.includes('housing-mailer') || rawLower.includes('housing.com')) return 'noreply@housing.com';
+  if (rawLower.includes('99acres')) return 'noreply@99acres.com';
+  if (rawLower.includes('magicbricks')) return 'noreply@magicbricks.com';
+  if (rawLower.includes('indiamart')) return 'noreply@indiamart.com';
+  if (rawLower.includes('sulekha')) return 'noreply@sulekha.com';
+
   // 4. Subject-based heuristic for known portals (strip Fwd:/Re: prefix first)
   const sub = subject.toLowerCase().replace(/^(fwd?:|re:|fw:)\s*/gi, '').trim();
   if (
@@ -214,7 +222,7 @@ function resolveOriginalSender(rawSender: string, headers: string, subject: stri
   ) {
     return 'noreply@99acres.com';
   }
-  if (sub.includes('housing.com') || sub.includes('proptiger')) {
+  if (sub.includes('housing.com') || sub.includes('housing -') || sub.includes('housing.') || sub.includes('proptiger')) {
     return 'noreply@housing.com';
   }
   if (sub.includes('magicbricks')) {
