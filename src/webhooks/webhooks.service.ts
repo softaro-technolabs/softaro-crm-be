@@ -126,15 +126,19 @@ export class WebhooksService {
     // ── Gmail forwarding verification email detection ──────────────────────
     const gmailVerification = this.extractGmailVerification(sender, payload.subject ?? '', effectivePlain, bodyHtml ?? '');
     if (gmailVerification) {
-      this.logger.log(`[Webhook] Gmail verification detected for tenant ${tenantSlug} — code: ${gmailVerification.confirmationCode}`);
+      const code = gmailVerification.confirmationCode;
+      const link = gmailVerification.confirmationLink;
+      this.logger.log(`[Webhook] Gmail verification detected for tenant ${tenantSlug} — code: ${code || '(none)'} link: ${link || '(none)'}`);
       this.notificationGateway.sendNotificationToTenant(tenant.id, 'gmail_verification', {
         type: 'gmail_forwarding_verification',
-        confirmationCode: gmailVerification.confirmationCode,
-        confirmationLink: gmailVerification.confirmationLink,
+        confirmationCode: code,
+        confirmationLink: link,
         forwardingEmail: recipient,
-        message: `Gmail forwarding verification received. Use code: ${gmailVerification.confirmationCode}`,
+        message: code
+          ? `Gmail forwarding verification received. Use code: ${code}`
+          : 'Gmail forwarding verification received. Click the link to confirm.',
       });
-      return { success: true, message: `Gmail verification code: ${gmailVerification.confirmationCode}` };
+      return { success: true, message: code ? `Gmail verification code: ${code}` : 'Gmail verification link sent to frontend' };
     }
 
     const parsed = parsePortalEmail(sender, effectivePlain, bodyHtml);
@@ -229,18 +233,36 @@ export class WebhooksService {
     if (!isGmailVerification) return null;
 
     const text = bodyPlain || this.extractForwardedBody(bodyHtml, '');
+    const htmlText = this.extractForwardedBody(bodyHtml, '');
+    const combined = `${text}\n${htmlText}`;
 
-    // Gmail verification code is a 9-digit number
-    const codeMatch = text.match(/(?:confirmation code|verification code)[:\s]*(\d{9})/i)
-      ?? text.match(/\b(\d{9})\b/);
+    this.logger.log(`[Webhook] Gmail verification email detected. Body preview: ${combined.substring(0, 500)}`);
+
+    // Gmail confirmation code — try multiple patterns
+    const codeMatch =
+      combined.match(/(?:confirmation|verification)\s*(?:code|#)\s*[:=\s]\s*(\d{6,10})/i)
+      ?? combined.match(/(?:code|#)\s*[:=\s]\s*(\d{6,10})/i)
+      ?? combined.match(/\b(\d{9})\b/)
+      ?? combined.match(/\b(\d{8})\b/)
+      ?? combined.match(/\b(\d{10})\b/);
+
+    // Extract confirmation link from HTML
+    const linkMatch =
+      bodyHtml.match(/href=["'](https?:\/\/[^"']*(?:confirm|verify|forwarding)[^"']*)["']/i)
+      ?? combined.match(/(https?:\/\/mail\.google\.com\/mail\/\S+)/i)
+      ?? combined.match(/(https?:\/\/[^\s<>"']*(?:confirm|verify|forwarding)[^\s<>"']*)/i);
+    const confirmationLink = linkMatch?.[1] ?? null;
+
     const confirmationCode = codeMatch?.[1] ?? '';
 
-    if (!confirmationCode) return null;
-
-    // Extract confirmation link from HTML or plain text
-    const linkMatch = bodyHtml.match(/href="(https:\/\/mail\.google\.com\/mail\/[^"]*confirm[^"]*)"/i)
-      ?? text.match(/(https:\/\/mail\.google\.com\/mail\/\S*confirm\S*)/i);
-    const confirmationLink = linkMatch?.[1] ?? null;
+    // If we found neither code nor link, still broadcast the raw body
+    if (!confirmationCode && !confirmationLink) {
+      this.logger.warn(`[Webhook] Gmail verification detected but no code/link extracted. Full body: ${combined.substring(0, 1000)}`);
+      return {
+        confirmationCode: '',
+        confirmationLink: null,
+      };
+    }
 
     return { confirmationCode, confirmationLink };
   }
