@@ -829,9 +829,11 @@ export class AttendanceService {
 
   async createLeaveRequest(tenantId: string, actor: AttendanceActor, dto: CreateLeaveRequestDto) {
     // Only admins may file leave on someone else's behalf.
-    const targetUserId = dto.userId && dto.userId !== actor.userId
-      ? (this.assertAdmin(actor, 'raise leave requests for other users'), dto.userId)
-      : actor.userId;
+    let targetUserId = actor.userId;
+    if (dto.userId && dto.userId !== actor.userId) {
+      this.assertAdmin(actor, 'raise leave requests for other users');
+      targetUserId = dto.userId;
+    }
 
     const startDate = this.assertDate(dto.startDate, 'startDate');
     const endDate = this.assertDate(dto.endDate, 'endDate');
@@ -1325,11 +1327,15 @@ export class AttendanceService {
       if (!isStale && !cutoffReachedToday) continue;
 
       // Stale sessions are closed at their own day's cutoff, so a forgotten
-      // check-out cannot inflate the total by days.
-      const checkOutAt = isStale ? zonedTimeToUtc(checkInDate, cutoffMinutes, timezone) : now;
+      // check-out cannot inflate the total by days. A session that started after
+      // that day's cutoff closes at its own start instead, so check-out is never
+      // recorded as earlier than check-in.
+      const checkInAt = new Date(checkIn.checkInAt);
+      const cutoffAt = isStale ? zonedTimeToUtc(checkInDate, cutoffMinutes, timezone) : now;
+      const checkOutAt = cutoffAt < checkInAt ? checkInAt : cutoffAt;
       const durationMinutes = Math.max(
         0,
-        Math.floor((checkOutAt.getTime() - new Date(checkIn.checkInAt).getTime()) / 60000),
+        Math.floor((checkOutAt.getTime() - checkInAt.getTime()) / 60000),
       );
 
       await this.db.update(attendanceCheckIns).set({
