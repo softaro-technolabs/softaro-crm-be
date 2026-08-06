@@ -1,16 +1,17 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { and, desc, eq } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 
 import { DRIZZLE } from '../database/database.constants';
 import type { DrizzleDatabase } from '../database/database.types';
 import { siteVisits, leadActivities, leads, leadStatuses } from '../database/schema';
-import { CreateSiteVisitDto, UpdateSiteVisitDto } from './site-visits.dto';
+import { CreateSiteVisitDto, SiteVisitCheckInDto, UpdateSiteVisitDto } from './site-visits.dto';
 import { NotificationGateway } from '../notifications/notification.gateway';
 import { AutomationService } from '../automation/automation.service';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { AUDIT_ACTIONS } from '../audit-logs/audit-actions.constants';
 import { RequestContextService } from '../common/utils/request-context.service';
+import { AttendanceService } from '../attendance/attendance.service';
 
 @Injectable()
 export class SiteVisitsService {
@@ -20,6 +21,7 @@ export class SiteVisitsService {
     private readonly automationService: AutomationService,
     private readonly auditLogsService: AuditLogsService,
     private readonly requestContext: RequestContextService,
+    private readonly attendanceService: AttendanceService,
   ) {}
 
   private async resolveStatusIdBySlug(tenantId: string, slug: string): Promise<string | null> {
@@ -117,6 +119,76 @@ export class SiteVisitsService {
     ).catch(() => {});
 
     return this.findOne(tenantId, id);
+  }
+
+  /**
+   * Records the agent physically arriving at the site: stamps the GPS proof and the
+   * real arrival time on the visit, and — when the tenant has
+   * `siteVisitAutoAttendance` enabled — opens an attendance session tied to it, so
+   * field staff do not have to check in twice.
+   */
+  async checkIn(tenantId: string, visitId: string, dto: SiteVisitCheckInDto) {
+    const visit = await this.findOne(tenantId, visitId);
+    const userId = this.requestContext.getUserId();
+    const now = new Date();
+
+    if (visit.actualVisitTime) {
+      throw new BadRequestException('You have already checked in to this site visit');
+    }
+
+    await this.db
+      .update(siteVisits)
+      .set({
+        checkInLatitude: String(dto.latitude),
+        checkInLongitude: String(dto.longitude),
+        checkInSelfieUrl: dto.selfieUrl ?? null,
+        actualVisitTime: now,
+        updatedAt: now,
+      })
+      .where(and(eq(siteVisits.tenantId, tenantId), eq(siteVisits.id, visitId)));
+
+    let attendance: { checkInId: string } | null = null;
+    if (userId) {
+      attendance = await this.attendanceService.recordSiteVisitAttendance({
+        tenantId,
+        userId,
+        siteVisitId: visitId,
+        latitude: dto.latitude,
+        longitude: dto.longitude,
+        address: dto.address ?? null,
+        selfieUrl: dto.selfieUrl ?? null,
+      });
+    }
+
+    await this.db.insert(leadActivities).values({
+      id: randomUUID(),
+      tenantId,
+      leadId: visit.leadId,
+      type: 'meeting',
+      title: 'Agent Arrived at Site',
+      note: dto.address || 'Agent checked in at the property location.',
+      metadata: {
+        siteVisitId: visitId,
+        latitude: dto.latitude,
+        longitude: dto.longitude,
+        attendanceCheckInId: attendance?.checkInId ?? null,
+      },
+      happenedAt: now,
+      createdByUserId: userId,
+      createdAt: now,
+    });
+
+    this.auditLogsService.log(
+      tenantId, AUDIT_ACTIONS.SITE_VISIT_UPDATED, 'site_visit', visitId,
+      { action: 'check_in', latitude: dto.latitude, longitude: dto.longitude },
+      userId ?? undefined,
+    ).catch(() => {});
+
+    return {
+      visit: await this.findOne(tenantId, visitId),
+      attendanceRecorded: !!attendance,
+      attendanceCheckInId: attendance?.checkInId ?? null,
+    };
   }
 
   async update(tenantId: string, visitId: string, dto: UpdateSiteVisitDto) {

@@ -35,6 +35,30 @@ export class CreateSiteVisitDto {
   notes?: string;
 }
 
+export class SiteVisitCheckInDto {
+  @ApiProperty({ example: 19.076 })
+  @IsNumber()
+  @Min(-90)
+  @Max(90)
+  latitude!: number;
+
+  @ApiProperty({ example: 72.8777 })
+  @IsNumber()
+  @Min(-180)
+  @Max(180)
+  longitude!: number;
+
+  @ApiPropertyOptional({ example: '123 Main Road, Baner, Pune' })
+  @IsString()
+  @IsOptional()
+  address?: string;
+
+  @ApiPropertyOptional({ example: 'https://storage.example.com/selfie.jpg' })
+  @IsString()
+  @IsOptional()
+  selfieUrl?: string;
+}
+
 export class UpdateSiteVisitDto {
   @ApiPropertyOptional({ enum: SiteVisitStatus })
   @IsEnum(SiteVisitStatus)

@@ -65,7 +65,9 @@ export const attendanceSettings = pgTable(
     id: varchar('id', { length: 36 }).primaryKey(),
     tenantId: varchar('tenant_id', { length: 36 }).notNull(),
     defaultCheckInRadiusMeters: integer('default_check_in_radius_meters').notNull().default(200),
-    requireSelfie: boolean('require_selfie').notNull().default(true),
+    // Defaults to false: check-in is rejected without a selfie when this is on, and
+    // selfie capture is opt-in per tenant rather than assumed.
+    requireSelfie: boolean('require_selfie').notNull().default(false),
     requireLocation: boolean('require_location').notNull().default(true),
     allowRemoteCheckIn: boolean('allow_remote_check_in').notNull().default(false),
     workingHours: jsonb('working_hours').$type<{

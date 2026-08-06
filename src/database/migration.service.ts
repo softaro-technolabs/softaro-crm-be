@@ -1439,7 +1439,7 @@ export class MigrationService {
           "id" varchar(36) PRIMARY KEY,
           "tenant_id" varchar(36) NOT NULL,
           "default_check_in_radius_meters" integer NOT NULL DEFAULT 200,
-          "require_selfie" boolean NOT NULL DEFAULT true,
+          "require_selfie" boolean NOT NULL DEFAULT false,
           "require_location" boolean NOT NULL DEFAULT true,
           "allow_remote_check_in" boolean NOT NULL DEFAULT false,
           "working_hours" jsonb,
@@ -1625,6 +1625,22 @@ export class MigrationService {
       await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS "leave_balances_tenant_user_type_year_uq" ON "leave_balances" ("tenant_id", "user_id", "leave_type", "year");`);
       await client.query(`CREATE INDEX IF NOT EXISTS "leave_balances_tenant_idx" ON "leave_balances" ("tenant_id");`);
       this.logger.log('✓ leave_balances table created');
+    }
+
+    // ── 8b) require_selfie: stop defaulting to ON ─────────────────────────────
+    // The flag used to be stored but never enforced. Now that check-in rejects a
+    // missing selfie, tenants carrying the old `true` default would be locked out,
+    // so switch them off once and let admins opt back in.
+    // Self-limiting: after the default flips, this condition never matches again.
+    const selfieDefault = await client.query(`
+      SELECT column_default FROM information_schema.columns
+      WHERE table_name = 'attendance_settings' AND column_name = 'require_selfie' AND table_schema = 'public'
+    `);
+    if (selfieDefault.rows[0]?.column_default?.includes('true')) {
+      this.logger.log('Relaxing attendance_settings.require_selfie default to false...');
+      await client.query(`ALTER TABLE "attendance_settings" ALTER COLUMN "require_selfie" SET DEFAULT false;`);
+      await client.query(`UPDATE "attendance_settings" SET "require_selfie" = false WHERE "require_selfie" = true;`);
+      this.logger.log('✓ require_selfie default relaxed');
     }
 
     // ── 9) site_visits column extensions (for attendance integration) ─────────

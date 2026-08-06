@@ -14,7 +14,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RequestContextService } from '../common/utils/request-context.service';
 import { SiteVisitsService } from './site-visits.service';
-import { CreateSiteVisitDto, UpdateSiteVisitDto } from './site-visits.dto';
+import { CreateSiteVisitDto, SiteVisitCheckInDto, UpdateSiteVisitDto } from './site-visits.dto';
 
 @ApiTags('Site Visits')
 @Controller('tenants/:tenantId/site-visits')
@@ -38,6 +38,17 @@ export class SiteVisitsController {
   async create(@Param('tenantId') tenantId: string, @Body() dto: CreateSiteVisitDto) {
     this.requestContext.verifyTenantAccess(tenantId);
     return this.siteVisitsService.create(tenantId, dto);
+  }
+
+  @Post(':visitId/check-in')
+  @ApiOperation({ summary: 'Agent GPS check-in at the property (marks attendance when enabled)' })
+  async checkIn(
+    @Param('tenantId') tenantId: string,
+    @Param('visitId') visitId: string,
+    @Body() dto: SiteVisitCheckInDto
+  ) {
+    this.requestContext.verifyTenantAccess(tenantId);
+    return this.siteVisitsService.checkIn(tenantId, visitId, dto);
   }
 
   @Patch(':visitId')

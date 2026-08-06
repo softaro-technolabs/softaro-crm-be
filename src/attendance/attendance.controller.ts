@@ -12,7 +12,6 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { RequestContextService } from '../common/utils/request-context.service';
 import { AttendanceService } from './attendance.service';
 import {
   CheckInDto,
@@ -21,11 +20,14 @@ import {
   UpdateAttendanceSettingsDto,
   CreateAttendanceLocationDto,
   UpdateAttendanceLocationDto,
+  AttendanceLocationsQueryDto,
   AttendanceRecordsQueryDto,
   RegularizeAttendanceDto,
   CreateLeaveRequestDto,
   ReviewLeaveRequestDto,
+  CancelLeaveRequestDto,
   LeaveRequestsQueryDto,
+  UpsertLeaveBalanceDto,
 } from './attendance.dto';
 
 @ApiTags('Attendance')
@@ -33,35 +35,25 @@ import {
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class AttendanceController {
-  constructor(
-    private readonly attendanceService: AttendanceService,
-    private readonly requestContext: RequestContextService,
-  ) { }
-
-  private getTenantAndUser(tenantId: string) {
-    this.requestContext.verifyTenantAccess(tenantId);
-    const userId = this.requestContext.getUserId();
-    if (!userId) throw new Error('User context not found');
-    return { tenantId, userId };
-  }
+  constructor(private readonly attendanceService: AttendanceService) {}
 
   // ── Settings ─────────────────────────────────────────────────────────────
 
   @Get('settings')
   @ApiOperation({ summary: 'Get attendance settings' })
   async getSettings(@Param('tenantId') tenantId: string) {
-    this.requestContext.verifyTenantAccess(tenantId);
+    await this.attendanceService.resolveActor(tenantId);
     return this.attendanceService.getSettings(tenantId);
   }
 
   @Patch('settings')
-  @ApiOperation({ summary: 'Update attendance settings' })
+  @ApiOperation({ summary: 'Update attendance settings (admin)' })
   async updateSettings(
     @Param('tenantId') tenantId: string,
     @Body() dto: UpdateAttendanceSettingsDto,
   ) {
-    this.requestContext.verifyTenantAccess(tenantId);
-    return this.attendanceService.updateSettings(tenantId, dto);
+    const actor = await this.attendanceService.resolveActor(tenantId);
+    return this.attendanceService.updateSettings(tenantId, actor, dto);
   }
 
   // ── Locations ────────────────────────────────────────────────────────────
@@ -70,32 +62,41 @@ export class AttendanceController {
   @ApiOperation({ summary: 'List geo-fenced locations' })
   async getLocations(
     @Param('tenantId') tenantId: string,
-    @Query('type') type?: string,
-    @Query('activeOnly') activeOnly?: string,
+    @Query() query: AttendanceLocationsQueryDto,
   ) {
-    this.requestContext.verifyTenantAccess(tenantId);
-    return this.attendanceService.getLocations(tenantId, type, activeOnly !== 'false');
+    await this.attendanceService.resolveActor(tenantId);
+    return this.attendanceService.getLocations(tenantId, query.type, query.activeOnly !== 'false');
   }
 
   @Post('locations')
-  @ApiOperation({ summary: 'Create a geo-fenced location' })
+  @ApiOperation({ summary: 'Create a geo-fenced location (admin)' })
   async createLocation(
     @Param('tenantId') tenantId: string,
     @Body() dto: CreateAttendanceLocationDto,
   ) {
-    this.requestContext.verifyTenantAccess(tenantId);
-    return this.attendanceService.createLocation(tenantId, dto);
+    const actor = await this.attendanceService.resolveActor(tenantId);
+    return this.attendanceService.createLocation(tenantId, actor, dto);
   }
 
   @Patch('locations/:locationId')
-  @ApiOperation({ summary: 'Update a geo-fenced location' })
+  @ApiOperation({ summary: 'Update a geo-fenced location (admin)' })
   async updateLocation(
     @Param('tenantId') tenantId: string,
     @Param('locationId') locationId: string,
     @Body() dto: UpdateAttendanceLocationDto,
   ) {
-    this.requestContext.verifyTenantAccess(tenantId);
-    return this.attendanceService.updateLocation(tenantId, locationId, dto);
+    const actor = await this.attendanceService.resolveActor(tenantId);
+    return this.attendanceService.updateLocation(tenantId, actor, locationId, dto);
+  }
+
+  @Delete('locations/:locationId')
+  @ApiOperation({ summary: 'Deactivate a geo-fenced location (admin)' })
+  async deleteLocation(
+    @Param('tenantId') tenantId: string,
+    @Param('locationId') locationId: string,
+  ) {
+    const actor = await this.attendanceService.resolveActor(tenantId);
+    return this.attendanceService.deactivateLocation(tenantId, actor, locationId);
   }
 
   // ── Check-in / Check-out (Agent-facing) ──────────────────────────────────
@@ -103,41 +104,41 @@ export class AttendanceController {
   @Post('check-in')
   @ApiOperation({ summary: 'Agent check-in with GPS location' })
   async checkIn(@Param('tenantId') tenantId: string, @Body() dto: CheckInDto) {
-    const { userId } = this.getTenantAndUser(tenantId);
-    return this.attendanceService.checkIn(tenantId, userId, dto);
+    const actor = await this.attendanceService.resolveActor(tenantId);
+    return this.attendanceService.checkIn(tenantId, actor.userId, dto);
   }
 
   @Post('check-out')
   @ApiOperation({ summary: 'Agent check-out with GPS location' })
   async checkOut(@Param('tenantId') tenantId: string, @Body() dto: CheckOutDto) {
-    const { userId } = this.getTenantAndUser(tenantId);
-    return this.attendanceService.checkOut(tenantId, userId, dto);
+    const actor = await this.attendanceService.resolveActor(tenantId);
+    return this.attendanceService.checkOut(tenantId, actor.userId, dto);
   }
 
   @Get('my-status')
   @ApiOperation({ summary: 'Get current agent attendance status' })
   async getMyStatus(@Param('tenantId') tenantId: string) {
-    const { userId } = this.getTenantAndUser(tenantId);
-    return this.attendanceService.getMyStatus(tenantId, userId);
+    const actor = await this.attendanceService.resolveActor(tenantId);
+    return this.attendanceService.getMyStatus(tenantId, actor.userId);
   }
 
   @Post('location-ping')
   @ApiOperation({ summary: 'Periodic GPS ping while checked in' })
   async locationPing(@Param('tenantId') tenantId: string, @Body() dto: LocationPingDto) {
-    const { userId } = this.getTenantAndUser(tenantId);
-    return this.attendanceService.locationPing(tenantId, userId, dto);
+    const actor = await this.attendanceService.resolveActor(tenantId);
+    return this.attendanceService.locationPing(tenantId, actor.userId, dto);
   }
 
   // ── Records (Admin + Self) ───────────────────────────────────────────────
 
   @Get('records')
-  @ApiOperation({ summary: 'List attendance records' })
+  @ApiOperation({ summary: 'List attendance records — non-admins see only their own' })
   async getRecords(
     @Param('tenantId') tenantId: string,
     @Query() query: AttendanceRecordsQueryDto,
   ) {
-    this.requestContext.verifyTenantAccess(tenantId);
-    return this.attendanceService.getRecords(tenantId, query);
+    const actor = await this.attendanceService.resolveActor(tenantId);
+    return this.attendanceService.getRecords(tenantId, actor, query);
   }
 
   @Get('records/:recordId')
@@ -146,8 +147,8 @@ export class AttendanceController {
     @Param('tenantId') tenantId: string,
     @Param('recordId') recordId: string,
   ) {
-    this.requestContext.verifyTenantAccess(tenantId);
-    return this.attendanceService.getRecordDetail(tenantId, recordId);
+    const actor = await this.attendanceService.resolveActor(tenantId);
+    return this.attendanceService.getRecordDetail(tenantId, actor, recordId);
   }
 
   @Patch('records/:recordId')
@@ -157,42 +158,84 @@ export class AttendanceController {
     @Param('recordId') recordId: string,
     @Body() dto: RegularizeAttendanceDto,
   ) {
-    this.requestContext.verifyTenantAccess(tenantId);
-    return this.attendanceService.regularizeRecord(tenantId, recordId, dto);
+    const actor = await this.attendanceService.resolveActor(tenantId);
+    return this.attendanceService.regularizeRecord(tenantId, actor, recordId, dto);
   }
 
   // ── Reports ──────────────────────────────────────────────────────────────
 
   @Get('reports/daily')
-  @ApiOperation({ summary: 'Daily attendance summary for all users' })
+  @ApiOperation({ summary: 'Daily attendance summary for all users (admin)' })
   async getDailySummary(
     @Param('tenantId') tenantId: string,
     @Query('date') date?: string,
   ) {
-    this.requestContext.verifyTenantAccess(tenantId);
-    return this.attendanceService.getDailySummary(tenantId, date || new Date().toISOString().split('T')[0]);
+    const actor = await this.attendanceService.resolveActor(tenantId);
+    const settings = await this.attendanceService.getSettings(tenantId);
+    return this.attendanceService.getDailySummary(
+      tenantId,
+      actor,
+      date || this.attendanceService.todayFor(settings),
+    );
   }
 
   @Get('reports/monthly')
-  @ApiOperation({ summary: 'Monthly attendance summary' })
+  @ApiOperation({ summary: 'Monthly attendance summary — non-admins see only their own' })
   async getMonthlySummary(
     @Param('tenantId') tenantId: string,
     @Query('month') month?: string,
     @Query('userId') userId?: string,
   ) {
-    this.requestContext.verifyTenantAccess(tenantId);
-    const m = month || `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
-    return this.attendanceService.getMonthlySummary(tenantId, m, userId);
+    const actor = await this.attendanceService.resolveActor(tenantId);
+    const settings = await this.attendanceService.getSettings(tenantId);
+    const resolvedMonth = month || this.attendanceService.todayFor(settings).slice(0, 7);
+    return this.attendanceService.getMonthlySummary(tenantId, actor, resolvedMonth, userId);
   }
 
   @Get('live-map')
-  @ApiOperation({ summary: 'Currently checked-in agents with locations' })
+  @ApiOperation({ summary: 'Currently checked-in agents with locations (admin)' })
   async getLiveMap(@Param('tenantId') tenantId: string) {
-    this.requestContext.verifyTenantAccess(tenantId);
-    return this.attendanceService.getLiveMap(tenantId);
+    const actor = await this.attendanceService.resolveActor(tenantId);
+    return this.attendanceService.getLiveMap(tenantId, actor);
+  }
+
+  @Post('auto-checkout/run')
+  @ApiOperation({ summary: 'Close forgotten check-ins for this tenant now (admin)' })
+  async runAutoCheckout(@Param('tenantId') tenantId: string) {
+    const actor = await this.attendanceService.resolveActor(tenantId);
+    return this.attendanceService.triggerAutoCheckout(tenantId, actor);
   }
 
   // ── Leave Management ─────────────────────────────────────────────────────
+  // NOTE: `leaves/balances` is declared before `leaves/:leaveId` so the literal
+  // path is matched first.
+
+  @Get('leaves/balances')
+  @ApiOperation({ summary: 'Get leave balances — non-admins see only their own' })
+  async getLeaveBalances(
+    @Param('tenantId') tenantId: string,
+    @Query('userId') userId?: string,
+    @Query('year') year?: string,
+  ) {
+    const actor = await this.attendanceService.resolveActor(tenantId);
+    const parsedYear = year ? Number(year) : undefined;
+    return this.attendanceService.getLeaveBalances(
+      tenantId,
+      actor,
+      userId,
+      Number.isFinite(parsedYear) ? parsedYear : undefined,
+    );
+  }
+
+  @Post('leaves/balances')
+  @ApiOperation({ summary: 'Allocate or update a leave balance (admin)' })
+  async upsertLeaveBalance(
+    @Param('tenantId') tenantId: string,
+    @Body() dto: UpsertLeaveBalanceDto,
+  ) {
+    const actor = await this.attendanceService.resolveActor(tenantId);
+    return this.attendanceService.upsertLeaveBalance(tenantId, actor, dto);
+  }
 
   @Post('leaves')
   @ApiOperation({ summary: 'Submit a leave request' })
@@ -200,41 +243,39 @@ export class AttendanceController {
     @Param('tenantId') tenantId: string,
     @Body() dto: CreateLeaveRequestDto,
   ) {
-    const { userId } = this.getTenantAndUser(tenantId);
-    return this.attendanceService.createLeaveRequest(tenantId, userId, dto);
+    const actor = await this.attendanceService.resolveActor(tenantId);
+    return this.attendanceService.createLeaveRequest(tenantId, actor, dto);
   }
 
   @Get('leaves')
-  @ApiOperation({ summary: 'List leave requests' })
+  @ApiOperation({ summary: 'List leave requests — non-admins see only their own' })
   async getLeaveRequests(
     @Param('tenantId') tenantId: string,
     @Query() query: LeaveRequestsQueryDto,
   ) {
-    this.requestContext.verifyTenantAccess(tenantId);
-    return this.attendanceService.getLeaveRequests(tenantId, query);
+    const actor = await this.attendanceService.resolveActor(tenantId);
+    return this.attendanceService.getLeaveRequests(tenantId, actor, query);
   }
 
   @Patch('leaves/:leaveId')
-  @ApiOperation({ summary: 'Approve/reject a leave request' })
+  @ApiOperation({ summary: 'Approve/reject a leave request (admin)' })
   async reviewLeaveRequest(
     @Param('tenantId') tenantId: string,
     @Param('leaveId') leaveId: string,
     @Body() dto: ReviewLeaveRequestDto,
   ) {
-    const { userId } = this.getTenantAndUser(tenantId);
-    return this.attendanceService.reviewLeaveRequest(tenantId, leaveId, userId, dto);
+    const actor = await this.attendanceService.resolveActor(tenantId);
+    return this.attendanceService.reviewLeaveRequest(tenantId, leaveId, actor, dto);
   }
 
-  @Get('leaves/balances')
-  @ApiOperation({ summary: 'Get leave balances for a user' })
-  async getLeaveBalances(
+  @Post('leaves/:leaveId/cancel')
+  @ApiOperation({ summary: 'Cancel your own pending leave request (admins may cancel approved ones)' })
+  async cancelLeaveRequest(
     @Param('tenantId') tenantId: string,
-    @Query('userId') userId?: string,
-    @Query('year') year?: string,
+    @Param('leaveId') leaveId: string,
+    @Body() dto: CancelLeaveRequestDto,
   ) {
-    const ctx = this.getTenantAndUser(tenantId);
-    const targetUserId = userId || ctx.userId;
-    return this.attendanceService.getLeaveBalances(tenantId, targetUserId, year ? parseInt(year) : undefined);
+    const actor = await this.attendanceService.resolveActor(tenantId);
+    return this.attendanceService.cancelLeaveRequest(tenantId, leaveId, actor, dto.reason);
   }
 }
-
