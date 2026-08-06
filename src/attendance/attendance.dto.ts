@@ -426,6 +426,85 @@ export class LeaveRequestsQueryDto extends BaseListQueryDto {
   leaveType?: LeaveTypeValue;
 }
 
+// ── Team Attendance Report ───────────────────────────────────────────────────
+
+export const REPORT_SORT_FIELDS = [
+  'name',
+  'presentDays',
+  'absentDays',
+  'halfDays',
+  'leaveDays',
+  'lateDays',
+  'totalWorkingMinutes',
+  'attendancePercentage',
+] as const;
+export type ReportSortField = (typeof REPORT_SORT_FIELDS)[number];
+
+export class AttendanceReportQueryDto {
+  @ApiPropertyOptional({ example: '2026-08-01', description: 'Range start. Defaults to the first of the current month.' })
+  @IsOptional()
+  @Matches(DATE_REGEX, { message: 'startDate must be in YYYY-MM-DD format' })
+  startDate?: string;
+
+  @ApiPropertyOptional({ example: '2026-08-31', description: 'Range end. Defaults to today.' })
+  @IsOptional()
+  @Matches(DATE_REGEX, { message: 'endDate must be in YYYY-MM-DD format' })
+  endDate?: string;
+
+  @ApiPropertyOptional({ description: 'Shorthand for a whole month, e.g. 2026-08. Overrides startDate/endDate.' })
+  @IsOptional()
+  @Matches(/^\d{4}-\d{2}$/, { message: 'month must be in YYYY-MM format' })
+  month?: string;
+
+  @ApiPropertyOptional({ description: 'Restrict to a single user' })
+  @IsOptional()
+  @IsString()
+  userId?: string;
+
+  @ApiPropertyOptional({ description: 'Search by agent name or email' })
+  @IsOptional()
+  @IsString()
+  search?: string;
+
+  @ApiPropertyOptional({
+    description: 'Only include users who have at least one day with this status',
+    enum: ATTENDANCE_STATUSES,
+  })
+  @IsOptional()
+  @IsEnum(ATTENDANCE_STATUSES)
+  status?: AttendanceStatusValue;
+
+  @ApiPropertyOptional({ description: 'Only include users with at least one late arrival' })
+  @IsOptional()
+  @IsString()
+  lateOnly?: string;
+
+  @ApiPropertyOptional({ minimum: 1, default: 50 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(500)
+  limit?: number;
+
+  @ApiPropertyOptional({ minimum: 1, default: 1 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number;
+
+  @ApiPropertyOptional({ enum: REPORT_SORT_FIELDS, default: 'name' })
+  @IsOptional()
+  @IsEnum(REPORT_SORT_FIELDS)
+  sortBy?: ReportSortField;
+
+  @ApiPropertyOptional({ enum: ['asc', 'desc'], default: 'asc' })
+  @IsOptional()
+  @IsEnum(['asc', 'desc'])
+  sortOrder?: 'asc' | 'desc';
+}
+
 // ── Leave Balances ───────────────────────────────────────────────────────────
 
 export class UpsertLeaveBalanceDto {

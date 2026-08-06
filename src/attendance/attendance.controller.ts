@@ -7,12 +7,15 @@ import {
   Patch,
   Post,
   Query,
+  Res,
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import type { Response } from 'express';
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AttendanceService } from './attendance.service';
+import { AttendanceReportService } from './attendance-report.service';
 import {
   CheckInDto,
   CheckOutDto,
@@ -22,6 +25,7 @@ import {
   UpdateAttendanceLocationDto,
   AttendanceLocationsQueryDto,
   AttendanceRecordsQueryDto,
+  AttendanceReportQueryDto,
   RegularizeAttendanceDto,
   CreateLeaveRequestDto,
   ReviewLeaveRequestDto,
@@ -35,7 +39,10 @@ import {
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class AttendanceController {
-  constructor(private readonly attendanceService: AttendanceService) {}
+  constructor(
+    private readonly attendanceService: AttendanceService,
+    private readonly reportService: AttendanceReportService,
+  ) {}
 
   // ── Settings ─────────────────────────────────────────────────────────────
 
@@ -190,6 +197,47 @@ export class AttendanceController {
     const settings = await this.attendanceService.getSettings(tenantId);
     const resolvedMonth = month || this.attendanceService.todayFor(settings).slice(0, 7);
     return this.attendanceService.getMonthlySummary(tenantId, actor, resolvedMonth, userId);
+  }
+
+  // ── Team report ──────────────────────────────────────────────────────────
+  // NOTE: `reports/export` is declared before the other report routes so the
+  // literal path is never shadowed.
+
+  @Get('reports/export')
+  @ApiOperation({ summary: 'Download the attendance report as a styled Excel workbook' })
+  async exportReport(
+    @Param('tenantId') tenantId: string,
+    @Query() query: AttendanceReportQueryDto,
+    @Res() res: Response,
+  ) {
+    const actor = await this.attendanceService.resolveActor(tenantId);
+    const buffer = await this.reportService.exportToXlsx(tenantId, actor, query);
+    const label = query.month ?? `${query.startDate ?? 'start'}_${query.endDate ?? 'today'}`;
+    const filename = `attendance_report_${label}.xlsx`;
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(buffer);
+  }
+
+  @Get('reports/team')
+  @ApiOperation({ summary: 'Per-agent attendance totals for a date range — non-admins see only their own' })
+  async getTeamReport(
+    @Param('tenantId') tenantId: string,
+    @Query() query: AttendanceReportQueryDto,
+  ) {
+    const actor = await this.attendanceService.resolveActor(tenantId);
+    return this.reportService.getTeamReport(tenantId, actor, query);
+  }
+
+  @Get('reports/register')
+  @ApiOperation({ summary: 'Day-by-day attendance register (agent × date grid), max 62 days' })
+  async getRegister(
+    @Param('tenantId') tenantId: string,
+    @Query() query: AttendanceReportQueryDto,
+  ) {
+    const actor = await this.attendanceService.resolveActor(tenantId);
+    return this.reportService.getRegister(tenantId, actor, query);
   }
 
   @Get('live-map')
