@@ -1,4 +1,4 @@
-import { index, pgEnum, pgTable, timestamp, varchar, jsonb } from 'drizzle-orm/pg-core';
+import { index, pgEnum, pgTable, timestamp, varchar, jsonb, integer } from 'drizzle-orm/pg-core';
 
 export const leadActivityTypeEnum = pgEnum('lead_activity_type', [
   'call',
@@ -13,6 +13,8 @@ export const leadActivityTypeEnum = pgEnum('lead_activity_type', [
   'payment'
 ]);
 
+export const sentimentEnum = pgEnum('activity_sentiment', ['positive', 'negative', 'neutral']);
+
 export const leadActivities = pgTable(
   'lead_activities',
   {
@@ -22,6 +24,8 @@ export const leadActivities = pgTable(
     type: leadActivityTypeEnum('type').notNull(),
     title: varchar('title', { length: 255 }),
     note: varchar('note', { length: 2000 }),
+    durationSec: integer('duration_sec'),
+    sentiment: sentimentEnum('sentiment'),
     metadata: jsonb('metadata'),
     happenedAt: timestamp('happened_at', { withTimezone: true }).defaultNow().notNull(),
     nextFollowUpAt: timestamp('next_follow_up_at', { withTimezone: true }),
@@ -31,7 +35,8 @@ export const leadActivities = pgTable(
   (table) => ({
     tenantLeadTimeIdx: index('lead_activities_tenant_lead_time_idx').on(table.tenantId, table.leadId, table.happenedAt),
     leadIdx: index('lead_activities_lead_idx').on(table.leadId),
-    tenantNextFollowUpIdx: index('lead_activities_tenant_next_follow_up_idx').on(table.tenantId, table.nextFollowUpAt)
+    tenantNextFollowUpIdx: index('lead_activities_tenant_next_follow_up_idx').on(table.tenantId, table.nextFollowUpAt),
+    tenantSentimentIdx: index('lead_activities_tenant_sentiment_idx').on(table.tenantId, table.sentiment)
   })
 );
 

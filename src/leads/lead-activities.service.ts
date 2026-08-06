@@ -77,6 +77,8 @@ export class LeadActivitiesService {
         type: dto.type,
         title: dto.title ?? null,
         note: dto.note ?? null,
+        durationSec: dto.durationSec ?? null,
+        sentiment: dto.sentiment ?? null,
         happenedAt,
         nextFollowUpAt,
         createdByUserId: createdByUserId ?? null,

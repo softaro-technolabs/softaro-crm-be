@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type, Transform } from 'class-transformer';
-import { IsBoolean, IsIn, IsInt, IsOptional, IsPositive, IsString, IsUUID, Max, MaxLength } from 'class-validator';
+import { IsBoolean, IsIn, IsInt, IsOptional, IsPositive, IsString, IsUUID, Max, MaxLength, Min } from 'class-validator';
 
 export const LEAD_ACTIVITY_TYPES = ['call', 'whatsapp', 'email', 'meeting', 'task', 'note', 'status_change'] as const;
 export type LeadActivityType = (typeof LEAD_ACTIVITY_TYPES)[number];
@@ -49,6 +49,25 @@ export class CreateLeadActivityDto {
   @IsOptional()
   @IsBoolean()
   markContacted?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Duration in seconds (for call/meeting activities)',
+    example: 300,
+    minimum: 0
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  durationSec?: number;
+
+  @ApiPropertyOptional({
+    enum: ['positive', 'negative', 'neutral'],
+    description: 'Sentiment/outcome of the activity (call quality, message tone, meeting result)',
+    example: 'positive'
+  })
+  @IsOptional()
+  @IsIn(['positive', 'negative', 'neutral'])
+  sentiment?: 'positive' | 'negative' | 'neutral';
 
   static defaultMarkContacted(type: LeadActivityType) {
     return CONTACT_TYPES.includes(type);

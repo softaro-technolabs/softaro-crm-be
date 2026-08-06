@@ -8,6 +8,7 @@ import type { DrizzleDatabase } from '../database/database.types';
 import { tenants, leads } from '../database/schema';
 import { LeadsService } from '../leads/leads.service';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
+import { NotificationGateway } from '../notifications/notification.gateway';
 import { parsePortalEmail } from './parsers/parser.factory';
 
 const PORTAL_SOURCES = [
@@ -27,6 +28,7 @@ export class WebhooksService {
     private readonly leadsService: LeadsService,
     private readonly auditLogsService: AuditLogsService,
     private readonly configService: ConfigService,
+    private readonly notificationGateway: NotificationGateway,
   ) {}
 
   // ── Portal Integrations Stats ──────────────────────────────────────────────
@@ -121,6 +123,20 @@ export class WebhooksService {
       return { success: false, message: 'Tenant inactive' };
     }
 
+    // ── Gmail forwarding verification email detection ──────────────────────
+    const gmailVerification = this.extractGmailVerification(sender, payload.subject ?? '', effectivePlain, bodyHtml ?? '');
+    if (gmailVerification) {
+      this.logger.log(`[Webhook] Gmail verification detected for tenant ${tenantSlug} — code: ${gmailVerification.confirmationCode}`);
+      this.notificationGateway.sendNotificationToTenant(tenant.id, 'gmail_verification', {
+        type: 'gmail_forwarding_verification',
+        confirmationCode: gmailVerification.confirmationCode,
+        confirmationLink: gmailVerification.confirmationLink,
+        forwardingEmail: recipient,
+        message: `Gmail forwarding verification received. Use code: ${gmailVerification.confirmationCode}`,
+      });
+      return { success: true, message: `Gmail verification code: ${gmailVerification.confirmationCode}` };
+    }
+
     const parsed = parsePortalEmail(sender, effectivePlain, bodyHtml);
 
     if (!parsed) {
@@ -191,5 +207,41 @@ export class WebhooksService {
       .replace(/&quot;/g, '"')
       .replace(/\n{3,}/g, '\n\n')
       .trim();
+  }
+
+  /**
+   * Detect Gmail forwarding verification emails and extract the
+   * confirmation code + link so the frontend can show them in a popup.
+   */
+  private extractGmailVerification(
+    sender: string,
+    subject: string,
+    bodyPlain: string,
+    bodyHtml: string,
+  ): { confirmationCode: string; confirmationLink: string | null } | null {
+    const s = sender.toLowerCase();
+    const sub = subject.toLowerCase();
+
+    const isGmailVerification =
+      (s.includes('forwarding-noreply@google.com') || s.includes('noreply@google.com')) &&
+      (sub.includes('forwarding') || sub.includes('confirmation') || sub.includes('verify'));
+
+    if (!isGmailVerification) return null;
+
+    const text = bodyPlain || this.extractForwardedBody(bodyHtml, '');
+
+    // Gmail verification code is a 9-digit number
+    const codeMatch = text.match(/(?:confirmation code|verification code)[:\s]*(\d{9})/i)
+      ?? text.match(/\b(\d{9})\b/);
+    const confirmationCode = codeMatch?.[1] ?? '';
+
+    if (!confirmationCode) return null;
+
+    // Extract confirmation link from HTML or plain text
+    const linkMatch = bodyHtml.match(/href="(https:\/\/mail\.google\.com\/mail\/[^"]*confirm[^"]*)"/i)
+      ?? text.match(/(https:\/\/mail\.google\.com\/mail\/\S*confirm\S*)/i);
+    const confirmationLink = linkMatch?.[1] ?? null;
+
+    return { confirmationCode, confirmationLink };
   }
 }
