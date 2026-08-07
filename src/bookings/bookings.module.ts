@@ -1,3 +1,4 @@
+import { LeadsModule } from '../leads/leads.module';
 import { Module } from '@nestjs/common';
 
 import { CommonModule } from '../common/common.module';
@@ -7,7 +8,7 @@ import { BookingsService } from './bookings.service';
 import { AutomationModule } from '../automation/automation.module';
 
 @Module({
-  imports: [DatabaseModule, CommonModule, AutomationModule],
+  imports: [DatabaseModule, CommonModule, AutomationModule, LeadsModule],
   controllers: [BookingsController],
   providers: [BookingsService]
 })

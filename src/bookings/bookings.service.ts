@@ -34,6 +34,7 @@ import {
   BookingPaymentQueryDto
 } from './bookings.dto';
 import { AutomationService } from '../automation/automation.service';
+import { LeadPipelineService, PIPELINE_STAGE } from '../leads/lead-pipeline.service';
 import { generateDemandLetterPdf } from '../common/pdf-templates/demand-letter.template';
 import { generateAllotmentLetterPdf } from '../common/pdf-templates/allotment-letter.template';
 
@@ -41,7 +42,8 @@ import { generateAllotmentLetterPdf } from '../common/pdf-templates/allotment-le
 export class BookingsService {
   constructor(
     @Inject(DRIZZLE) private readonly db: DrizzleDatabase,
-    private readonly automationService: AutomationService
+    private readonly automationService: AutomationService,
+    private readonly leadPipeline: LeadPipelineService
   ) {}
 
   async listBookings(tenantId: string, query: BookingListQueryDto) {
@@ -280,6 +282,10 @@ export class BookingsService {
     // Fire automation event (fire-and-forget)
     if (resolved.leadId) {
       this.automationService.fireEvent(tenantId, 'booking_created', { leadId: resolved.leadId }).catch(() => {});
+      await this.leadPipeline.advanceTo(tenantId, resolved.leadId, PIPELINE_STAGE.BOOKING_DONE, {
+        actorUserId: createdByUserId,
+        reason: 'Booking created.'
+      });
     }
 
     return bookingResult;
@@ -320,6 +326,22 @@ export class BookingsService {
         await this.syncUnitStatus(tx, tenantId, existing.booking.propertyUnitId, unitStatus, updatedByUserId, `Synced from booking ${existing.booking.bookingNumber}`);
       }
     });
+
+    // A confirmed booking is the booking stage; a completed one means the sale
+    // has been executed, which is the registration stage of the journey.
+    if (status !== existing.booking.status) {
+      if (status === 'confirmed') {
+        await this.leadPipeline.advanceTo(tenantId, existing.booking.leadId, PIPELINE_STAGE.BOOKING_DONE, {
+          actorUserId: updatedByUserId,
+          reason: 'Booking confirmed.'
+        });
+      } else if (status === 'completed') {
+        await this.leadPipeline.advanceTo(tenantId, existing.booking.leadId, PIPELINE_STAGE.REGISTRATION, {
+          actorUserId: updatedByUserId,
+          reason: 'Booking completed.'
+        });
+      }
+    }
 
     return this.getBooking(tenantId, bookingId);
   }

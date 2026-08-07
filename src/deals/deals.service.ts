@@ -22,6 +22,7 @@ import {
   users
 } from '../database/schema';
 import { PaginationUtil } from '../common/utils/pagination.util';
+import { LeadPipelineService, PIPELINE_STAGE } from '../leads/lead-pipeline.service';
 import {
   ConvertLeadToDealDto,
   CreateDealDto,
@@ -32,7 +33,10 @@ import {
 
 @Injectable()
 export class DealsService {
-  constructor(@Inject(DRIZZLE) private readonly db: DrizzleDatabase) {}
+  constructor(
+    @Inject(DRIZZLE) private readonly db: DrizzleDatabase,
+    private readonly leadPipeline: LeadPipelineService
+  ) {}
 
   async listDeals(tenantId: string, query: DealListQueryDto) {
     const limit = query.limit ?? 50;
@@ -334,6 +338,15 @@ export class DealsService {
         });
       }
     });
+
+    // Winning a deal means the unit is booked — reflect that on the lead so the
+    // pipeline stops depending on someone remembering to drag the card.
+    if (nextStatus === 'closed_won' && existing.deal.status !== 'closed_won') {
+      await this.leadPipeline.advanceTo(tenantId, existing.deal.leadId, PIPELINE_STAGE.BOOKING_DONE, {
+        actorUserId: updatedByUserId,
+        reason: `Deal ${existing.deal.dealNumber} was won.`
+      });
+    }
 
     return this.getDeal(tenantId, dealId);
   }

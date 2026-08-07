@@ -1,3 +1,4 @@
+import { LeadsModule } from '../leads/leads.module';
 import { Module } from '@nestjs/common';
 import { QuotationsController } from './quotations.controller';
 import { QuotationsService } from './quotations.service';
@@ -7,7 +8,7 @@ import { DatabaseModule } from '../database/database.module';
 import { ChannelPartnersModule } from '../channel-partners/channel-partners.module';
 
 @Module({
-  imports: [CommonModule, DatabaseModule, ChannelPartnersModule],
+  imports: [CommonModule, DatabaseModule, ChannelPartnersModule, LeadsModule],
   controllers: [QuotationsController],
   providers: [QuotationsService, PdfGeneratorService],
   exports: [QuotationsService, PdfGeneratorService]

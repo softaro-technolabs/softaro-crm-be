@@ -13,6 +13,7 @@ import { LeadFollowUpsController } from './lead-followups.controller';
 import { LeadsController } from './leads.controller';
 import { LeadsService } from './leads.service';
 import { LeadScoringService } from './lead-scoring.service';
+import { LeadPipelineService } from './lead-pipeline.service';
 import { LeadTasksService } from './lead-tasks.service';
 import { FollowupsCronService } from './followups-cron.service';
 import { AiQualificationService } from './ai-qualification.service';
@@ -32,8 +33,8 @@ import { AutomationModule } from '../automation/automation.module';
     LeadsController,
     PublicLeadsController
   ],
-  providers: [LeadsService, LeadAssignmentService, LeadActivitiesService, LeadTasksService, LeadScoringService, FollowupsCronService, AiQualificationService],
-  exports: [LeadsService, LeadAssignmentService, LeadActivitiesService, LeadTasksService, AiQualificationService]
+  providers: [LeadsService, LeadAssignmentService, LeadActivitiesService, LeadTasksService, LeadScoringService, LeadPipelineService, FollowupsCronService, AiQualificationService],
+  exports: [LeadsService, LeadAssignmentService, LeadActivitiesService, LeadTasksService, LeadPipelineService, AiQualificationService]
 })
 export class LeadsModule { }
 

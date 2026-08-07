@@ -55,16 +55,70 @@ type CreateLeadOptions = {
   createdByUserId?: string | null;
 };
 
+/**
+ * The canonical real-estate pipeline.
+ *
+ * Ordering matters twice over: `order` drives the Kanban columns, and the
+ * won-path sequence here is what {@link LEAD_PIPELINE_RANK} uses to decide
+ * whether an automatic transition is moving a lead forward.
+ *
+ * Loss reasons are separate statuses rather than one "Not Interested" bucket,
+ * so "why are we losing?" is answerable from the pipeline itself.
+ */
 const DEFAULT_PIPELINE_STATUSES = [
+  // ── Won path ──────────────────────────────────────────────────────────────
   { name: 'New', slug: 'new', color: '#2563eb', isFinal: false },
   { name: 'Contacted', slug: 'contacted', color: '#7c3aed', isFinal: false },
+  { name: 'Qualified', slug: 'qualified', color: '#8b5cf6', isFinal: false },
   { name: 'Interested', slug: 'interested', color: '#16a34a', isFinal: false },
   { name: 'Site Visit Scheduled', slug: 'site_visit_scheduled', color: '#facc15', isFinal: false },
   { name: 'Site Visit Done', slug: 'site_visit_done', color: '#ea580c', isFinal: false },
+  { name: 'Revisit Scheduled', slug: 'revisit_scheduled', color: '#f97316', isFinal: false },
   { name: 'Negotiation', slug: 'negotiation', color: '#0ea5e9', isFinal: false },
-  { name: 'Booking Done', slug: 'booking_done', color: '#14b8a6', isFinal: true },
-  { name: 'Not Interested', slug: 'not_interested', color: '#4b5563', isFinal: true }
+  // No longer final: the journey continues through registration and handover.
+  { name: 'Booking Done', slug: 'booking_done', color: '#14b8a6', isFinal: false },
+  { name: 'Registration', slug: 'registration', color: '#0d9488', isFinal: false },
+  { name: 'Possession', slug: 'possession', color: '#065f46', isFinal: true },
+  // ── Loss reasons ──────────────────────────────────────────────────────────
+  { name: 'Lost — Budget', slug: 'lost_budget', color: '#b91c1c', isFinal: true },
+  { name: 'Lost — Location', slug: 'lost_location', color: '#9f1239', isFinal: true },
+  { name: 'Lost — Timing', slug: 'lost_timing', color: '#a16207', isFinal: true },
+  { name: 'Lost — Bought Elsewhere', slug: 'lost_competitor', color: '#7f1d1d', isFinal: true },
+  { name: 'Not Interested', slug: 'not_interested', color: '#4b5563', isFinal: true },
+  { name: 'Junk / Invalid', slug: 'junk', color: '#334155', isFinal: true }
 ] as const;
+
+/** The slug set seeded before loss reasons and post-booking stages existed. */
+const LEGACY_PIPELINE_SLUGS = [
+  'new',
+  'contacted',
+  'interested',
+  'site_visit_scheduled',
+  'site_visit_done',
+  'negotiation',
+  'booking_done',
+  'not_interested'
+];
+
+/**
+ * Position on the won path. Statuses absent from this map (loss reasons, and
+ * anything a tenant added themselves) are off-ladder: an automatic transition
+ * out of them is always allowed, because a lead marked lost that later books is
+ * a real and important case.
+ */
+export const LEAD_PIPELINE_RANK: Record<string, number> = {
+  new: 0,
+  contacted: 1,
+  qualified: 2,
+  interested: 3,
+  site_visit_scheduled: 4,
+  site_visit_done: 5,
+  revisit_scheduled: 6,
+  negotiation: 7,
+  booking_done: 8,
+  registration: 9,
+  possession: 10
+};
 
 import { NotificationGateway } from '../notifications/notification.gateway';
 
@@ -782,36 +836,109 @@ export class LeadsService {
 
   private async ensureLeadDefaults(tenantId: string) {
     await this.assignmentService.ensureSettings(tenantId);
-    const countResult = await this.db
-      .select({ count: sql<number>`count(*)` })
+
+    const existing = await this.db
+      .select({
+        id: leadStatuses.id,
+        slug: leadStatuses.slug,
+        order: leadStatuses.order,
+        isFinal: leadStatuses.isFinal
+      })
       .from(leadStatuses)
       .where(eq(leadStatuses.tenantId, tenantId));
 
-    const count = countResult.length > 0 ? Number(countResult[0].count) : 0;
+    const now = new Date();
 
-    if (count > 0) {
+    // ── Fresh tenant: seed the whole canonical pipeline ─────────────────────
+    if (existing.length === 0) {
+      try {
+        await this.db.insert(leadStatuses).values(
+          DEFAULT_PIPELINE_STATUSES.map((status, index) => ({
+            id: randomUUID(),
+            tenantId,
+            name: status.name,
+            slug: status.slug,
+            color: status.color,
+            isFinal: status.isFinal,
+            isDefault: index === 0,
+            order: index,
+            createdAt: now,
+            updatedAt: now
+          }))
+        );
+      } catch (error) {
+        throw new InternalServerErrorException(
+          `Failed to initialize lead pipeline: ${error instanceof Error ? error.message : 'Unknown error'}`
+        );
+      }
       return;
     }
 
-    const now = new Date();
+    // ── Existing tenant: add only what is missing ───────────────────────────
+    const existingSlugs = new Set(existing.map((s) => s.slug));
+    const missing = DEFAULT_PIPELINE_STATUSES.filter((s) => !existingSlugs.has(s.slug));
+    if (missing.length === 0) return;
+
+    // A pipeline is "pristine" when it still holds exactly the legacy defaults.
+    // Only then is it safe to renumber, because nobody has arranged it by hand.
+    const isPristine =
+      existing.length === LEGACY_PIPELINE_SLUGS.length &&
+      LEGACY_PIPELINE_SLUGS.every((slug) => existingSlugs.has(slug));
+
+    const canonicalOrder = new Map<string, number>(
+      DEFAULT_PIPELINE_STATUSES.map((s, i) => [s.slug as string, i])
+    );
+    const maxOrder = existing.reduce((max, s) => Math.max(max, s.order), 0);
+
     try {
       await this.db.insert(leadStatuses).values(
-        DEFAULT_PIPELINE_STATUSES.map((status, index) => ({
+        missing.map((status, index) => ({
           id: randomUUID(),
           tenantId,
           name: status.name,
           slug: status.slug,
           color: status.color,
           isFinal: status.isFinal,
-          isDefault: index === 0,
-          order: index,
+          isDefault: false,
+          // Customised pipelines get the new stages appended rather than
+          // interleaved, so an admin's own ordering survives untouched.
+          order: isPristine ? (canonicalOrder.get(status.slug) ?? maxOrder + index + 1) : maxOrder + index + 1,
           createdAt: now,
           updatedAt: now
         }))
       );
+
+      if (isPristine) {
+        // Renumber the legacy rows into their canonical slots so the new stages
+        // land in the right place instead of all bunching at the end.
+        for (const status of existing) {
+          const target = canonicalOrder.get(status.slug);
+          if (target !== undefined && target !== status.order) {
+            await this.db
+              .update(leadStatuses)
+              .set({ order: target, updatedAt: now })
+              .where(eq(leadStatuses.id, status.id));
+          }
+        }
+      }
+
+      // Booking is no longer the end of the journey now that Registration and
+      // Possession exist — leaving it final would strand every booked lead.
+      const bookingDone = existing.find((s) => s.slug === 'booking_done');
+      if (bookingDone?.isFinal) {
+        await this.db
+          .update(leadStatuses)
+          .set({ isFinal: false, updatedAt: now })
+          .where(eq(leadStatuses.id, bookingDone.id));
+      }
+
+      this.logger.log(
+        `Pipeline for tenant ${tenantId} extended with ${missing.length} status(es): ${missing.map((m) => m.slug).join(', ')}`
+      );
     } catch (error) {
-      throw new InternalServerErrorException(
-        `Failed to initialize lead pipeline: ${error instanceof Error ? error.message : 'Unknown error'}`
+      // Never block the leads list because a backfill raced another request.
+      this.logger.warn(
+        `Pipeline backfill for tenant ${tenantId} skipped: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
     }
   }

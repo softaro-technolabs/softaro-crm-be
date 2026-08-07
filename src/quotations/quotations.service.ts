@@ -8,6 +8,7 @@ import { DRIZZLE } from '../database/database.constants';
 import { MailService } from '../common/services/mail.service';
 import { computeCostSheet, roundMoney } from '../common/utils/cost-sheet.util';
 import { ChannelPartnersService } from '../channel-partners/channel-partners.service';
+import { LeadPipelineService, PIPELINE_STAGE } from '../leads/lead-pipeline.service';
 import { PdfGeneratorService } from './pdf-generator.service';
 import { getQuotationEmailTemplate } from '../common/mail-templates/quotation-email.template';
 
@@ -18,6 +19,7 @@ export class QuotationsService {
     private readonly pdfGenerator: PdfGeneratorService,
     private readonly mailService: MailService,
     private readonly channelPartnersService: ChannelPartnersService,
+    private readonly leadPipeline: LeadPipelineService,
   ) {}
 
   private async logActivity(tx: any, tenantId: string, leadId: string, type: any, title: string, note?: string, metadata?: any) {
@@ -323,6 +325,13 @@ export class QuotationsService {
         );
       }
     });
+
+    // An accepted quotation means terms are on the table — that is Negotiation.
+    if (dto.status === 'accepted' && existing.status !== 'accepted') {
+      await this.leadPipeline.advanceTo(tenantId, existing.leadId, PIPELINE_STAGE.NEGOTIATION, {
+        reason: `Quotation ${existing.quotationNumber ?? ''} accepted.`.trim()
+      });
+    }
 
     return this.getQuotation(tenantId, id);
   }
