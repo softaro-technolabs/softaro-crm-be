@@ -76,6 +76,15 @@ export class TenantTasksController {
     const userId = this.requestContext.getUserId();
     return this.leadTasksService.archiveLeadTask(tenantId, null, taskId, userId ?? null);
   }
+
+  @Permissions(...perms('lead-task', ACTIONS.UPDATE))
+  @Patch(':taskId/unarchive')
+  @ApiOperation({ summary: 'Restore an archived task' })
+  async unarchive(@Param('tenantId') tenantId: string, @Param('taskId') taskId: string) {
+    this.requestContext.verifyTenantAccess(tenantId);
+    const userId = this.requestContext.getUserId();
+    return this.leadTasksService.unarchiveLeadTask(tenantId, null, taskId, userId ?? null);
+  }
 }
 
 

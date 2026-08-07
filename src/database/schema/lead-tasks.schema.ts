@@ -16,6 +16,9 @@ export const leadTasks = pgTable(
     priority: leadTaskPriorityEnum('priority').default('medium').notNull(),
     dueAt: timestamp('due_at', { withTimezone: true }),
     reminderAt: timestamp('reminder_at', { withTimezone: true }),
+    // Set once the reminder notification has gone out, so the cron never
+    // re-sends. Cleared whenever reminderAt is changed to a new time.
+    reminderSentAt: timestamp('reminder_sent_at', { withTimezone: true }),
     isArchived: boolean('is_archived').default(false).notNull(),
     metadata: jsonb('metadata'),
     assignedToUserId: varchar('assigned_to_user_id', { length: 36 }),
@@ -30,7 +33,9 @@ export const leadTasks = pgTable(
     tenantLeadIdx: index('lead_tasks_tenant_lead_idx').on(table.tenantId, table.leadId),
     tenantAssignedIdx: index('lead_tasks_tenant_assigned_idx').on(table.tenantId, table.assignedToUserId, table.status),
     tenantDueIdx: index('lead_tasks_tenant_due_idx').on(table.tenantId, table.status, table.dueAt),
-    leadIdx: index('lead_tasks_lead_idx').on(table.leadId)
+    leadIdx: index('lead_tasks_lead_idx').on(table.leadId),
+    // Drives the reminder sweep, which scans across all tenants by time.
+    reminderIdx: index('lead_tasks_reminder_idx').on(table.reminderAt, table.reminderSentAt)
   })
 );
 

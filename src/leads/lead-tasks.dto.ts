@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   IsBoolean,
   IsIn,
@@ -11,6 +11,21 @@ import {
   Max,
   MaxLength
 } from 'class-validator';
+
+/**
+ * Query strings carry booleans as text ("true"), and the global ValidationPipe
+ * runs without `enableImplicitConversion`, so `@IsBoolean()` alone rejects them
+ * with a 400. This coerces the usual truthy/falsy spellings first.
+ */
+const toBoolean = ({ value }: { value: unknown }): unknown => {
+  if (value === undefined || value === null || value === '') return undefined;
+  if (typeof value === 'boolean') return value;
+  const normalized = String(value).toLowerCase();
+  if (['true', '1', 'yes'].includes(normalized)) return true;
+  if (['false', '0', 'no'].includes(normalized)) return false;
+  // Anything else passes through unchanged so @IsBoolean() reports a real error.
+  return value;
+};
 
 export const LEAD_TASK_STATUSES = ['open', 'in_progress', 'done', 'cancelled'] as const;
 export type LeadTaskStatus = (typeof LEAD_TASK_STATUSES)[number];
@@ -134,13 +149,27 @@ export class TenantTaskListQueryDto extends BaseListQueryDto {
   @IsIn(LEAD_TASK_STATUSES)
   status?: LeadTaskStatus;
 
-  @ApiPropertyOptional({ description: 'Only due tasks (dueAt <= now). Default: false', default: false })
+  @ApiPropertyOptional({ enum: LEAD_TASK_PRIORITIES })
   @IsOptional()
+  @IsIn(LEAD_TASK_PRIORITIES)
+  priority?: LeadTaskPriority;
+
+  @ApiPropertyOptional({
+    description:
+      'Tasks due within the next `withinHours` (defaults to 24). Completed and cancelled tasks are excluded.',
+    default: false
+  })
+  @IsOptional()
+  @Transform(toBoolean)
   @IsBoolean()
   due?: boolean;
 
-  @ApiPropertyOptional({ description: 'Only overdue tasks (dueAt < now). Default: false', default: false })
+  @ApiPropertyOptional({
+    description: 'Only overdue tasks (dueAt < now, still open or in progress). Default: false',
+    default: false
+  })
   @IsOptional()
+  @Transform(toBoolean)
   @IsBoolean()
   overdue?: boolean;
 
@@ -154,6 +183,7 @@ export class TenantTaskListQueryDto extends BaseListQueryDto {
 
   @ApiPropertyOptional({ default: false })
   @IsOptional()
+  @Transform(toBoolean)
   @IsBoolean()
   includeArchived?: boolean;
 

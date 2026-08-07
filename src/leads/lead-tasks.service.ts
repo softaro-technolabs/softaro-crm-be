@@ -1,5 +1,6 @@
-import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { and, asc, desc, eq, isNotNull, lte, lt, sql } from 'drizzle-orm';
+import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
+import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, lt, sql } from 'drizzle-orm';
 import type { SQL } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 
@@ -14,6 +15,8 @@ import { PaginationUtil } from '../common/utils/pagination.util';
 
 @Injectable()
 export class LeadTasksService {
+  private readonly logger = new Logger(LeadTasksService.name);
+
   constructor(
     @Inject(DRIZZLE) private readonly db: DrizzleDatabase,
     private readonly notificationsService: NotificationsService,
@@ -128,6 +131,9 @@ export class LeadTasksService {
     }
     if (dto.reminderAt !== undefined) {
       update.reminderAt = dto.reminderAt === null ? null : this.parseDate(dto.reminderAt, 'reminderAt');
+      // Rescheduling arms the reminder again; without clearing this, a task whose
+      // reminder already fired would never notify at its new time.
+      update.reminderSentAt = null;
     }
     if (dto.assignedToUserId !== undefined) {
       update.assignedToUserId =
@@ -259,6 +265,63 @@ export class LeadTasksService {
     return this.getTask(tenantId, leadId, taskId);
   }
 
+  /** Restores an archived task. Counterpart to {@link archiveLeadTask}. */
+  async unarchiveLeadTask(tenantId: string, leadId: string | null, taskId: string, actorUserId?: string | null) {
+    const now = new Date();
+    const existing = await this.getTask(tenantId, leadId, taskId);
+    if (!existing.task.isArchived) {
+      return existing;
+    }
+
+    await this.db.transaction(async (tx) => {
+      await tx
+        .update(leadTasks)
+        .set({ isArchived: false, updatedAt: now })
+        .where(
+          and(
+            eq(leadTasks.id, taskId),
+            eq(leadTasks.tenantId, tenantId),
+            leadId ? eq(leadTasks.leadId, leadId) : undefined
+          )
+        );
+
+      if (leadId) {
+        await tx.insert(leadActivities).values({
+          id: randomUUID(),
+          tenantId,
+          leadId,
+          type: 'task',
+          title: 'Task restored',
+          note: existing.task.title,
+          metadata: { taskId },
+          happenedAt: now,
+          nextFollowUpAt: null,
+          createdByUserId: actorUserId ?? null,
+          createdAt: now
+        });
+      }
+    });
+
+    const restored = await this.getTask(tenantId, leadId, taskId);
+
+    // Put it back on the assignee's calendar if it is still actionable.
+    if (
+      restored.task.assignedToUserId &&
+      restored.task.status !== 'done' &&
+      restored.task.status !== 'cancelled'
+    ) {
+      await this.calendarSyncService.queueSync(
+        tenantId,
+        restored.task.assignedToUserId,
+        taskId,
+        'create',
+        restored.task
+      );
+    }
+
+    return restored;
+  }
+
   async listTenantTasks(tenantId: string, query: TenantTaskListQueryDto) {
     const limit = query.limit ?? 50;
     const page = query.page ?? 1;
@@ -270,19 +333,25 @@ export class LeadTasksService {
     if (!query.includeArchived) baseFilters.push(eq(leadTasks.isArchived, false));
     if (query.assignedToUserId) baseFilters.push(eq(leadTasks.assignedToUserId, query.assignedToUserId));
     if (query.status) baseFilters.push(eq(leadTasks.status, query.status));
+    if (query.priority) baseFilters.push(eq(leadTasks.priority, query.priority));
     if (query.leadId) baseFilters.push(eq(leadTasks.leadId, query.leadId));
 
-    if (query.overdue) {
+    // "Due" and "overdue" are about outstanding work, so finished tasks never
+    // qualify — otherwise a task completed last week with a past due date would
+    // keep showing up as overdue forever.
+    if (query.overdue || query.due) {
       baseFilters.push(isNotNull(leadTasks.dueAt));
+      baseFilters.push(inArray(leadTasks.status, ['open', 'in_progress']));
+    }
+
+    if (query.overdue) {
       baseFilters.push(lt(leadTasks.dueAt, now));
     } else if (query.due) {
-      baseFilters.push(isNotNull(leadTasks.dueAt));
-      if (query.withinHours) {
-        const until = new Date(now.getTime() + query.withinHours * 60 * 60 * 1000);
-        baseFilters.push(lte(leadTasks.dueAt, until));
-      } else {
-        baseFilters.push(lte(leadTasks.dueAt, now));
-      }
+      // Upcoming work: from now to the end of the window (24h unless specified).
+      // Previously this used `dueAt <= now`, which made it a duplicate of `overdue`.
+      const until = new Date(now.getTime() + (query.withinHours ?? 24) * 60 * 60 * 1000);
+      baseFilters.push(gte(leadTasks.dueAt, now));
+      baseFilters.push(lte(leadTasks.dueAt, until));
     }
 
     let searchFilter: SQL | null = null;
@@ -339,9 +408,12 @@ export class LeadTasksService {
     const [row] = await this.db
       .select({
         task: leadTasks,
+        // Joined here too so the detail response matches the shape of list rows.
+        lead: { id: leads.id, name: leads.name, phone: leads.phone, email: leads.email },
         assignedTo: { id: users.id, name: users.name, email: users.email }
       })
       .from(leadTasks)
+      .leftJoin(leads, and(eq(leads.id, leadTasks.leadId), eq(leads.tenantId, tenantId)))
       .leftJoin(users, eq(users.id, leadTasks.assignedToUserId))
       .where(
         and(
@@ -357,6 +429,80 @@ export class LeadTasksService {
     }
 
     return row;
+  }
+
+  /**
+   * Sends notifications for task reminders that have come due.
+   *
+   * Runs every 5 minutes — a reminder is a time-sensitive nudge, so a coarser
+   * interval would make it arrive noticeably late. Each task is marked with
+   * `reminderSentAt` immediately, which is what stops it being re-sent on the
+   * next sweep.
+   */
+  @Cron(CronExpression.EVERY_5_MINUTES, { name: 'lead-task-reminders' })
+  async sendDueReminders(): Promise<{ sent: number }> {
+    let sent = 0;
+
+    try {
+      const now = new Date();
+
+      const due = await this.db
+        .select({
+          id: leadTasks.id,
+          tenantId: leadTasks.tenantId,
+          leadId: leadTasks.leadId,
+          title: leadTasks.title,
+          dueAt: leadTasks.dueAt,
+          assignedToUserId: leadTasks.assignedToUserId
+        })
+        .from(leadTasks)
+        .where(
+          and(
+            isNotNull(leadTasks.reminderAt),
+            lte(leadTasks.reminderAt, now),
+            isNull(leadTasks.reminderSentAt),
+            isNotNull(leadTasks.assignedToUserId),
+            eq(leadTasks.isArchived, false),
+            inArray(leadTasks.status, ['open', 'in_progress'])
+          )
+        )
+        .limit(200);
+
+      for (const task of due) {
+        try {
+          // Marked first: a failed notification is better than a repeating one.
+          await this.db
+            .update(leadTasks)
+            .set({ reminderSentAt: new Date() })
+            .where(eq(leadTasks.id, task.id));
+
+          const when = task.dueAt
+            ? ` (due ${new Date(task.dueAt).toISOString().slice(0, 16).replace('T', ' ')} UTC)`
+            : '';
+
+          await this.notificationsService.createNotification(
+            task.tenantId,
+            task.assignedToUserId!,
+            'task_reminder',
+            'Task Reminder',
+            `Reminder for your task: ${task.title}${when}`,
+            { leadId: task.leadId, taskId: task.id }
+          );
+
+          sent += 1;
+        } catch (error) {
+          this.logger.error(`Reminder for task ${task.id} failed: ${(error as Error).message}`);
+        }
+      }
+
+      if (sent > 0) {
+        this.logger.log(`Sent ${sent} task reminder(s)`);
+      }
+    } catch (error) {
+      this.logger.error(`Task reminder sweep failed: ${(error as Error).message}`);
+    }
+
+    return { sent };
   }
 
   private async ensureLeadExists(tenantId: string, leadId: string) {

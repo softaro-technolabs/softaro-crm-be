@@ -436,6 +436,7 @@ export class MigrationService {
               "priority" "lead_task_priority" NOT NULL DEFAULT 'medium',
               "due_at" timestamptz,
               "reminder_at" timestamptz,
+              "reminder_sent_at" timestamptz,
               "is_archived" boolean NOT NULL DEFAULT false,
               "metadata" jsonb,
               "assigned_to_user_id" varchar(36),
@@ -463,6 +464,10 @@ export class MigrationService {
             CREATE INDEX IF NOT EXISTS "lead_tasks_lead_idx"
             ON "lead_tasks" ("lead_id");
           `);
+          await client.query(`
+            CREATE INDEX IF NOT EXISTS "lead_tasks_reminder_idx"
+            ON "lead_tasks" ("reminder_at","reminder_sent_at");
+          `);
 
           this.logger.log('✓ lead_tasks table created');
         } else {
@@ -479,6 +484,27 @@ export class MigrationService {
             this.logger.log('Altering lead_tasks.lead_id to be optional...');
             await client.query(`ALTER TABLE "lead_tasks" ALTER COLUMN "lead_id" DROP NOT NULL`);
             this.logger.log('Successfully altered lead_tasks.lead_id to be optional');
+          }
+
+          // Reminder delivery tracking — added when task reminders started being sent.
+          const reminderSentCheck = await client.query(`
+            SELECT column_name FROM information_schema.columns
+            WHERE table_name = 'lead_tasks' AND column_name = 'reminder_sent_at' AND table_schema = 'public'
+          `);
+          if (reminderSentCheck.rows.length === 0) {
+            this.logger.log('Adding lead_tasks.reminder_sent_at column...');
+            await client.query(`ALTER TABLE "lead_tasks" ADD COLUMN "reminder_sent_at" timestamptz;`);
+            // Existing reminders are backfilled as already-sent so that switching the
+            // cron on does not blast historic tasks with notifications.
+            await client.query(`
+              UPDATE "lead_tasks" SET "reminder_sent_at" = now()
+              WHERE "reminder_at" IS NOT NULL AND "reminder_at" < now();
+            `);
+            await client.query(`
+              CREATE INDEX IF NOT EXISTS "lead_tasks_reminder_idx"
+              ON "lead_tasks" ("reminder_at","reminder_sent_at");
+            `);
+            this.logger.log('✓ lead_tasks.reminder_sent_at added');
           }
         }
 

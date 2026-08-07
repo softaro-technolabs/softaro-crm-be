@@ -41,7 +41,10 @@ const MODULE_CATALOG: ModuleSeed[] = [
 
   // ── Leads children ─────────────────────────────────────────────────────
   { slug: 'followup',     name: 'Follow-ups',          defaultRoute: '/leads/follow-ups',          sequence: 1, parentSlug: 'leads' },
-  { slug: 'lead-task',    name: 'Tasks',               defaultRoute: '/lead/task',                 sequence: 2, parentSlug: 'leads' },
+  // Must match the frontend route exactly — the sidebar highlights a module by
+  // prefix-matching this value against the URL, so `/lead/task` never matched
+  // the real page at `/leads/tasks`.
+  { slug: 'lead-task',    name: 'Tasks',               defaultRoute: '/leads/tasks',               sequence: 2, parentSlug: 'leads' },
   { slug: 'lead-status',  name: 'Statuses',            defaultRoute: '/leads/status',              sequence: 3, parentSlug: 'leads' },
   { slug: 'lead-agent',   name: 'Agents',              defaultRoute: '/leads/agents',              sequence: 4, parentSlug: 'leads' },
   { slug: 'lead-setting', name: 'Assignment Settings', defaultRoute: '/leads/assignment/settings', sequence: 5, parentSlug: 'leads' },
