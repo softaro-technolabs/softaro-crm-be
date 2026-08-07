@@ -6,7 +6,8 @@ import {
   numeric,
   index,
   jsonb,
-  text
+  text,
+  uniqueIndex
 } from 'drizzle-orm/pg-core';
 import { leads } from './leads.schema';
 import { quotations } from './quotations.schema';
@@ -49,6 +50,12 @@ export const deals = pgTable(
     leadIdx: index('deals_lead_idx').on(table.leadId),
     contactIdx: index('deals_contact_idx').on(table.contactId),
     quotationIdx: index('deals_quotation_idx').on(table.quotationId),
-    statusIdx: index('deals_status_idx').on(table.status)
+    statusIdx: index('deals_status_idx').on(table.status),
+    // A deal number is quoted to customers and used on documents; two deals
+    // sharing one is a data-integrity failure, not a cosmetic issue.
+    tenantDealNumberUnique: uniqueIndex('deals_tenant_deal_number_uq').on(
+      table.tenantId,
+      table.dealNumber
+    )
   })
 );

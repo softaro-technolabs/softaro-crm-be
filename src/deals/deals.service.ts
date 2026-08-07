@@ -22,6 +22,10 @@ import {
   users
 } from '../database/schema';
 import { PaginationUtil } from '../common/utils/pagination.util';
+import {
+  DOCUMENT_SEQUENCE,
+  DocumentNumberService
+} from '../common/services/document-number.service';
 import { LeadPipelineService, PIPELINE_STAGE } from '../leads/lead-pipeline.service';
 import {
   ConvertLeadToDealDto,
@@ -35,7 +39,8 @@ import {
 export class DealsService {
   constructor(
     @Inject(DRIZZLE) private readonly db: DrizzleDatabase,
-    private readonly leadPipeline: LeadPipelineService
+    private readonly leadPipeline: LeadPipelineService,
+    private readonly documentNumbers: DocumentNumberService
   ) {}
 
   async listDeals(tenantId: string, query: DealListQueryDto) {
@@ -203,14 +208,20 @@ export class DealsService {
     });
 
     const dealId = randomUUID();
-    const dealNumber = await this.generateDealNumber(tenantId);
     const totalAmount = await this.resolveDealTotalAmount(tenantId, dto.totalAmount, dto.propertyUnitId, dto.quotationId);
     const receivedAmount = Number(dto.receivedAmount ?? 0);
+    if (receivedAmount > totalAmount) {
+      throw new BadRequestException('Received amount cannot be greater than total amount');
+    }
     const pendingAmount = Math.max(totalAmount - receivedAmount, 0);
-    const status = this.resolveDealStatus('active', pendingAmount);
+    // A new deal is always `active`. Money does not decide the sales outcome:
+    // a deal is won when a person says so, not when the arithmetic reaches zero.
+    const status: DealStatus = 'active';
     const now = new Date();
 
     await this.db.transaction(async (tx) => {
+      const dealNumber = await this.documentNumbers.next(tx, tenantId, DOCUMENT_SEQUENCE.DEAL, now);
+
       await tx.insert(deals).values({
         id: dealId,
         tenantId,
@@ -293,7 +304,11 @@ export class DealsService {
     }
 
     const pendingAmount = Math.max(totalAmount - receivedAmount, 0);
-    const nextStatus = this.resolveDealStatus(dto.status ?? existing.deal.status, pendingAmount);
+    // Status is whatever the caller asked for, or unchanged. It is NOT inferred
+    // from the balance: previously a deal with no amounts (total 0, pending 0)
+    // was written straight to `closed_won` on creation, and a fully-paid deal
+    // could never be moved back to `active`.
+    const nextStatus: DealStatus = dto.status ?? existing.deal.status;
 
     const oldUnitId = existing.deal.propertyUnitId ?? null;
     const newUnitId = dto.propertyUnitId !== undefined ? dto.propertyUnitId : oldUnitId;
@@ -394,15 +409,6 @@ export class DealsService {
     return id;
   }
 
-  private async generateDealNumber(tenantId: string) {
-    const [countResult] = await this.db
-      .select({ value: sql<number>`count(*)` })
-      .from(deals)
-      .where(eq(deals.tenantId, tenantId));
-
-    return `DL-${new Date().getFullYear()}-${(Number(countResult?.value || 0) + 1).toString().padStart(4, '0')}`;
-  }
-
   private async resolveDealTotalAmount(tenantId: string, totalAmount?: number, propertyUnitId?: string, quotationId?: string) {
     if (typeof totalAmount === 'number') return totalAmount;
 
@@ -425,13 +431,6 @@ export class DealsService {
     }
 
     return 0;
-  }
-
-  private resolveDealStatus(status: DealStatus, pendingAmount: number): DealStatus {
-    if (status === 'closed_won' || status === 'closed_lost' || status === 'cancelled' || status === 'on_hold') {
-      return status;
-    }
-    return pendingAmount <= 0 ? 'closed_won' : status === 'active' ? 'active' : 'pending_payment';
   }
 
   private async syncUnitStatus(

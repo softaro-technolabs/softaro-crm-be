@@ -1,10 +1,11 @@
 import {
   BadRequestException,
+  ConflictException,
   Inject,
   Injectable,
   NotFoundException
 } from '@nestjs/common';
-import { and, desc, eq, or, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, or, sql } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 
 import { DRIZZLE } from '../database/database.constants';
@@ -20,11 +21,14 @@ import {
   propertyStatusLogs,
   propertyUnits,
   propertyDocuments,
-  leadStatuses,
   tenants,
   users
 } from '../database/schema';
 import { PaginationUtil } from '../common/utils/pagination.util';
+import {
+  DOCUMENT_SEQUENCE,
+  DocumentNumberService
+} from '../common/services/document-number.service';
 import {
   type BookingStatus,
   BookingListQueryDto,
@@ -43,8 +47,45 @@ export class BookingsService {
   constructor(
     @Inject(DRIZZLE) private readonly db: DrizzleDatabase,
     private readonly automationService: AutomationService,
-    private readonly leadPipeline: LeadPipelineService
+    private readonly leadPipeline: LeadPipelineService,
+    private readonly documentNumbers: DocumentNumberService
   ) {}
+
+  /** Statuses in which a booking holds its unit against all other buyers. */
+  private static readonly LIVE_STATUSES: BookingStatus[] = ['confirmed', 'completed'];
+
+  /**
+   * Rejects a second live booking on a unit that is already sold.
+   *
+   * `bookings_live_unit_uq` enforces this in the database regardless; this check
+   * exists so the caller gets a readable message instead of a constraint error.
+   */
+  private async assertUnitIsFree(
+    tenantId: string,
+    propertyUnitId: string,
+    status: BookingStatus,
+    excludeBookingId?: string
+  ) {
+    if (!BookingsService.LIVE_STATUSES.includes(status)) return;
+
+    const conflicts = await this.db
+      .select({ id: bookings.id, bookingNumber: bookings.bookingNumber })
+      .from(bookings)
+      .where(
+        and(
+          eq(bookings.tenantId, tenantId),
+          eq(bookings.propertyUnitId, propertyUnitId),
+          inArray(bookings.status, BookingsService.LIVE_STATUSES)
+        )
+      );
+
+    const blocking = conflicts.find((row) => row.id !== excludeBookingId);
+    if (blocking) {
+      throw new ConflictException(
+        `This unit is already booked under ${blocking.bookingNumber}. Cancel that booking before creating another.`
+      );
+    }
+  }
 
   async listBookings(tenantId: string, query: BookingListQueryDto) {
     const limit = query.limit ?? 50;
@@ -169,15 +210,6 @@ export class BookingsService {
     return row;
   }
 
-  private async resolveStatusIdBySlug(tenantId: string, slug: string): Promise<string | null> {
-    const [status] = await this.db
-      .select({ id: leadStatuses.id })
-      .from(leadStatuses)
-      .where(and(eq(leadStatuses.tenantId, tenantId), eq(leadStatuses.slug, slug)))
-      .limit(1);
-    return status?.id ?? null;
-  }
-
   async createBooking(tenantId: string, dto: CreateBookingDto, createdByUserId?: string | null) {
     const resolved = await this.resolveBookingRelations(tenantId, dto);
 
@@ -188,11 +220,15 @@ export class BookingsService {
     }
 
     const bookingId = randomUUID();
-    const bookingNumber = await this.generateBookingNumber(tenantId);
     const status = dto.status ?? 'draft';
     const now = new Date();
 
+    await this.assertUnitIsFree(tenantId, resolved.propertyUnitId, status);
+
+    let bookingNumber = '';
     await this.db.transaction(async (tx) => {
+      bookingNumber = await this.documentNumbers.next(tx, tenantId, DOCUMENT_SEQUENCE.BOOKING, now);
+
       await tx.insert(bookings).values({
         id: bookingId,
         tenantId,
@@ -226,13 +262,28 @@ export class BookingsService {
         await tx.insert(bookingMilestones).values(milestoneValues as any);
       }
 
-      if (resolved.deal?.id) {
-        await this.syncDealFromBooking(tx, tenantId, resolved.deal.id, {
-          bookingStatus: status,
-          paidAmount,
-          bookingAmount
+      // An opening `paidAmount` (the token collected at the desk) becomes a real
+      // ledger entry rather than a bare number on the booking. Without this,
+      // recalcBookingFinancials below would correctly reset it to zero — the
+      // ledger is the only thing that counts as money received.
+      if (paidAmount > 0) {
+        await tx.insert(bookingPayments).values({
+          id: randomUUID(),
+          tenantId,
+          bookingId,
+          milestoneId: null,
+          amount: paidAmount.toFixed(2),
+          paymentDate: new Date(dto.bookingDate),
+          paymentMethod: 'opening_balance',
+          transactionReference: null,
+          receiptNumber: null,
+          notes: `Booking amount received at creation of ${bookingNumber}`,
+          status: 'cleared',
+          createdAt: now
         });
       }
+
+      await this.recalcBookingFinancials(tx, tenantId, bookingId);
 
       if (resolved.propertyUnitId) {
         const unitStatus = status === 'cancelled' ? 'available' : status === 'draft' ? 'blocked' : 'booked';
@@ -252,16 +303,9 @@ export class BookingsService {
           createdByUserId: createdByUserId ?? null,
           createdAt: now
         });
-
-        // Automated Status Transition to 'Booking Done'
-        if (status !== 'cancelled') {
-          const statusId = await this.resolveStatusIdBySlug(tenantId, 'booking_done');
-          if (statusId) {
-            await tx.update(leads)
-              .set({ statusId, updatedAt: now })
-              .where(and(eq(leads.id, resolved.leadId), eq(leads.tenantId, tenantId)));
-          }
-        }
+        // The pipeline move happens after the transaction via LeadPipelineService.
+        // A raw statusId update used to run here too, which bypassed that
+        // service's never-move-backwards guard and its activity log.
       }
 
       // 5. Create Document Record
@@ -282,10 +326,16 @@ export class BookingsService {
     // Fire automation event (fire-and-forget)
     if (resolved.leadId) {
       this.automationService.fireEvent(tenantId, 'booking_created', { leadId: resolved.leadId }).catch(() => {});
-      await this.leadPipeline.advanceTo(tenantId, resolved.leadId, PIPELINE_STAGE.BOOKING_DONE, {
-        actorUserId: createdByUserId,
-        reason: 'Booking created.'
-      });
+
+      // Only a live booking is a booking. A draft is an unfinished form, and
+      // marking the lead "Booking Done" for one made the pipeline report sales
+      // that had not happened.
+      if (BookingsService.LIVE_STATUSES.includes(status)) {
+        await this.leadPipeline.advanceTo(tenantId, resolved.leadId, PIPELINE_STAGE.BOOKING_DONE, {
+          actorUserId: createdByUserId,
+          reason: `Booking ${bookingNumber} created.`
+        });
+      }
     }
 
     return bookingResult;
@@ -294,32 +344,41 @@ export class BookingsService {
   async updateBooking(tenantId: string, bookingId: string, dto: UpdateBookingDto, updatedByUserId?: string | null) {
     const existing = await this.getBooking(tenantId, bookingId);
     const bookingAmount = dto.bookingAmount !== undefined ? Number(dto.bookingAmount) : Number(existing.booking.bookingAmount ?? 0);
-    const paidAmount = dto.paidAmount !== undefined ? Number(dto.paidAmount) : Number(existing.booking.paidAmount ?? 0);
-    if (paidAmount > bookingAmount) {
-      throw new BadRequestException('Paid amount cannot be greater than booking amount');
+
+    // `paidAmount` is derived from the payment ledger and is not writable here.
+    // Accepting it silently would let the booking total drift away from the sum
+    // of its receipts — exactly the inconsistency this refactor removes.
+    if (dto.paidAmount !== undefined && Number(dto.paidAmount) !== Number(existing.booking.paidAmount ?? 0)) {
+      throw new BadRequestException(
+        'paidAmount is derived from recorded payments. Use POST /bookings/:id/payments to record money received.'
+      );
+    }
+
+    const alreadyPaid = Number(existing.booking.paidAmount ?? 0);
+    if (bookingAmount > 0 && alreadyPaid > bookingAmount + 0.005) {
+      throw new BadRequestException(
+        `Booking amount cannot be set below the ${alreadyPaid.toFixed(2)} already received. Reverse a payment first.`
+      );
     }
 
     const status = dto.status ?? existing.booking.status;
+
+    if (existing.booking.propertyUnitId) {
+      await this.assertUnitIsFree(tenantId, existing.booking.propertyUnitId, status, bookingId);
+    }
 
     await this.db.transaction(async (tx) => {
       await tx.update(bookings)
         .set({
           bookingDate: dto.bookingDate ? new Date(dto.bookingDate) : existing.booking.bookingDate,
           bookingAmount: bookingAmount.toFixed(2),
-          paidAmount: paidAmount.toFixed(2),
           status,
           notes: dto.notes !== undefined ? dto.notes : existing.booking.notes,
           updatedAt: new Date()
         })
         .where(and(eq(bookings.tenantId, tenantId), eq(bookings.id, bookingId)));
 
-      if (existing.booking.dealId) {
-        await this.syncDealFromBooking(tx, tenantId, existing.booking.dealId, {
-          bookingStatus: status,
-          paidAmount,
-          bookingAmount
-        });
-      }
+      await this.recalcBookingFinancials(tx, tenantId, bookingId);
 
       if (existing.booking.propertyUnitId) {
         const unitStatus = status === 'cancelled' ? 'available' : status === 'draft' ? 'blocked' : 'booked';
@@ -346,21 +405,76 @@ export class BookingsService {
     return this.getBooking(tenantId, bookingId);
   }
 
-  async deleteBooking(tenantId: string, bookingId: string, updatedByUserId?: string | null) {
+  /**
+   * Cancels a booking. Deliberately NOT a delete.
+   *
+   * `booking_payments` and `booking_milestones` cascade on delete, so the old
+   * implementation destroyed cleared payments — receipts, transaction
+   * references, real money — with no audit trail. Cancelled bookings stay in
+   * the table; the partial unique index only counts confirmed/completed ones,
+   * so the unit is freed for a new buyer without losing the history.
+   */
+  async cancelBooking(
+    tenantId: string,
+    bookingId: string,
+    reason?: string,
+    updatedByUserId?: string | null
+  ) {
     const existing = await this.getBooking(tenantId, bookingId);
 
-    await this.db.transaction(async (tx) => {
-      await tx.delete(bookings).where(and(eq(bookings.tenantId, tenantId), eq(bookings.id, bookingId)));
+    if (existing.booking.status === 'cancelled') {
+      return { success: true, alreadyCancelled: true };
+    }
 
+    const now = new Date();
+
+    await this.db.transaction(async (tx) => {
+      await tx.update(bookings)
+        .set({
+          status: 'cancelled',
+          cancelledAt: now,
+          cancellationReason: reason ?? null,
+          cancelledByUserId: updatedByUserId ?? null,
+          updatedAt: now
+        })
+        .where(and(eq(bookings.tenantId, tenantId), eq(bookings.id, bookingId)));
+
+      // Put the deal back in play rather than assuming it is dead — a cancelled
+      // booking often means "wrong unit", not "lost customer".
       if (existing.booking.dealId) {
         await tx.update(deals)
-          .set({ status: 'on_hold', updatedAt: new Date() })
+          .set({ status: 'on_hold', updatedAt: now })
           .where(and(eq(deals.tenantId, tenantId), eq(deals.id, existing.booking.dealId)));
       }
 
       if (existing.booking.propertyUnitId) {
-        await this.syncUnitStatus(tx, tenantId, existing.booking.propertyUnitId, 'available', updatedByUserId, 'Booking deleted');
+        await this.syncUnitStatus(
+          tx,
+          tenantId,
+          existing.booking.propertyUnitId,
+          'available',
+          updatedByUserId,
+          `Booking ${existing.booking.bookingNumber} cancelled`
+        );
       }
+
+      if (existing.booking.leadId) {
+        await tx.insert(leadActivities).values({
+          id: randomUUID(),
+          tenantId,
+          leadId: existing.booking.leadId,
+          type: 'status_change',
+          title: `Booking cancelled: ${existing.booking.bookingNumber}`,
+          note: reason ?? 'Booking cancelled.',
+          metadata: { bookingId, bookingNumber: existing.booking.bookingNumber },
+          happenedAt: now,
+          createdByUserId: updatedByUserId ?? null,
+          createdAt: now
+        });
+      }
+
+      // Cancelling removes the booking from the deal rollup.
+      await this.recalcBookingFinancials(tx, tenantId, bookingId);
     });
 
     return { success: true };
@@ -376,6 +490,47 @@ export class BookingsService {
 
   async addPayment(tenantId: string, bookingId: string, dto: CreateBookingPaymentDto) {
     const booking = await this.getBooking(tenantId, bookingId);
+
+    if (booking.booking.status === 'cancelled') {
+      throw new BadRequestException('Cannot record a payment against a cancelled booking');
+    }
+
+    // createBooking and updateBooking both reject paid > booking amount; this
+    // path did not, so payments could be pushed past the booking value.
+    const [clearedRow] = await this.db
+      .select({ total: sql<string>`COALESCE(SUM(${bookingPayments.amount}), 0)` })
+      .from(bookingPayments)
+      .where(
+        and(
+          eq(bookingPayments.tenantId, tenantId),
+          eq(bookingPayments.bookingId, bookingId),
+          eq(bookingPayments.status, 'cleared')
+        )
+      );
+
+    const alreadyPaid = Number(clearedRow?.total ?? 0);
+    const bookingAmount = Number(booking.booking.bookingAmount ?? 0);
+    if (bookingAmount > 0 && alreadyPaid + dto.amount > bookingAmount + 0.005) {
+      throw new BadRequestException(
+        `Payment of ${dto.amount} exceeds the outstanding balance of ${(bookingAmount - alreadyPaid).toFixed(2)}`
+      );
+    }
+
+    if (dto.milestoneId) {
+      const [milestone] = await this.db
+        .select({ id: bookingMilestones.id })
+        .from(bookingMilestones)
+        .where(
+          and(
+            eq(bookingMilestones.tenantId, tenantId),
+            eq(bookingMilestones.id, dto.milestoneId),
+            eq(bookingMilestones.bookingId, bookingId)
+          )
+        )
+        .limit(1);
+      if (!milestone) throw new NotFoundException('Milestone not found on this booking');
+    }
+
     const paymentId = randomUUID();
     const now = new Date();
 
@@ -395,25 +550,9 @@ export class BookingsService {
         createdAt: now
       });
 
-      // Recalculate total paid amount for the booking
-      const [sumResult] = await tx
-        .select({ total: sql<number>`sum(${bookingPayments.amount})` })
-        .from(bookingPayments)
-        .where(and(eq(bookingPayments.tenantId, tenantId), eq(bookingPayments.bookingId, bookingId), eq(bookingPayments.status, 'cleared')));
-
-      const totalPaid = Number(sumResult?.total || 0);
-
-      await tx.update(bookings)
-        .set({ paidAmount: totalPaid.toFixed(2), updatedAt: now })
-        .where(eq(bookings.id, bookingId));
-
-      if (booking.booking.dealId) {
-        await this.syncDealFromBooking(tx, tenantId, booking.booking.dealId, {
-          bookingStatus: booking.booking.status,
-          paidAmount: totalPaid,
-          bookingAmount: Number(booking.booking.bookingAmount)
-        });
-      }
+      // Recompute booking paid amount, milestone statuses and deal rollup
+      // from the ledger.
+      await this.recalcBookingFinancials(tx, tenantId, bookingId);
 
       // Fire automation event (fire-and-forget)
       if (booking.booking.leadId) {
@@ -450,6 +589,70 @@ export class BookingsService {
     });
 
     return { id: paymentId, success: true };
+  }
+
+  /**
+   * Reverses a payment (bounced cheque, failed transfer, refund).
+   *
+   * The original row is never edited or deleted — it is flagged, and the
+   * derived totals are recomputed from the remaining cleared rows. That keeps
+   * the ledger append-only and auditable, which is the whole point of having
+   * one.
+   */
+  async reversePayment(
+    tenantId: string,
+    bookingId: string,
+    paymentId: string,
+    reason: string,
+    actorUserId?: string | null
+  ) {
+    const [payment] = await this.db
+      .select()
+      .from(bookingPayments)
+      .where(
+        and(
+          eq(bookingPayments.tenantId, tenantId),
+          eq(bookingPayments.bookingId, bookingId),
+          eq(bookingPayments.id, paymentId)
+        )
+      )
+      .limit(1);
+
+    if (!payment) throw new NotFoundException('Payment not found');
+    if (payment.status !== 'cleared') {
+      throw new BadRequestException(`Payment is already marked '${payment.status}'`);
+    }
+
+    const booking = await this.getBooking(tenantId, bookingId);
+    const now = new Date();
+
+    await this.db.transaction(async (tx) => {
+      await tx.update(bookingPayments)
+        .set({
+          status: 'reversed',
+          notes: [payment.notes, `Reversed: ${reason}`].filter(Boolean).join(' | ')
+        })
+        .where(and(eq(bookingPayments.tenantId, tenantId), eq(bookingPayments.id, paymentId)));
+
+      await this.recalcBookingFinancials(tx, tenantId, bookingId);
+
+      if (booking.booking.leadId) {
+        await tx.insert(leadActivities).values({
+          id: randomUUID(),
+          tenantId,
+          leadId: booking.booking.leadId,
+          type: 'payment',
+          title: `Payment reversed: ₹${payment.amount}`,
+          note: reason,
+          metadata: { paymentId, bookingId, amount: payment.amount },
+          happenedAt: now,
+          createdByUserId: actorUserId ?? null,
+          createdAt: now
+        });
+      }
+    });
+
+    return { success: true };
   }
 
   async listPayments(tenantId: string, query: BookingPaymentQueryDto) {
@@ -635,45 +838,128 @@ export class BookingsService {
     return { deal, leadId, propertyUnitId };
   }
 
-  private async generateBookingNumber(tenantId: string) {
-    const [countResult] = await this.db
-      .select({ value: sql<number>`count(*)` })
-      .from(bookings)
-      .where(eq(bookings.tenantId, tenantId));
-
-    return `BK-${new Date().getFullYear()}-${(Number(countResult?.value || 0) + 1).toString().padStart(4, '0')}`;
-  }
-
-  private async syncDealFromBooking(
+  /**
+   * Recomputes every derived money figure for a booking from the payment ledger,
+   * then rolls the result up to the parent deal.
+   *
+   * This is the single place money is calculated. It replaces `syncDealFromBooking`,
+   * which did `Math.max(deal.receivedAmount, booking.paidAmount)` — meaning a
+   * second booking on the same deal did not add to the total, and a reversed
+   * payment could never bring it down.
+   *
+   * Call it inside the transaction of anything that touches payments, milestones,
+   * or booking status.
+   */
+  private async recalcBookingFinancials(
     tx: DrizzleDatabase | Parameters<DrizzleDatabase['transaction']>[0],
     tenantId: string,
-    dealId: string,
-    input: { bookingStatus: BookingStatus; paidAmount: number; bookingAmount: number }
+    bookingId: string
   ) {
-    const [deal] = await (tx as DrizzleDatabase)
+    const runner = tx as DrizzleDatabase;
+    const now = new Date();
+
+    const [booking] = await runner
+      .select()
+      .from(bookings)
+      .where(and(eq(bookings.tenantId, tenantId), eq(bookings.id, bookingId)))
+      .limit(1);
+
+    if (!booking) return;
+
+    // ── 1. Booking paid amount = sum of the cleared ledger ────────────────────
+    const [paidRow] = await runner
+      .select({ total: sql<string>`COALESCE(SUM(${bookingPayments.amount}), 0)` })
+      .from(bookingPayments)
+      .where(
+        and(
+          eq(bookingPayments.tenantId, tenantId),
+          eq(bookingPayments.bookingId, bookingId),
+          eq(bookingPayments.status, 'cleared')
+        )
+      );
+
+    const paidAmount = Number(paidRow?.total ?? 0);
+
+    await runner.update(bookings)
+      .set({ paidAmount: paidAmount.toFixed(2), updatedAt: now })
+      .where(and(eq(bookings.tenantId, tenantId), eq(bookings.id, bookingId)));
+
+    // ── 2. Milestone statuses ────────────────────────────────────────────────
+    // Previously milestones stayed 'pending' forever, so demand-letter
+    // generation always picked the same one — customers were re-billed for
+    // instalments they had already paid.
+    const milestones = await runner
+      .select()
+      .from(bookingMilestones)
+      .where(and(eq(bookingMilestones.tenantId, tenantId), eq(bookingMilestones.bookingId, bookingId)))
+      .orderBy(bookingMilestones.sortOrder);
+
+    for (const milestone of milestones) {
+      const [allocatedRow] = await runner
+        .select({ total: sql<string>`COALESCE(SUM(${bookingPayments.amount}), 0)` })
+        .from(bookingPayments)
+        .where(
+          and(
+            eq(bookingPayments.tenantId, tenantId),
+            eq(bookingPayments.bookingId, bookingId),
+            eq(bookingPayments.milestoneId, milestone.id),
+            eq(bookingPayments.status, 'cleared')
+          )
+        );
+
+      const allocated = Number(allocatedRow?.total ?? 0);
+      const due = Number(milestone.amount ?? 0);
+      const nextStatus = allocated <= 0 ? 'pending' : allocated + 0.005 >= due ? 'paid' : 'partial';
+
+      if (nextStatus !== milestone.status) {
+        await runner.update(bookingMilestones)
+          .set({ status: nextStatus })
+          .where(
+            and(
+              eq(bookingMilestones.tenantId, tenantId),
+              eq(bookingMilestones.id, milestone.id)
+            )
+          );
+      }
+    }
+
+    // ── 3. Roll up to the deal ───────────────────────────────────────────────
+    if (!booking.dealId) return;
+
+    const [deal] = await runner
       .select()
       .from(deals)
-      .where(and(eq(deals.tenantId, tenantId), eq(deals.id, dealId)))
+      .where(and(eq(deals.tenantId, tenantId), eq(deals.id, booking.dealId)))
       .limit(1);
 
     if (!deal) return;
 
-    const receivedAmount = Math.max(Number(deal.receivedAmount ?? 0), input.paidAmount);
+    // Sum across ALL live bookings on the deal, not just the one that changed.
+    const [dealPaidRow] = await runner
+      .select({ total: sql<string>`COALESCE(SUM(${bookingPayments.amount}), 0)` })
+      .from(bookingPayments)
+      .innerJoin(bookings, eq(bookingPayments.bookingId, bookings.id))
+      .where(
+        and(
+          eq(bookingPayments.tenantId, tenantId),
+          eq(bookings.dealId, booking.dealId),
+          eq(bookingPayments.status, 'cleared'),
+          inArray(bookings.status, ['draft', 'confirmed', 'completed'])
+        )
+      );
+
+    const receivedAmount = Number(dealPaidRow?.total ?? 0);
     const pendingAmount = Math.max(Number(deal.totalAmount ?? 0) - receivedAmount, 0);
 
-    let status: typeof deals.$inferInsert.status = pendingAmount <= 0 ? 'closed_won' : 'pending_payment';
-    if (input.bookingStatus === 'cancelled') status = 'on_hold';
-    if (input.bookingStatus === 'draft' && status !== 'closed_won') status = 'active';
-
-    await (tx as DrizzleDatabase).update(deals)
+    // Money moves the numbers, never the sales outcome. Whether a deal is won
+    // stays a human decision made through DealsService.updateDeal.
+    await runner.update(deals)
       .set({
-        status,
         receivedAmount: receivedAmount.toFixed(2),
         pendingAmount: pendingAmount.toFixed(2),
-        actualClosingDate: status === 'closed_won' ? new Date() : deal.actualClosingDate,
-        updatedAt: new Date()
+        updatedAt: now
       })
-      .where(and(eq(deals.tenantId, tenantId), eq(deals.id, dealId)));
+      .where(and(eq(deals.tenantId, tenantId), eq(deals.id, booking.dealId)));
   }
 
   private async syncUnitStatus(

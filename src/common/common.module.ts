@@ -6,12 +6,13 @@ import { EncryptionService } from './services/encryption.service';
 import { MailService } from './services/mail.service';
 import { RequestContextService } from './utils/request-context.service';
 import { NotificationsService } from './services/notifications.service';
+import { DocumentNumberService } from './services/document-number.service';
 
 @Global()
 @Module({
   controllers: [UploadsController],
-  providers: [RequestContextService, AppwriteStorageService, EncryptionService, MailService, NotificationsService],
-  exports: [RequestContextService, AppwriteStorageService, EncryptionService, MailService, NotificationsService]
+  providers: [RequestContextService, AppwriteStorageService, EncryptionService, MailService, NotificationsService, DocumentNumberService],
+  exports: [RequestContextService, AppwriteStorageService, EncryptionService, MailService, NotificationsService, DocumentNumberService]
 })
 export class CommonModule { }
 

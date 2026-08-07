@@ -5,6 +5,7 @@ import {
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
   varchar,
   integer
 } from 'drizzle-orm/pg-core';
@@ -36,6 +37,11 @@ export const bookings = pgTable(
     status: bookingStatusEnum('status').default('draft').notNull(),
     notes: text('notes'),
     createdByUserId: varchar('created_by_user_id', { length: 36 }),
+    // Bookings are cancelled, never deleted: a cleared payment is a financial
+    // record. See BookingsService.cancelBooking.
+    cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
+    cancellationReason: text('cancellation_reason'),
+    cancelledByUserId: varchar('cancelled_by_user_id', { length: 36 }),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull()
   },
@@ -44,7 +50,14 @@ export const bookings = pgTable(
     dealIdx: index('bookings_deal_idx').on(table.dealId),
     leadIdx: index('bookings_lead_idx').on(table.leadId),
     unitIdx: index('bookings_property_unit_idx').on(table.propertyUnitId),
-    statusIdx: index('bookings_status_idx').on(table.status)
+    statusIdx: index('bookings_status_idx').on(table.status),
+    tenantBookingNumberUnique: uniqueIndex('bookings_tenant_booking_number_uq').on(
+      table.tenantId,
+      table.bookingNumber
+    )
+    // NOTE: the partial unique index that prevents two live bookings on one unit
+    // (`bookings_live_unit_uq`) is created in the Phase 1 SQL migration —
+    // drizzle-kit 0.20 cannot express a WHERE clause on an index.
   })
 );
 

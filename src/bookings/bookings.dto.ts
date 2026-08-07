@@ -151,6 +151,13 @@ export class CreateBookingDto {
 
 export class UpdateBookingDto extends PartialType(CreateBookingDto) {}
 
+export class ReversePaymentDto {
+  @ApiProperty({ description: 'Why the payment is being reversed (bounced cheque, refund…)' })
+  @IsString()
+  @IsNotEmpty()
+  reason!: string;
+}
+
 export class BookingPaymentQueryDto extends BaseListQueryDto {
   @ApiPropertyOptional()
   @IsOptional()

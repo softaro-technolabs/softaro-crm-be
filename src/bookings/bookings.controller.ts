@@ -23,7 +23,8 @@ import {
   CreateBookingDto,
   UpdateBookingDto,
   CreateBookingPaymentDto,
-  BookingPaymentQueryDto
+  BookingPaymentQueryDto,
+  ReversePaymentDto
 } from './bookings.dto';
 import { BookingsService } from './bookings.service';
 
@@ -75,10 +76,18 @@ export class BookingsController {
 
   @Permissions(...perms('bookings', ACTIONS.DELETE))
   @Delete(':bookingId')
-  @ApiOperation({ summary: 'Delete booking and release inventory linkage' })
-  async delete(@Param('tenantId') tenantId: string, @Param('bookingId') bookingId: string) {
+  @ApiOperation({
+    summary: 'Cancel booking and release inventory linkage',
+    description:
+      'Cancels rather than deletes: payments and milestones are financial records and are retained. The unit is released for a new buyer.'
+  })
+  async cancel(
+    @Param('tenantId') tenantId: string,
+    @Param('bookingId') bookingId: string,
+    @Query('reason') reason?: string
+  ) {
     this.requestContext.verifyTenantAccess(tenantId);
-    return this.bookingsService.deleteBooking(tenantId, bookingId, this.requestContext.getUserId());
+    return this.bookingsService.cancelBooking(tenantId, bookingId, reason, this.requestContext.getUserId());
   }
 
   @Permissions(...perms('bookings', ACTIONS.READ))
@@ -99,6 +108,29 @@ export class BookingsController {
   ) {
     this.requestContext.verifyTenantAccess(tenantId);
     return this.bookingsService.addPayment(tenantId, bookingId, dto);
+  }
+
+  @Permissions(...perms('bookings', ACTIONS.UPDATE))
+  @Post(':bookingId/payments/:paymentId/reverse')
+  @ApiOperation({
+    summary: 'Reverse a payment (bounced cheque, failed transfer, refund)',
+    description:
+      'Flags the payment as reversed and recomputes booking and deal totals. The original ledger row is retained.'
+  })
+  async reversePayment(
+    @Param('tenantId') tenantId: string,
+    @Param('bookingId') bookingId: string,
+    @Param('paymentId') paymentId: string,
+    @Body() dto: ReversePaymentDto
+  ) {
+    this.requestContext.verifyTenantAccess(tenantId);
+    return this.bookingsService.reversePayment(
+      tenantId,
+      bookingId,
+      paymentId,
+      dto.reason,
+      this.requestContext.getUserId()
+    );
   }
 
   @Permissions(...perms('bookings', ACTIONS.READ))

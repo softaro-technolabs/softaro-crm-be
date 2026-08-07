@@ -8,7 +8,7 @@ import {
   leadStatuses,
 } from '../database/schema/leads.schema';
 import { deals } from '../database/schema/deals.schema';
-import { bookings } from '../database/schema/bookings.schema';
+import { bookings, bookingPayments } from '../database/schema/bookings.schema';
 import { propertyUnits } from '../database/schema/properties.schema';
 import { users } from '../database/schema/users.schema';
 import { userTenants } from '../database/schema/user-tenants.schema';
@@ -61,6 +61,7 @@ export class DashboardService {
       leadCount,
       dealCount,
       bookingStats,
+      revenueStats,
       availableUnitsCount,
       funnelData,
       trendsData,
@@ -81,14 +82,37 @@ export class DashboardService {
         .from(deals)
         .where(and(eq(deals.tenantId, tenantId), eq(deals.status, 'active'))),
 
-      // Bookings & Revenue in period
+      // Bookings created in period.
+      // NOTE: revenue is NOT summed here. `paidAmount` is a lifetime running
+      // total, so summing it over bookings *created* in the period counted a
+      // March payment as January revenue whenever the booking was made in
+      // January. Revenue now comes from the payment ledger below, by the date
+      // the money actually arrived.
+      this.db
+        .select({ count: sql<number>`count(*)` })
+        .from(bookings)
+        .where(
+          and(
+            eq(bookings.tenantId, tenantId),
+            gte(bookings.createdAt, start),
+            lte(bookings.createdAt, end)
+          )
+        ),
+
+      // Revenue in period = cleared payments received in the period
       this.db
         .select({
-          count: sql<number>`count(*)`,
-          revenue: sql<number>`sum(CAST(${bookings.paidAmount} AS NUMERIC))`
+          revenue: sql<number>`COALESCE(SUM(CAST(${bookingPayments.amount} AS NUMERIC)), 0)`
         })
-        .from(bookings)
-        .where(and(eq(bookings.tenantId, tenantId), gte(bookings.createdAt, start), lte(bookings.createdAt, end))),
+        .from(bookingPayments)
+        .where(
+          and(
+            eq(bookingPayments.tenantId, tenantId),
+            eq(bookingPayments.status, 'cleared'),
+            gte(bookingPayments.paymentDate, start),
+            lte(bookingPayments.paymentDate, end)
+          )
+        ),
 
       // Available Units
       this.db
@@ -176,7 +200,7 @@ export class DashboardService {
         totalLeads: totalLeadsInPeriod,
         activeDeals: Number(dealCount[0]?.count || 0),
         totalBookingsMonth: Number(bookingStats[0]?.count || 0),
-        revenueCurrentMonth: Number(bookingStats[0]?.revenue || 0),
+        revenueCurrentMonth: Number(revenueStats[0]?.revenue || 0),
         availableUnits: Number(availableUnitsCount[0]?.count || 0)
       },
       funnel: funnelData.map(f => ({

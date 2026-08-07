@@ -2,13 +2,14 @@ import { Injectable, NotFoundException, Inject, BadRequestException } from '@nes
 import { eq, and, desc, sql, or, ilike, SQL, inArray } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { DrizzleDatabase } from '../database/database.types';
-import { quotations, quotationItems, leads, tenants, contacts, deals, leadActivities, propertyUnits, propertyDocuments } from '../database/schema';
+import { quotations, quotationItems, leads, tenants, contacts, deals, leadActivities, propertyUnits, propertyStatusLogs, propertyDocuments } from '../database/schema';
 import { CreateQuotationDto, UpdateQuotationDto, QuotationListQueryDto, ConvertToDealDto } from './quotations.dto';
 import { DRIZZLE } from '../database/database.constants';
 import { MailService } from '../common/services/mail.service';
 import { computeCostSheet, roundMoney } from '../common/utils/cost-sheet.util';
 import { ChannelPartnersService } from '../channel-partners/channel-partners.service';
 import { LeadPipelineService, PIPELINE_STAGE } from '../leads/lead-pipeline.service';
+import { DOCUMENT_SEQUENCE, DocumentNumberService } from '../common/services/document-number.service';
 import { PdfGeneratorService } from './pdf-generator.service';
 import { getQuotationEmailTemplate } from '../common/mail-templates/quotation-email.template';
 
@@ -20,6 +21,7 @@ export class QuotationsService {
     private readonly mailService: MailService,
     private readonly channelPartnersService: ChannelPartnersService,
     private readonly leadPipeline: LeadPipelineService,
+    private readonly documentNumbers: DocumentNumberService,
   ) {}
 
   private async logActivity(tx: any, tenantId: string, leadId: string, type: any, title: string, note?: string, metadata?: any) {
@@ -562,12 +564,9 @@ export class QuotationsService {
       }
 
       // 2. Create the Deal
-      const [countResult] = await tx
-        .select({ value: sql<number>`count(*)` })
-        .from(deals)
-        .where(eq(deals.tenantId, tenantId));
-      
-      const dealNumber = `DL-${new Date().getFullYear()}-${(Number(countResult?.value || 0) + 1).toString().padStart(4, '0')}`;
+      // Shares DocumentNumberService with DealsService so both conversion routes
+      // draw from one counter and cannot issue the same deal number.
+      const dealNumber = await this.documentNumbers.next(tx, tenantId, DOCUMENT_SEQUENCE.DEAL);
       const dealId = uuidv4();
 
       await tx.insert(deals).values({
@@ -598,11 +597,34 @@ export class QuotationsService {
         })
         .where(eq(quotations.id, id));
       
-      // 4. Update Unit Status to 'booked'
+      // 4. Block the unit for this deal.
+      //    Previously this wrote 'booked' with no tenant filter and no status
+      //    log, so the same event left the unit in a different state depending
+      //    on which conversion route ran. A deal blocks a unit; only a
+      //    confirmed booking books it.
       if (quotation.propertyUnitId) {
-        await tx.update(propertyUnits)
-          .set({ unitStatus: 'booked', updatedAt: new Date() })
-          .where(eq(propertyUnits.id, quotation.propertyUnitId));
+        const [currentUnit] = await tx
+          .select({ unitStatus: propertyUnits.unitStatus })
+          .from(propertyUnits)
+          .where(and(eq(propertyUnits.tenantId, tenantId), eq(propertyUnits.id, quotation.propertyUnitId)))
+          .limit(1);
+
+        if (currentUnit && currentUnit.unitStatus !== 'blocked') {
+          await tx.update(propertyUnits)
+            .set({ unitStatus: 'blocked', updatedAt: new Date() })
+            .where(and(eq(propertyUnits.tenantId, tenantId), eq(propertyUnits.id, quotation.propertyUnitId)));
+
+          await tx.insert(propertyStatusLogs).values({
+            id: uuidv4(),
+            tenantId,
+            unitId: quotation.propertyUnitId,
+            oldStatus: currentUnit.unitStatus,
+            newStatus: 'blocked',
+            changedByUserId: null,
+            changedAt: new Date(),
+            remarks: `Blocked for deal ${dealNumber} (from quotation ${quotation.quotationNumber})`
+          });
+        }
       }
 
       // 5. Log Activity
