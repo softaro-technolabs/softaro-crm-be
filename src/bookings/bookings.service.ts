@@ -689,6 +689,62 @@ export class BookingsService {
   }
 
   /**
+   * Points an existing payment at an instalment (or detaches it).
+   *
+   * Money taken before the payment plan was drawn up — a token at the desk —
+   * lands unallocated. Without this it would have to be reversed and re-entered
+   * to be counted against a milestone, which loses the original receipt.
+   */
+  async allocatePayment(
+    tenantId: string,
+    bookingId: string,
+    paymentId: string,
+    milestoneId: string | null
+  ) {
+    const [payment] = await this.db
+      .select()
+      .from(bookingPayments)
+      .where(
+        and(
+          eq(bookingPayments.tenantId, tenantId),
+          eq(bookingPayments.bookingId, bookingId),
+          eq(bookingPayments.id, paymentId)
+        )
+      )
+      .limit(1);
+
+    if (!payment) throw new NotFoundException('Payment not found');
+
+    if (milestoneId) {
+      const [milestone] = await this.db
+        .select({ id: bookingMilestones.id })
+        .from(bookingMilestones)
+        .where(
+          and(
+            eq(bookingMilestones.tenantId, tenantId),
+            eq(bookingMilestones.id, milestoneId),
+            eq(bookingMilestones.bookingId, bookingId)
+          )
+        )
+        .limit(1);
+      if (!milestone) throw new NotFoundException('Milestone not found on this booking');
+    }
+
+    await this.db.transaction(async (tx) => {
+      await tx
+        .update(bookingPayments)
+        .set({ milestoneId })
+        .where(and(eq(bookingPayments.tenantId, tenantId), eq(bookingPayments.id, paymentId)));
+
+      // Milestone statuses are derived, so both the old and the new instalment
+      // are re-evaluated by this single call.
+      await this.recalcBookingFinancials(tx, tenantId, bookingId);
+    });
+
+    return { success: true };
+  }
+
+  /**
    * Reverses a payment (bounced cheque, failed transfer, refund).
    *
    * The original row is never edited or deleted — it is flagged, and the

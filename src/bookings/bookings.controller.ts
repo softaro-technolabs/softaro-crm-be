@@ -171,6 +171,28 @@ export class BookingsController {
   }
 
   @Permissions(...perms('bookings', ACTIONS.UPDATE))
+  @Put(':bookingId/payments/:paymentId/allocate')
+  @ApiOperation({
+    summary: 'Attach a payment to an instalment (or detach it)',
+    description:
+      'Send milestoneId: null to leave the payment unallocated. Instalment statuses are recomputed automatically.'
+  })
+  async allocatePayment(
+    @Param('tenantId') tenantId: string,
+    @Param('bookingId') bookingId: string,
+    @Param('paymentId') paymentId: string,
+    @Body() dto: { milestoneId?: string | null }
+  ) {
+    this.requestContext.verifyTenantAccess(tenantId);
+    return this.bookingsService.allocatePayment(
+      tenantId,
+      bookingId,
+      paymentId,
+      dto.milestoneId ?? null
+    );
+  }
+
+  @Permissions(...perms('bookings', ACTIONS.UPDATE))
   @Post(':bookingId/payments/:paymentId/reverse')
   @ApiOperation({
     summary: 'Reverse a payment (bounced cheque, failed transfer, refund)',
