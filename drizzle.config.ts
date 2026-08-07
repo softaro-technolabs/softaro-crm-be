@@ -49,85 +49,64 @@ export default defineConfig({
   /**
    * Explicitly filter out system tables that might be in public schema.
    *
-   * This MUST list every table declared in src/database/schema — anything
-   * missing is silently invisible to `push:pg`, so schema edits to it never
-   * reach the database. The previous list omitted 28 tables, including the
-   * whole deals/bookings/commissions surface.
+   * ⚠️ DO NOT add tables to this list casually. `drizzle-kit push:pg` runs
+   * automatically on every boot (MigrationService.push), so anything listed
+   * here is reconciled against the schema files unattended.
    *
-   * When you add a new table, add it here. To regenerate the list:
-   *   perl -0777 -ne "while(/pgTable\(\s*'([a-z_]+)'/g){print \"\$1\n\"}" \
-   *     src/database/schema/*.schema.ts | sort -u
+   * Tables deliberately NOT listed — deals, bookings, booking_milestones,
+   * booking_payments, document_sequences, notifications, push_subscriptions,
+   * commissions, contacts, attendance*, channel_partner* — are managed by hand
+   * via SQL in drizzle/migrations/. Adding them back causes push to propose
+   * destructive changes, because:
+   *
+   *   1. drizzle-kit 0.20 cannot express a partial index (`CREATE UNIQUE INDEX
+   *      … WHERE …`), so it does not see `bookings_live_unit_uq`,
+   *      `booking_payments_tenant_receipt_uq` or
+   *      `booking_payments_tenant_date_idx` in the schema and issues DROP INDEX
+   *      for all three. `bookings_live_unit_uq` is the constraint that prevents
+   *      two buyers being sold the same unit.
+   *   2. notifications and push_subscriptions declare uuid columns in the
+   *      schema but hold varchar(36) in the database, so push wants to
+   *      TRUNCATE both tables to change the column type.
+   *
+   * Before ever widening this list, run `DRIZZLE_STRICT=1 npx drizzle-kit
+   * push:pg` by hand and read the whole diff.
    */
   tablesFilter: [
-    'attendance_check_ins',
-    'attendance_locations',
-    'attendance_records',
-    'attendance_settings',
-    'audit_logs',
-    'automation_logs',
-    'automation_rules',
-    'booking_milestones',
-    'booking_payments',
-    'bookings',
-    'calendar_sync_queue',
-    'call_logs',
-    'channel_partner_users',
-    'channel_partners',
-    'chat_conversations',
-    'chat_members',
-    'chat_message_reads',
-    'chat_messages',
-    'commissions',
-    'contacts',
-    'cp_incentives',
-    'cp_lead_attributions',
-    'deals',
-    'document_sequences',
-    'lead_activities',
+    'tenants',
+    'users',
+    'user_tenants',
+    'roles',
+    'permissions',
+    'role_permissions',
+    'modules',
+    'tenant_modules',
+    'lead_statuses',
+    'lead_options',
+    'leads',
+    'lead_assignment_settings',
     'lead_assignment_agents',
     'lead_assignment_logs',
-    'lead_assignment_settings',
-    'lead_options',
-    'lead_property_interests',
-    'lead_statuses',
+    'lead_activities',
     'lead_tasks',
-    'leads',
-    'leave_balances',
-    'leave_requests',
-    'location_tracking_logs',
-    'master_permissions',
-    'meta_ads_accounts',
-    'meta_ads_leads',
-    'modules',
-    'notifications',
-    'property_attribute_values',
-    'property_attributes',
-    'property_documents',
     'property_entities',
-    'property_entity_types',
-    'property_locations',
-    'property_media',
-    'property_pricing_breakups',
-    'property_status_logs',
     'property_units',
-    'push_subscriptions',
-    'quotation_items',
+    'property_locations',
+    'property_attributes',
+    'property_attribute_values',
+    'property_media',
+    'property_status_logs',
+    'lead_property_interests',
+    'property_pricing_breakups',
     'quotations',
-    'role_permissions',
-    'roles',
-    'site_visits',
-    'tenant_modules',
-    'tenants',
-    'user_calendar_connections',
-    'user_tenants',
-    'users',
+    'quotation_items',
     'waterpark_reviews',
+    'property_entity_types',
     'whatsapp_accounts',
-    'whatsapp_message_queue',
     'whatsapp_messages',
-    'whatsapp_scheduled_messages',
     'whatsapp_sessions',
-    'whatsapp_templates'
+    'whatsapp_message_queue',
+    'whatsapp_scheduled_messages'
   ],
 });
 

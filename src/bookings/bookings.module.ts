@@ -6,9 +6,10 @@ import { DatabaseModule } from '../database/database.module';
 import { BookingsController } from './bookings.controller';
 import { BookingsService } from './bookings.service';
 import { AutomationModule } from '../automation/automation.module';
+import { DealsModule } from '../deals/deals.module';
 
 @Module({
-  imports: [DatabaseModule, CommonModule, AutomationModule, LeadsModule],
+  imports: [DatabaseModule, CommonModule, AutomationModule, LeadsModule, DealsModule],
   controllers: [BookingsController],
   providers: [BookingsService]
 })

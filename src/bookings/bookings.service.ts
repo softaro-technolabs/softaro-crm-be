@@ -9,7 +9,7 @@ import { and, desc, eq, inArray, or, sql } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 
 import { DRIZZLE } from '../database/database.constants';
-import type { DrizzleDatabase } from '../database/database.types';
+import type { DrizzleDatabase, DrizzleExecutor, DrizzleTransaction } from '../database/database.types';
 import {
   bookings,
   bookingMilestones,
@@ -39,6 +39,7 @@ import {
 } from './bookings.dto';
 import { AutomationService } from '../automation/automation.service';
 import { LeadPipelineService, PIPELINE_STAGE } from '../leads/lead-pipeline.service';
+import { DealsService } from '../deals/deals.service';
 import { generateDemandLetterPdf } from '../common/pdf-templates/demand-letter.template';
 import { generateAllotmentLetterPdf } from '../common/pdf-templates/allotment-letter.template';
 
@@ -48,7 +49,8 @@ export class BookingsService {
     @Inject(DRIZZLE) private readonly db: DrizzleDatabase,
     private readonly automationService: AutomationService,
     private readonly leadPipeline: LeadPipelineService,
-    private readonly documentNumbers: DocumentNumberService
+    private readonly documentNumbers: DocumentNumberService,
+    private readonly dealsService: DealsService
   ) {}
 
   /** Statuses in which a booking holds its unit against all other buyers. */
@@ -229,10 +231,23 @@ export class BookingsService {
     await this.db.transaction(async (tx) => {
       bookingNumber = await this.documentNumbers.next(tx, tenantId, DOCUMENT_SEQUENCE.BOOKING, now);
 
+      const dealId = await this.ensureDealForBooking(
+        tx,
+        tenantId,
+        {
+          existingDealId: resolved.deal?.id ?? null,
+          leadId: resolved.leadId,
+          propertyUnitId: resolved.propertyUnitId,
+          quotationId: dto.quotationId ?? null,
+          bookingAmount
+        },
+        createdByUserId
+      );
+
       await tx.insert(bookings).values({
         id: bookingId,
         tenantId,
-        dealId: resolved.deal?.id ?? null,
+        dealId,
         leadId: resolved.leadId,
         propertyUnitId: resolved.propertyUnitId,
         quotationId: dto.quotationId ?? null,
@@ -803,6 +818,63 @@ export class BookingsService {
     };
   }
 
+  /**
+   * Finds the deal behind a booking, creating one if the user did not supply it.
+   *
+   * Agents book a unit for a lead — they should never have to create a "deal"
+   * first. The deal remains as the internal commercial record so quotations,
+   * commissions and revenue reporting keep working, but it is provisioned here
+   * rather than being a screen someone has to visit.
+   */
+  private async ensureDealForBooking(
+    tx: DrizzleTransaction,
+    tenantId: string,
+    input: {
+      existingDealId: string | null;
+      leadId: string;
+      propertyUnitId: string;
+      quotationId?: string | null;
+      bookingAmount: number;
+    },
+    createdByUserId?: string | null
+  ): Promise<string> {
+    if (input.existingDealId) return input.existingDealId;
+
+    // Reuse the lead's open deal on this unit if one is already there — a
+    // quotation may have created it minutes earlier.
+    const [openDeal] = await (tx as DrizzleDatabase)
+      .select({ id: deals.id })
+      .from(deals)
+      .where(
+        and(
+          eq(deals.tenantId, tenantId),
+          eq(deals.leadId, input.leadId),
+          eq(deals.propertyUnitId, input.propertyUnitId),
+          inArray(deals.status, ['active', 'pending_payment', 'on_hold'])
+        )
+      )
+      .limit(1);
+
+    if (openDeal) return openDeal.id;
+
+    const created = await this.dealsService.createDealInTransaction(
+      tx,
+      tenantId,
+      {
+        leadId: input.leadId,
+        propertyUnitId: input.propertyUnitId,
+        quotationId: input.quotationId ?? undefined,
+        // Falls back to the unit price / quotation total inside the deals
+        // service when the booking carries no explicit value.
+        totalAmount: input.bookingAmount > 0 ? input.bookingAmount : undefined,
+        notes: 'Created automatically for a booking.'
+      },
+      createdByUserId
+    );
+
+    return created.dealId;
+  }
+
   private async resolveBookingRelations(tenantId: string, dto: CreateBookingDto) {
     let deal: typeof deals.$inferSelect | null = null;
     if (dto.dealId) {
@@ -851,7 +923,7 @@ export class BookingsService {
    * or booking status.
    */
   private async recalcBookingFinancials(
-    tx: DrizzleDatabase | Parameters<DrizzleDatabase['transaction']>[0],
+    tx: DrizzleExecutor,
     tenantId: string,
     bookingId: string
   ) {
@@ -963,7 +1035,7 @@ export class BookingsService {
   }
 
   private async syncUnitStatus(
-    tx: DrizzleDatabase | Parameters<DrizzleDatabase['transaction']>[0],
+    tx: DrizzleExecutor,
     tenantId: string,
     unitId: string,
     status: 'available' | 'blocked' | 'booked' | 'sold',

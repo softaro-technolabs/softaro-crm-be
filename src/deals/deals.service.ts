@@ -8,7 +8,7 @@ import { and, desc, eq, or, sql } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 
 import { DRIZZLE } from '../database/database.constants';
-import type { DrizzleDatabase } from '../database/database.types';
+import type { DrizzleDatabase, DrizzleExecutor, DrizzleTransaction } from '../database/database.types';
 import {
   bookings,
   contacts,
@@ -194,7 +194,21 @@ export class DealsService {
     };
   }
 
-  async createDeal(tenantId: string, dto: CreateDealDto, createdByUserId?: string | null) {
+  /**
+   * Creates a deal inside a caller-supplied transaction and returns its id.
+   *
+   * A deal is the internal commercial record behind a sale — the agreed unit,
+   * the agreed price, who owns it. Users do not create one by hand: it is
+   * provisioned automatically when a quotation is accepted or a booking is
+   * made. This method exists so BookingsService can provision one without
+   * opening a second, nested transaction.
+   */
+  async createDealInTransaction(
+    tx: DrizzleTransaction,
+    tenantId: string,
+    dto: CreateDealDto,
+    createdByUserId?: string | null
+  ): Promise<{ dealId: string; dealNumber: string }> {
     const lead = await this.getLeadOrThrow(tenantId, dto.leadId);
 
     if (dto.propertyUnitId) {
@@ -219,45 +233,54 @@ export class DealsService {
     const status: DealStatus = 'active';
     const now = new Date();
 
+    const dealNumber = await this.documentNumbers.next(tx, tenantId, DOCUMENT_SEQUENCE.DEAL, now);
+
+    await tx.insert(deals).values({
+      id: dealId,
+      tenantId,
+      leadId: lead.id,
+      contactId,
+      quotationId: dto.quotationId ?? null,
+      propertyUnitId: dto.propertyUnitId ?? null,
+      dealNumber,
+      status,
+      expectedClosingDate: dto.expectedClosingDate ? new Date(dto.expectedClosingDate) : null,
+      totalAmount: totalAmount.toFixed(2),
+      receivedAmount: receivedAmount.toFixed(2),
+      pendingAmount: pendingAmount.toFixed(2),
+      assignedToUserId: dto.assignedToUserId ?? lead.assignedToUserId ?? null,
+      notes: dto.notes ?? null,
+      metadata: null,
+      createdAt: now,
+      updatedAt: now
+    });
+
+    if (dto.propertyUnitId) {
+      await this.syncUnitStatus(tx, tenantId, dto.propertyUnitId, 'blocked', createdByUserId, 'Blocked for active deal');
+    }
+
+    await tx.insert(leadActivities).values({
+      id: randomUUID(),
+      tenantId,
+      leadId: lead.id,
+      type: 'note',
+      title: `Deal created: ${dealNumber}`,
+      note: dto.notes ?? 'Lead converted into an active deal.',
+      metadata: { dealId, dealNumber },
+      happenedAt: now,
+      createdByUserId: createdByUserId ?? null,
+      createdAt: now
+    });
+
+    return { dealId, dealNumber };
+  }
+
+  async createDeal(tenantId: string, dto: CreateDealDto, createdByUserId?: string | null) {
+    let dealId = '';
+
     await this.db.transaction(async (tx) => {
-      const dealNumber = await this.documentNumbers.next(tx, tenantId, DOCUMENT_SEQUENCE.DEAL, now);
-
-      await tx.insert(deals).values({
-        id: dealId,
-        tenantId,
-        leadId: lead.id,
-        contactId,
-        quotationId: dto.quotationId ?? null,
-        propertyUnitId: dto.propertyUnitId ?? null,
-        dealNumber,
-        status,
-        expectedClosingDate: dto.expectedClosingDate ? new Date(dto.expectedClosingDate) : null,
-        totalAmount: totalAmount.toFixed(2),
-        receivedAmount: receivedAmount.toFixed(2),
-        pendingAmount: pendingAmount.toFixed(2),
-        assignedToUserId: dto.assignedToUserId ?? lead.assignedToUserId ?? null,
-        notes: dto.notes ?? null,
-        metadata: null,
-        createdAt: now,
-        updatedAt: now
-      });
-
-      if (dto.propertyUnitId) {
-        await this.syncUnitStatus(tx, tenantId, dto.propertyUnitId, 'blocked', createdByUserId, 'Blocked for active deal');
-      }
-
-      await tx.insert(leadActivities).values({
-        id: randomUUID(),
-        tenantId,
-        leadId: lead.id,
-        type: 'note',
-        title: `Deal created: ${dealNumber}`,
-        note: dto.notes ?? 'Lead converted into an active deal.',
-        metadata: { dealId, dealNumber },
-        happenedAt: now,
-        createdByUserId: createdByUserId ?? null,
-        createdAt: now
-      });
+      const created = await this.createDealInTransaction(tx, tenantId, dto, createdByUserId);
+      dealId = created.dealId;
     });
 
     return this.getDeal(tenantId, dealId);
@@ -434,7 +457,7 @@ export class DealsService {
   }
 
   private async syncUnitStatus(
-    tx: DrizzleDatabase | Parameters<DrizzleDatabase['transaction']>[0],
+    tx: DrizzleExecutor,
     tenantId: string,
     unitId: string,
     status: 'available' | 'blocked' | 'booked' | 'sold',

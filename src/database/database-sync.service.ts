@@ -5,7 +5,7 @@ import { randomUUID } from 'crypto';
 import { MigrationService } from './migration.service';
 import { DRIZZLE } from './database.constants';
 import type { DrizzleDatabase } from './database.types';
-import { modules } from './schema';
+import { modules, tenantModules } from './schema';
 
 interface ModuleSeed {
   slug: string;
@@ -55,12 +55,15 @@ const MODULE_CATALOG: ModuleSeed[] = [
   { slug: 'inventory-grid',        name: 'Inventory Grid', defaultRoute: '/properties/inventory-grid', sequence: 2, parentSlug: 'properties' },
   { slug: 'properties-attributes', name: 'Attributes',     defaultRoute: '/properties/attributes',     sequence: 3, parentSlug: 'properties' },
 
-  // ── Quotations children (deals → bookings → payments follow the deal cycle) ─
-  { slug: 'deals',          name: 'Deals',          defaultRoute: '/deals',       sequence: 1, parentSlug: 'quotations' },
-  { slug: 'bookings',       name: 'Bookings',       defaultRoute: '/bookings',    sequence: 2, parentSlug: 'quotations' },
-  { slug: 'payments',       name: 'Payments',       defaultRoute: '/payments',    sequence: 3, parentSlug: 'quotations' },
-  { slug: 'commissions',    name: 'Commissions',    defaultRoute: '/commissions', sequence: 4, parentSlug: 'quotations' },
-  { slug: 'document-vault', name: 'Document Vault', defaultRoute: '/documents',   sequence: 5, parentSlug: 'quotations' },
+  // ── Quotations children ────────────────────────────────────────────────
+  // The customer journey users actually work is Lead → Quotation → Booking.
+  // "Deals" is deliberately absent: a deal is the internal commercial record
+  // behind a booking, provisioned automatically, not a screen anyone visits.
+  // See RETIRED_MODULE_SLUGS below.
+  { slug: 'bookings',       name: 'Bookings',       defaultRoute: '/bookings',    sequence: 1, parentSlug: 'quotations' },
+  { slug: 'payments',       name: 'Payments',       defaultRoute: '/payments',    sequence: 2, parentSlug: 'quotations' },
+  { slug: 'commissions',    name: 'Commissions',    defaultRoute: '/commissions', sequence: 3, parentSlug: 'quotations' },
+  { slug: 'document-vault', name: 'Document Vault', defaultRoute: '/documents',   sequence: 4, parentSlug: 'quotations' },
 
   // ── Attendance children ────────────────────────────────────────────────
   { slug: 'attendance-records',  name: 'Records',  defaultRoute: '/attendance/records',  sequence: 1, parentSlug: 'attendance' },
@@ -81,6 +84,21 @@ const MODULE_CATALOG: ModuleSeed[] = [
   { slug: 'audit-logs',                   name: 'Audit Logs',          defaultRoute: '/audit-logs',                   sequence: 7, parentSlug: 'settings' },
 ];
 
+/**
+ * Modules removed from the product. Their rows (and every tenant's link to
+ * them) are deleted on boot.
+ *
+ * `upsertModule` only ever inserts or re-sequences, so dropping an entry from
+ * MODULE_CATALOG is not enough — the row would linger in every existing
+ * tenant's sidebar forever.
+ */
+const RETIRED_MODULE_SLUGS = [
+  // A deal is now provisioned automatically behind a booking. Agents work
+  // Lead → Quotation → Booking; there is nothing for them to do on a Deals
+  // screen. The table and its API remain for reporting and commissions.
+  'deals'
+];
+
 @Injectable()
 export class DatabaseSyncService implements OnApplicationBootstrap {
   private readonly logger = new Logger(DatabaseSyncService.name);
@@ -98,11 +116,32 @@ export class DatabaseSyncService implements OnApplicationBootstrap {
 
     try {
       await this.migrationService.push();
+      await this.retireModules();
       await this.ensureModuleCatalog();
       this.hasSynced = true;
     } catch (error) {
       this.logger.error('Database sync failed', error instanceof Error ? error.stack : undefined);
       throw error;
+    }
+  }
+
+  /**
+   * Deletes retired modules and every tenant's link to them, so they disappear
+   * from the sidebar rather than lingering as dead navigation.
+   */
+  private async retireModules() {
+    for (const slug of RETIRED_MODULE_SLUGS) {
+      const [existing] = await this.db
+        .select({ id: modules.id })
+        .from(modules)
+        .where(eq(modules.slug, slug))
+        .limit(1);
+
+      if (!existing) continue;
+
+      await this.db.delete(tenantModules).where(eq(tenantModules.moduleId, existing.id));
+      await this.db.delete(modules).where(eq(modules.id, existing.id));
+      this.logger.log(`Retired module: ${slug}`);
     }
   }
 
