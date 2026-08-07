@@ -56,13 +56,9 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    const tenantIdentifier = dto.tenantSlug?.trim();
-
-    // Super admin can login with or without tenant slug (tenant slug is optional)
-    // Normal users must provide tenant slug
-    if (user.roleGlobal !== 'super_admin' && !tenantIdentifier) {
-      throw new BadRequestException('Tenant slug is required for normal users');
-    }
+    // The tenant is derived from the user's own memberships. `tenantSlug` remains
+    // accepted purely to pick a workspace when someone belongs to several.
+    const tenantIdentifier = dto.tenantSlug?.trim() || undefined;
 
     const context = await this.resolveAuthContext(user.id, user.roleGlobal, tenantIdentifier);
 
@@ -210,8 +206,8 @@ export class AuthService {
       'https://estateos.softarotechnolabs.com'
     );
 
-    const tenantSlug = dto.tenantSlug ? `/${dto.tenantSlug}` : '';
-    const resetUrl = `${frontendUrl}/reset-password?token=${token}${tenantSlug ? `&tenant=${dto.tenantSlug}` : ''}`;
+    // The token alone identifies the user, so the link needs no workspace hint.
+    const resetUrl = `${frontendUrl}/reset-password?token=${token}`;
 
     try {
       await this.mailService.sendEmail(
@@ -309,12 +305,10 @@ export class AuthService {
       };
     }
 
-    // Normal users must provide tenant identifier
-    if (!tenantIdentifier) {
-      throw new BadRequestException('Tenant slug is required for normal users');
-    }
+    // No slug supplied: resolve the workspace from the user's own memberships.
+    const resolvedIdentifier = tenantIdentifier ?? (await this.resolveDefaultTenantId(userId));
 
-    const membership = await this.usersService.findUserWithTenant(userId, tenantIdentifier);
+    const membership = await this.usersService.findUserWithTenant(userId, resolvedIdentifier);
 
     if (!membership?.tenant || !membership.membership) {
       throw new UnauthorizedException('User does not belong to this tenant');
@@ -379,6 +373,34 @@ export class AuthService {
       routes,
       tenants: Array.from(tenantMap.values())
     };
+  }
+
+  /**
+   * Picks the workspace a user lands in when they log in without naming one.
+   *
+   * Only active memberships of active tenants count. When someone belongs to
+   * several, the oldest membership wins — that is their original workspace, and
+   * it keeps the choice stable across logins. They can still switch afterwards;
+   * the login response carries the full `tenants` list.
+   */
+  private async resolveDefaultTenantId(userId: string): Promise<string> {
+    const memberships = await this.usersService.getTenantsForUser(userId);
+
+    const usable = memberships
+      .filter((entry) => entry.tenant && entry.membership)
+      .filter((entry) => entry.membership.status === 'active' && entry.tenant!.status === 'active');
+
+    if (usable.length === 0) {
+      // Deliberately vague: distinguishing "no workspace" from "wrong password"
+      // would confirm which emails exist.
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    const oldest = usable.reduce((earliest, entry) =>
+      new Date(entry.membership.createdAt) < new Date(earliest.membership.createdAt) ? entry : earliest,
+    );
+
+    return oldest.tenant!.id;
   }
 
   private async findTenantByIdentifier(identifier: string) {

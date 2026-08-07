@@ -12,7 +12,9 @@ export class LoginDto {
   password!: string;
 
   @ApiPropertyOptional({
-    description: 'Tenant slug or UUID. Optional for super admin (can login without it). Required for normal users.',
+    description:
+      'Optional. The tenant is resolved from the user’s own memberships, so this is only needed ' +
+      'to pick a specific workspace when the user belongs to more than one. Accepts a slug or UUID.',
     example: 'akshar-realty'
   })
   @IsOptional()
@@ -30,14 +32,6 @@ export class ForgotPasswordDto {
   @ApiProperty({ example: 'agent@realty.com' })
   @IsEmail()
   email!: string;
-
-  @ApiPropertyOptional({
-    description: 'Tenant slug — required for non-super-admin accounts',
-    example: 'akshar-realty'
-  })
-  @IsOptional()
-  @IsString()
-  tenantSlug?: string;
 }
 
 export class ResetPasswordDto {
