@@ -1,4 +1,4 @@
-import { BadRequestException, Inject, Injectable } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Inject, Injectable } from '@nestjs/common';
 import { and, asc, desc, eq, gte, ilike, inArray, lte, or, sql } from 'drizzle-orm';
 import * as ExcelJS from 'exceljs';
 
@@ -43,6 +43,13 @@ export class AttendanceReportService {
     @Inject(DRIZZLE) private readonly db: DrizzleDatabase,
     private readonly attendanceService: AttendanceService,
   ) {}
+
+  /** Attendance reporting exposes the whole team, so it is admin-only. */
+  private assertAdmin(actor: AttendanceActor): void {
+    if (!actor.isAdmin) {
+      throw new ForbiddenException('You do not have permission to view attendance reports');
+    }
+  }
 
   /**
    * Resolves the reporting window.
@@ -92,13 +99,9 @@ export class AttendanceReportService {
    * exactly the cases it exists to surface.
    */
   async getTeamReport(tenantId: string, actor: AttendanceActor, query: AttendanceReportQueryDto) {
+    this.assertAdmin(actor);
     const { startDate, endDate } = await this.resolveRange(tenantId, query);
-
-    // Non-admins can only ever report on themselves.
-    const scopedUserId = actor.isAdmin ? query.userId : actor.userId;
-    if (!actor.isAdmin && query.userId && query.userId !== actor.userId) {
-      throw new BadRequestException('You can only report on your own attendance');
-    }
+    const scopedUserId = query.userId;
 
     const page = query.page ?? 1;
     const limit = query.limit ?? 50;
@@ -282,16 +285,14 @@ export class AttendanceReportService {
    * payload grows quadratically.
    */
   async getRegister(tenantId: string, actor: AttendanceActor, query: AttendanceReportQueryDto) {
+    this.assertAdmin(actor);
     const { startDate, endDate } = await this.resolveRange(tenantId, query);
 
     if (countDaysInclusive(startDate, endDate) > 62) {
       throw new BadRequestException('The register view is limited to 62 days — narrow the range or use a month');
     }
 
-    const scopedUserId = actor.isAdmin ? query.userId : actor.userId;
-    if (!actor.isAdmin && query.userId && query.userId !== actor.userId) {
-      throw new BadRequestException('You can only report on your own attendance');
-    }
+    const scopedUserId = query.userId;
 
     const memberFilters = [eq(userTenants.tenantId, tenantId), eq(userTenants.status, 'active')];
     if (scopedUserId) memberFilters.push(eq(userTenants.userId, scopedUserId));

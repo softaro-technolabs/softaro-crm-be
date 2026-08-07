@@ -328,8 +328,6 @@ export class AuthService {
       throw new UnauthorizedException('Tenant is not active');
     }
 
-    const modules = await this.modulesService.getTenantModules(membership.tenant.id);
-
     const permissionsList = membership.membership.roleId
       ? await this.permissionsService.getCodesForRole(
         membership.tenant.id,
@@ -339,25 +337,23 @@ export class AuthService {
 
     const accessibleTenants = await this.usersService.getTenantsForUser(userId);
 
-    const normalizedModulesWithFlag = modules.map(({ module, tenantModule }) => ({
+    // Only the modules this role can actually reach. Previously every enabled
+    // module was returned regardless of permissions, so the sidebar advertised
+    // pages that the route guards then refused to open.
+    const accessibleModules = await this.modulesService.getAccessibleModules(
+      membership.tenant.id,
+      'normal',
+      membership.membership.roleId ?? null
+    );
+
+    const enabledModules = accessibleModules.map((module) => ({
       id: module.id,
       slug: module.slug,
       name: module.name,
       route: module.defaultRoute,
       parentId: module.parentId,
-      icon: module.icon,
-      isEnabled: tenantModule?.isEnabled ?? true
+      icon: module.icon
     }));
-    const enabledModules = normalizedModulesWithFlag
-      .filter((item) => item.isEnabled)
-      .map((item) => ({
-        id: item.id,
-        slug: item.slug,
-        name: item.name,
-        route: item.route,
-        parentId: item.parentId,
-        icon: item.icon
-      }));
 
     const permissions = Array.from(new Set(permissionsList));
 

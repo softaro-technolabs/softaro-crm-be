@@ -2,6 +2,8 @@ import { Body, Controller, Delete, Get, Param, Post, Put, Query, UseGuards } fro
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { Permissions, perms, ACTIONS } from '../rbac/permissions.decorator';
+import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequestContextService } from '../common/utils/request-context.service';
 
 import { CreatePropertyMediaDto, PropertyMediaListQueryDto, UpdatePropertyMediaDto } from './properties.dto';
@@ -9,7 +11,7 @@ import { PropertiesService } from './properties.service';
 
 @ApiTags('Properties - Media')
 @Controller('tenants/:tenantId/properties/media')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiBearerAuth()
 export class PropertyMediaController {
   constructor(
@@ -17,6 +19,7 @@ export class PropertyMediaController {
     private readonly requestContext: RequestContextService
   ) {}
 
+  @Permissions(...perms('properties', ACTIONS.READ))
   @Get()
   @ApiOperation({ summary: 'List media for an entity (optionally a unit)' })
   async list(@Param('tenantId') tenantId: string, @Query() query: PropertyMediaListQueryDto) {
@@ -24,6 +27,7 @@ export class PropertyMediaController {
     return this.propertiesService.listMedia(tenantId, { entityId: query.entityId, unitId: query.unitId });
   }
 
+  @Permissions(...perms('properties', ACTIONS.WRITE))
   @Post()
   @ApiOperation({ summary: 'Create media record' })
   async create(@Param('tenantId') tenantId: string, @Body() dto: CreatePropertyMediaDto) {
@@ -31,6 +35,7 @@ export class PropertyMediaController {
     return this.propertiesService.createMedia(tenantId, dto);
   }
 
+  @Permissions(...perms('properties', ACTIONS.UPDATE))
   @Put(':mediaId')
   @ApiOperation({ summary: 'Update media record' })
   async update(
@@ -42,6 +47,7 @@ export class PropertyMediaController {
     return this.propertiesService.updateMedia(tenantId, mediaId, dto);
   }
 
+  @Permissions(...perms('properties', ACTIONS.DELETE))
   @Delete(':mediaId')
   @ApiOperation({ summary: 'Delete media record' })
   async delete(@Param('tenantId') tenantId: string, @Param('mediaId') mediaId: string) {

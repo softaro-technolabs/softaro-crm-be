@@ -2,6 +2,8 @@ import { Body, Controller, ForbiddenException, Get, Param, Patch, Post, UseGuard
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { Permissions, perms, ACTIONS } from '../rbac/permissions.decorator';
+import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequestContextService } from '../common/utils/request-context.service';
 import { LeadAssignmentService } from './lead-assignment.service';
 import {
@@ -12,7 +14,7 @@ import {
 
 @ApiTags('Lead Assignment')
 @Controller('tenants/:tenantId/leads/assignment')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiBearerAuth()
 export class LeadAssignmentController {
   constructor(
@@ -20,6 +22,7 @@ export class LeadAssignmentController {
     private readonly requestContext: RequestContextService
   ) {}
 
+  @Permissions(...perms('lead-setting', ACTIONS.READ))
   @Get('settings')
   @ApiOperation({ summary: 'Get auto-assignment settings' })
   async getSettings(@Param('tenantId') tenantId: string) {
@@ -27,6 +30,7 @@ export class LeadAssignmentController {
     return this.assignmentService.getSettings(tenantId);
   }
 
+  @Permissions(...perms('lead-setting', ACTIONS.UPDATE))
   @Patch('settings')
   @ApiOperation({ summary: 'Update auto-assignment settings' })
   async updateSettings(@Param('tenantId') tenantId: string, @Body() dto: UpdateLeadAssignmentSettingsDto) {
@@ -34,6 +38,7 @@ export class LeadAssignmentController {
     return this.assignmentService.updateSettings(tenantId, dto);
   }
 
+  @Permissions(...perms('lead-setting', ACTIONS.READ))
   @Get('agents')
   @ApiOperation({ summary: 'List assignment agents & profiles' })
   async listAgents(@Param('tenantId') tenantId: string) {
@@ -41,6 +46,7 @@ export class LeadAssignmentController {
     return this.assignmentService.listAgentProfiles(tenantId);
   }
 
+  @Permissions(...perms('lead-setting', ACTIONS.WRITE))
   @Post('agents')
   @ApiOperation({ summary: 'Create or update agent assignment profile' })
   async upsertAgent(@Param('tenantId') tenantId: string, @Body() dto: UpsertLeadAssignmentAgentDto) {
@@ -48,6 +54,7 @@ export class LeadAssignmentController {
     return this.assignmentService.upsertAgentProfile(tenantId, dto);
   }
 
+  @Permissions(...perms('lead-setting', ACTIONS.UPDATE))
   @Patch('agents/:userId/availability')
   @ApiOperation({ summary: 'Set assignment availability for an agent' })
   async updateAvailability(
@@ -59,6 +66,7 @@ export class LeadAssignmentController {
     return this.assignmentService.setAgentAvailability(tenantId, userId, dto.isAvailable);
   }
 
+  @Permissions(...perms('lead-setting', ACTIONS.WRITE))
   @Post('settings/rotate-api-key')
   @ApiOperation({
     summary: 'Rotate public API key for lead capture',

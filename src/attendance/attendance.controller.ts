@@ -47,10 +47,10 @@ export class AttendanceController {
   // ── Settings ─────────────────────────────────────────────────────────────
 
   @Get('settings')
-  @ApiOperation({ summary: 'Get attendance settings' })
+  @ApiOperation({ summary: 'Get attendance settings (admin)' })
   async getSettings(@Param('tenantId') tenantId: string) {
-    await this.attendanceService.resolveActor(tenantId);
-    return this.attendanceService.getSettings(tenantId);
+    const actor = await this.attendanceService.resolveActor(tenantId);
+    return this.attendanceService.getSettingsForActor(tenantId, actor);
   }
 
   @Patch('settings')

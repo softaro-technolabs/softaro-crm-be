@@ -2,6 +2,8 @@ import { Body, Controller, Delete, Get, Param, Post, Put, Query, UseGuards } fro
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { Permissions, perms, ACTIONS } from '../rbac/permissions.decorator';
+import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequestContextService } from '../common/utils/request-context.service';
 
 import { CreatePropertyEntityDto, PropertyEntityListQueryDto, UpdatePropertyEntityDto } from './properties.dto';
@@ -9,7 +11,7 @@ import { PropertiesService } from './properties.service';
 
 @ApiTags('Properties - Entities')
 @Controller('tenants/:tenantId/properties/entities')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiBearerAuth()
 export class PropertyEntitiesController {
   constructor(
@@ -17,6 +19,7 @@ export class PropertyEntitiesController {
     private readonly requestContext: RequestContextService
   ) {}
 
+  @Permissions(...perms('properties', ACTIONS.READ))
   @Get()
   @ApiOperation({ summary: 'List property entities (projects/buildings/plots/units/land/villas)' })
   async list(@Param('tenantId') tenantId: string, @Query() query: PropertyEntityListQueryDto) {
@@ -24,6 +27,7 @@ export class PropertyEntitiesController {
     return this.propertiesService.listEntities(tenantId, query);
   }
 
+  @Permissions(...perms('properties', ACTIONS.READ))
   @Get(':entityId')
   @ApiOperation({ summary: 'Get property entity details (includes location)' })
   async detail(@Param('tenantId') tenantId: string, @Param('entityId') entityId: string) {
@@ -31,6 +35,7 @@ export class PropertyEntitiesController {
     return this.propertiesService.getEntity(tenantId, entityId);
   }
 
+  @Permissions(...perms('properties', ACTIONS.WRITE))
   @Post()
   @ApiOperation({ summary: 'Create property entity' })
   async create(@Param('tenantId') tenantId: string, @Body() dto: CreatePropertyEntityDto) {
@@ -39,6 +44,7 @@ export class PropertyEntitiesController {
     return this.propertiesService.createEntity(tenantId, dto, { createdByUserId: createdBy });
   }
 
+  @Permissions(...perms('properties', ACTIONS.UPDATE))
   @Put(':entityId')
   @ApiOperation({ summary: 'Update property entity' })
   async update(
@@ -50,6 +56,7 @@ export class PropertyEntitiesController {
     return this.propertiesService.updateEntity(tenantId, entityId, dto);
   }
 
+  @Permissions(...perms('properties', ACTIONS.DELETE))
   @Delete(':entityId')
   @ApiOperation({ summary: 'Delete property entity (only if no children/units exist)' })
   async delete(@Param('tenantId') tenantId: string, @Param('entityId') entityId: string) {

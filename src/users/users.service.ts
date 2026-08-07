@@ -1,4 +1,4 @@
-import { BadRequestException, Inject, Injectable } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { and, eq, or, SQL, sql } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
@@ -404,6 +404,27 @@ export class UsersService {
     }));
 
     return PaginationUtil.buildPaginatedResult(mappedResults, total, page, limit);
+  }
+
+  /**
+   * Deletes a user, first confirming they actually belong to `tenantId`.
+   *
+   * The raw {@link deleteUser} takes an id straight from the URL, so calling it
+   * from a tenant-scoped route would let a member of one tenant delete a user in
+   * another. Every request-facing path must come through here.
+   */
+  async deleteUserInTenant(tenantId: string, userId: string) {
+    const [membership] = await this.db
+      .select({ id: userTenants.id })
+      .from(userTenants)
+      .where(and(eq(userTenants.userId, userId), eq(userTenants.tenantId, tenantId)))
+      .limit(1);
+
+    if (!membership) {
+      throw new NotFoundException('User not found in this tenant');
+    }
+
+    return this.deleteUser(userId);
   }
 
   async deleteUser(userId: string) {

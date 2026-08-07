@@ -14,6 +14,8 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { Permissions, perms, ACTIONS } from '../rbac/permissions.decorator';
+import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequestContextService } from '../common/utils/request-context.service';
 import { AutomationService } from './automation.service';
 import {
@@ -25,7 +27,7 @@ import {
 
 @ApiTags('Automation')
 @Controller('tenants/:tenantId/automation')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiBearerAuth()
 export class AutomationController {
   constructor(
@@ -33,6 +35,7 @@ export class AutomationController {
     private readonly requestContext: RequestContextService
   ) {}
 
+  @Permissions(...perms('automation', ACTIONS.READ))
   @Get('rules')
   @ApiOperation({ summary: 'List automation rules for a tenant' })
   async listRules(
@@ -43,6 +46,7 @@ export class AutomationController {
     return this.automationService.listRules(tenantId, query);
   }
 
+  @Permissions(...perms('automation', ACTIONS.READ))
   @Get('rules/:ruleId')
   @ApiOperation({ summary: 'Get a single automation rule' })
   async getRule(@Param('tenantId') tenantId: string, @Param('ruleId') ruleId: string) {
@@ -50,6 +54,7 @@ export class AutomationController {
     return this.automationService.getRule(tenantId, ruleId);
   }
 
+  @Permissions(...perms('automation', ACTIONS.WRITE))
   @Post('rules')
   @ApiOperation({ summary: 'Create a new automation rule' })
   async createRule(
@@ -61,6 +66,7 @@ export class AutomationController {
     return this.automationService.createRule(tenantId, dto, userId);
   }
 
+  @Permissions(...perms('automation', ACTIONS.UPDATE))
   @Put('rules/:ruleId')
   @ApiOperation({ summary: 'Update an automation rule' })
   async updateRule(
@@ -72,6 +78,7 @@ export class AutomationController {
     return this.automationService.updateRule(tenantId, ruleId, dto);
   }
 
+  @Permissions(...perms('automation', ACTIONS.DELETE))
   @Delete('rules/:ruleId')
   @ApiOperation({ summary: 'Delete an automation rule' })
   async deleteRule(@Param('tenantId') tenantId: string, @Param('ruleId') ruleId: string) {
@@ -79,6 +86,7 @@ export class AutomationController {
     return this.automationService.deleteRule(tenantId, ruleId);
   }
 
+  @Permissions(...perms('automation', ACTIONS.UPDATE))
   @Patch('rules/:ruleId/toggle')
   @ApiOperation({ summary: 'Toggle active/inactive state of a rule' })
   async toggleRule(@Param('tenantId') tenantId: string, @Param('ruleId') ruleId: string) {
@@ -86,6 +94,7 @@ export class AutomationController {
     return this.automationService.toggleRule(tenantId, ruleId);
   }
 
+  @Permissions(...perms('automation', ACTIONS.READ))
   @Get('logs')
   @ApiOperation({ summary: 'List automation execution logs for a tenant' })
   async listLogs(

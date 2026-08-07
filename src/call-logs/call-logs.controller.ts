@@ -12,6 +12,8 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { SkipThrottle } from '@nestjs/throttler';
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { Permissions, perms, ACTIONS } from '../rbac/permissions.decorator';
+import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequestContextService } from '../common/utils/request-context.service';
 import {
   CallLogListQueryDto,
@@ -28,8 +30,9 @@ export class CallLogsController {
     private readonly requestContext: RequestContextService
   ) {}
 
+  @Permissions(...perms('call-logs', ACTIONS.READ))
   @Get()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List call logs with pagination and filters' })
   async findAll(
@@ -40,6 +43,7 @@ export class CallLogsController {
     return this.callLogsService.findAll(tenantId, query);
   }
 
+  @Permissions(...perms('call-logs', ACTIONS.WRITE))
   @Post()
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
@@ -52,6 +56,7 @@ export class CallLogsController {
     return this.callLogsService.create(tenantId, dto);
   }
 
+  @Permissions(...perms('call-logs', ACTIONS.READ))
   @Get('lead/:leadId')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
@@ -64,6 +69,7 @@ export class CallLogsController {
     return this.callLogsService.findByLead(tenantId, leadId);
   }
 
+  @Permissions(...perms('call-logs', ACTIONS.WRITE))
   @Post('webhook/exotel')
   @SkipThrottle()
   @ApiOperation({ summary: 'Exotel webhook endpoint (no auth required)' })

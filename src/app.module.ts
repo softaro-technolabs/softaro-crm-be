@@ -8,6 +8,7 @@ import { TerminusModule } from '@nestjs/terminus';
 
 import { AuthModule } from './auth/auth.module';
 import { CommonModule } from './common/common.module';
+import { RbacModule } from './rbac/rbac.module';
 import { TenantMiddleware } from './common/middleware/tenant.middleware';
 import configuration from './config/configuration';
 import { DatabaseSyncService } from './database/database-sync.service';
@@ -70,6 +71,7 @@ import { AttendanceModule } from './attendance/attendance.module';
     TerminusModule,
     DatabaseModule,
     CommonModule,
+    RbacModule,
     AuthModule,
     TenantsModule,
     RolesModule,

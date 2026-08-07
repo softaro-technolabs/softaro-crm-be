@@ -2,12 +2,14 @@ import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags, ApiQuery } from '@nestjs/swagger';
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { Permissions, perms, ACTIONS } from '../rbac/permissions.decorator';
+import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequestContextService } from '../common/utils/request-context.service';
 import { ContactsService } from './contacts.service';
 
 @ApiTags('Contacts (Customers)')
 @Controller('tenants/:tenantId/contacts')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiBearerAuth()
 export class ContactsController {
   constructor(
@@ -15,6 +17,7 @@ export class ContactsController {
     private readonly requestContext: RequestContextService
   ) {}
 
+  @Permissions(...perms('contacts', ACTIONS.READ))
   @Get()
   @ApiOperation({ summary: 'List all customers/contacts' })
   @ApiQuery({ name: 'limit', required: false, type: Number })
@@ -30,6 +33,7 @@ export class ContactsController {
     return this.contactsService.listContacts(tenantId, { limit, page, search });
   }
 
+  @Permissions(...perms('contacts', ACTIONS.READ))
   @Get(':id')
   @ApiOperation({ summary: 'Get details of a single customer' })
   async findOne(@Param('tenantId') tenantId: string, @Param('id') id: string) {

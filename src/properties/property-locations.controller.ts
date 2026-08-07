@@ -2,6 +2,8 @@ import { Body, Controller, Get, Param, Put, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { Permissions, perms, ACTIONS } from '../rbac/permissions.decorator';
+import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequestContextService } from '../common/utils/request-context.service';
 
 import { UpsertPropertyLocationDto } from './properties.dto';
@@ -9,7 +11,7 @@ import { PropertiesService } from './properties.service';
 
 @ApiTags('Properties - Locations')
 @Controller('tenants/:tenantId/properties/entities/:entityId/location')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiBearerAuth()
 export class PropertyLocationsController {
   constructor(
@@ -17,6 +19,7 @@ export class PropertyLocationsController {
     private readonly requestContext: RequestContextService
   ) {}
 
+  @Permissions(...perms('properties', ACTIONS.READ))
   @Get()
   @ApiOperation({ summary: 'Get location for an entity' })
   async get(@Param('tenantId') tenantId: string, @Param('entityId') entityId: string) {
@@ -24,6 +27,7 @@ export class PropertyLocationsController {
     return this.propertiesService.getEntityLocation(tenantId, entityId);
   }
 
+  @Permissions(...perms('properties', ACTIONS.UPDATE))
   @Put()
   @ApiOperation({ summary: 'Upsert location for an entity' })
   async upsert(

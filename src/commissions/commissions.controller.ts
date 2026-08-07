@@ -13,6 +13,8 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { Permissions, perms, ACTIONS } from '../rbac/permissions.decorator';
+import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequestContextService } from '../common/utils/request-context.service';
 import {
   CommissionListQueryDto,
@@ -23,7 +25,7 @@ import { CommissionsService } from './commissions.service';
 
 @ApiTags('Commissions')
 @Controller('tenants/:tenantId/commissions')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiBearerAuth()
 export class CommissionsController {
   constructor(
@@ -31,6 +33,7 @@ export class CommissionsController {
     private readonly requestContext: RequestContextService
   ) {}
 
+  @Permissions(...perms('commissions', ACTIONS.READ))
   @Get()
   @ApiOperation({ summary: 'List commissions with pagination and filters' })
   async findAll(
@@ -41,6 +44,7 @@ export class CommissionsController {
     return this.commissionsService.findAll(tenantId, query);
   }
 
+  @Permissions(...perms('commissions', ACTIONS.WRITE))
   @Post()
   @ApiOperation({ summary: 'Create a new commission record' })
   async create(
@@ -51,6 +55,7 @@ export class CommissionsController {
     return this.commissionsService.create(tenantId, dto, this.requestContext.getUserId());
   }
 
+  @Permissions(...perms('commissions', ACTIONS.READ))
   @Get(':id')
   @ApiOperation({ summary: 'Get commission details by ID' })
   async findOne(
@@ -61,6 +66,7 @@ export class CommissionsController {
     return this.commissionsService.findOne(tenantId, id);
   }
 
+  @Permissions(...perms('commissions', ACTIONS.UPDATE))
   @Patch(':id')
   @ApiOperation({ summary: 'Update a commission record' })
   async update(
@@ -72,6 +78,7 @@ export class CommissionsController {
     return this.commissionsService.update(tenantId, id, dto);
   }
 
+  @Permissions(...perms('commissions', ACTIONS.UPDATE))
   @Patch(':id/approve')
   @ApiOperation({ summary: 'Approve a commission' })
   async approve(
@@ -83,6 +90,7 @@ export class CommissionsController {
     return this.commissionsService.approve(tenantId, id, userId!);
   }
 
+  @Permissions(...perms('commissions', ACTIONS.UPDATE))
   @Patch(':id/mark-paid')
   @ApiOperation({ summary: 'Mark a commission as paid' })
   async markPaid(
@@ -93,6 +101,7 @@ export class CommissionsController {
     return this.commissionsService.markPaid(tenantId, id);
   }
 
+  @Permissions(...perms('commissions', ACTIONS.DELETE))
   @Delete(':id')
   @ApiOperation({ summary: 'Delete a commission record' })
   async remove(

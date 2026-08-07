@@ -16,6 +16,8 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Response } from 'express';
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { Permissions, perms, ACTIONS } from '../rbac/permissions.decorator';
+import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequestContextService } from '../common/utils/request-context.service';
 import { QuotationsService } from './quotations.service';
 import { PdfGeneratorService } from './pdf-generator.service';
@@ -28,7 +30,7 @@ import {
 
 @ApiTags('Quotations')
 @Controller('tenants/:tenantId/quotations')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiBearerAuth()
 export class QuotationsController {
   constructor(
@@ -37,6 +39,7 @@ export class QuotationsController {
     private readonly requestContext: RequestContextService
   ) {}
 
+  @Permissions(...perms('quotations', ACTIONS.READ))
   @Get()
   @ApiOperation({ summary: 'List quotations with filters and pagination' })
   async list(@Param('tenantId') tenantId: string, @Query() query: QuotationListQueryDto) {
@@ -44,6 +47,7 @@ export class QuotationsController {
     return this.quotationsService.listQuotations(tenantId, query);
   }
 
+  @Permissions(...perms('quotations', ACTIONS.READ))
   @Get(':id')
   @ApiOperation({ summary: 'Get quotation details' })
   async detail(@Param('tenantId') tenantId: string, @Param('id') id: string) {
@@ -51,6 +55,7 @@ export class QuotationsController {
     return this.quotationsService.getQuotation(tenantId, id);
   }
 
+  @Permissions(...perms('quotations', ACTIONS.READ))
   @Get(':id/pdf')
   @ApiOperation({ summary: 'Generate PDF for quotation' })
   async generatePdf(
@@ -71,6 +76,7 @@ export class QuotationsController {
     res.end(buffer);
   }
 
+  @Permissions(...perms('quotations', ACTIONS.WRITE))
   @Post()
   @ApiOperation({ summary: 'Create a new quotation' })
   async create(@Param('tenantId') tenantId: string, @Body() dto: CreateQuotationDto) {
@@ -78,6 +84,7 @@ export class QuotationsController {
     return this.quotationsService.createQuotation(tenantId, dto);
   }
 
+  @Permissions(...perms('quotations', ACTIONS.UPDATE))
   @Put(':id')
   @ApiOperation({ summary: 'Update an existing quotation' })
   async update(
@@ -89,6 +96,7 @@ export class QuotationsController {
     return this.quotationsService.updateQuotation(tenantId, id, dto);
   }
 
+  @Permissions(...perms('quotations', ACTIONS.DELETE))
   @Delete(':id')
   @ApiOperation({ summary: 'Delete a quotation' })
   async delete(@Param('tenantId') tenantId: string, @Param('id') id: string) {
@@ -96,6 +104,7 @@ export class QuotationsController {
     return this.quotationsService.deleteQuotation(tenantId, id);
   }
 
+  @Permissions(...perms('quotations', ACTIONS.WRITE))
   @Post(':id/send-email')
   @ApiOperation({ summary: 'Send quotation to lead via email' })
   async sendEmail(@Param('tenantId') tenantId: string, @Param('id') id: string) {
@@ -103,6 +112,7 @@ export class QuotationsController {
     return this.quotationsService.sendQuotationByEmail(tenantId, id);
   }
 
+  @Permissions(...perms('quotations', ACTIONS.WRITE))
   @Post(':id/revision')
   @ApiOperation({ summary: 'Create a new version of the quotation' })
   async createRevision(@Param('tenantId') tenantId: string, @Param('id') id: string) {
@@ -110,6 +120,7 @@ export class QuotationsController {
     return this.quotationsService.createRevision(tenantId, id);
   }
 
+  @Permissions(...perms('quotations', ACTIONS.WRITE))
   @Post(':id/convert-to-deal')
   @ApiOperation({ summary: 'Convert quotation to a deal and create contact' })
   async convertToDeal(

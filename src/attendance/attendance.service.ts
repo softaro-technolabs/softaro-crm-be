@@ -190,6 +190,18 @@ export class AttendanceService {
     return zonedDateStr(new Date(), this.timezoneOf(settings));
   }
 
+  /**
+   * Admin-facing settings read.
+   *
+   * The unguarded {@link getSettings} stays internal (check-in, the cron and the
+   * reports all need it). Agents get the only flag that affects them —
+   * `requireSelfie` — from `my-status` instead.
+   */
+  async getSettingsForActor(tenantId: string, actor: AttendanceActor) {
+    this.assertAdmin(actor, 'view attendance settings');
+    return this.getSettings(tenantId);
+  }
+
   async updateSettings(tenantId: string, actor: AttendanceActor, dto: UpdateAttendanceSettingsDto) {
     this.assertAdmin(actor, 'change attendance settings');
     const settings = await this.getSettings(tenantId);

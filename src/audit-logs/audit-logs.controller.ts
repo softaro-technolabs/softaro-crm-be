@@ -9,12 +9,14 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { Permissions, perms, ACTIONS } from '../rbac/permissions.decorator';
+import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequestContextService } from '../common/utils/request-context.service';
 import { AuditLogsService } from './audit-logs.service';
 
 @ApiTags('Audit Logs')
 @Controller('tenants/:tenantId/audit-logs')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiBearerAuth()
 export class AuditLogsController {
   constructor(
@@ -22,6 +24,7 @@ export class AuditLogsController {
     private readonly requestContext: RequestContextService
   ) {}
 
+  @Permissions(...perms('audit-logs', ACTIONS.READ))
   @Get()
   @ApiOperation({ summary: 'List audit logs with optional filters' })
   @ApiQuery({ name: 'action', required: false })
@@ -50,6 +53,7 @@ export class AuditLogsController {
     });
   }
 
+  @Permissions(...perms('audit-logs', ACTIONS.READ))
   @Get(':entityType/:entityId')
   @ApiOperation({ summary: 'Get all audit logs for a specific entity' })
   async findByEntity(

@@ -12,13 +12,15 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { Permissions, perms, ACTIONS } from '../rbac/permissions.decorator';
+import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequestContextService } from '../common/utils/request-context.service';
 import { SiteVisitsService } from './site-visits.service';
 import { CreateSiteVisitDto, SiteVisitCheckInDto, UpdateSiteVisitDto } from './site-visits.dto';
 
 @ApiTags('Site Visits')
 @Controller('tenants/:tenantId/site-visits')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiBearerAuth()
 export class SiteVisitsController {
   constructor(
@@ -26,6 +28,7 @@ export class SiteVisitsController {
     private readonly requestContext: RequestContextService
   ) {}
 
+  @Permissions(...perms('leads', ACTIONS.READ))
   @Get()
   @ApiOperation({ summary: 'List site visits (optionally filtered by lead)' })
   async list(@Param('tenantId') tenantId: string, @Query('leadId') leadId?: string) {
@@ -33,6 +36,7 @@ export class SiteVisitsController {
     return this.siteVisitsService.list(tenantId, leadId);
   }
 
+  @Permissions(...perms('leads', ACTIONS.WRITE))
   @Post()
   @ApiOperation({ summary: 'Schedule a new site visit' })
   async create(@Param('tenantId') tenantId: string, @Body() dto: CreateSiteVisitDto) {
@@ -40,6 +44,7 @@ export class SiteVisitsController {
     return this.siteVisitsService.create(tenantId, dto);
   }
 
+  @Permissions(...perms('leads', ACTIONS.WRITE))
   @Post(':visitId/check-in')
   @ApiOperation({ summary: 'Agent GPS check-in at the property (marks attendance when enabled)' })
   async checkIn(
@@ -51,6 +56,7 @@ export class SiteVisitsController {
     return this.siteVisitsService.checkIn(tenantId, visitId, dto);
   }
 
+  @Permissions(...perms('leads', ACTIONS.UPDATE))
   @Patch(':visitId')
   @ApiOperation({ summary: 'Update site visit status, feedback or rating' })
   async update(

@@ -5,13 +5,17 @@ import { PermissionsService } from './permissions.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { SuperAdminGuard } from '../auth/super-admin.guard';
 import { CreatePermissionDto, UpdatePermissionDto, PermissionListQueryDto } from './permissions.dto';
+import { AccessControlService } from '../rbac/access-control.service';
 
 @ApiTags('Permissions')
 @Controller('permissions')
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class PermissionsController {
-  constructor(private readonly permissionsService: PermissionsService) { }
+  constructor(
+    private readonly permissionsService: PermissionsService,
+    private readonly accessControl: AccessControlService,
+  ) { }
 
   @Post()
   @UseGuards(SuperAdminGuard)
@@ -33,8 +37,11 @@ export class PermissionsController {
   }
 
   @Get('role/:tenantId/:roleId')
-  @ApiOperation({ summary: 'Get permissions for a specific role (returns module.action codes)' })
+  @ApiOperation({ summary: 'Get permissions for a specific role (admin of that tenant)' })
   async getRolePermissions(@Param('tenantId') tenantId: string, @Param('roleId') roleId: string) {
+    // Without this, any authenticated user could read any tenant's role config
+    // by guessing ids — the tenant id is just a path parameter.
+    await this.accessControl.requireAdmin(tenantId, 'view role permissions');
     return await this.permissionsService.getCodesForRole(tenantId, roleId);
   }
 

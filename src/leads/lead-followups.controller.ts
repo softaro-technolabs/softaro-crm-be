@@ -2,13 +2,15 @@ import { Controller, ForbiddenException, Get, Param, Query, UseGuards } from '@n
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { Permissions, perms, ACTIONS } from '../rbac/permissions.decorator';
+import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequestContextService } from '../common/utils/request-context.service';
 import { LeadFollowUpsQueryDto } from './lead-activities.dto';
 import { LeadActivitiesService } from './lead-activities.service';
 
 @ApiTags('Lead Follow-ups')
 @Controller('tenants/:tenantId/leads/follow-ups')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiBearerAuth()
 export class LeadFollowUpsController {
   constructor(
@@ -16,6 +18,7 @@ export class LeadFollowUpsController {
     private readonly requestContext: RequestContextService
   ) {}
 
+  @Permissions(...perms('followup', ACTIONS.READ))
   @Get()
   @ApiOperation({ summary: 'List leads with due/overdue follow-ups (based on leads.nextFollowUpAt)' })
   async list(@Param('tenantId') tenantId: string, @Query() query: LeadFollowUpsQueryDto) {

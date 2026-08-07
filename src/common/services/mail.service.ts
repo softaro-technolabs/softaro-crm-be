@@ -1,4 +1,4 @@
-import { Injectable, InternalServerErrorException } from '@nestjs/common';
+import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Resend } from 'resend';
 import { getUserInvitationTemplate } from '../mail-templates/user-invitation.template';
@@ -10,9 +10,18 @@ export class MailService {
   private resend: Resend;
   private fromEmail: string;
 
+  private readonly logger = new Logger(MailService.name);
+
   constructor(private readonly configService: ConfigService) {
-    const apiKey = this.configService.get<string>('mail.apiKey', 're_xxxxxxxxx');
-    this.resend = new Resend(apiKey);
+    const apiKey = this.configService.get<string>('mail.apiKey') || '';
+
+    // The Resend SDK throws when constructed without a key, which would take the
+    // whole app down at boot. Warn loudly instead and let sends fail individually.
+    if (!apiKey) {
+      this.logger.warn('RESEND_API_KEY is not set — outbound email is disabled');
+    }
+
+    this.resend = new Resend(apiKey || 're_not_configured');
     this.fromEmail = this.configService.get<string>('mail.from', 'Softaro CRM <onboarding@resend.dev>');
   }
 

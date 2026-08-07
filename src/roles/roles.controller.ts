@@ -4,9 +4,15 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { RolesService } from './roles.service';
 import { CreateRoleDto, UpdateRoleDto, RoleListQueryDto } from './roles.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { RequestContextService } from '../common/utils/request-context.service';
+import { AccessControlService } from '../rbac/access-control.service';
 import { NotificationGateway } from '../notifications/notification.gateway';
 
+/**
+ * Role management is admin-only across the board.
+ *
+ * Without this, any tenant member could create a role with `isAdmin: true` and
+ * assign it to themselves — a full takeover of the tenant from an agent login.
+ */
 @ApiTags('Roles')
 @Controller('tenants/:tenantId/roles')
 @UseGuards(JwtAuthGuard)
@@ -14,40 +20,44 @@ import { NotificationGateway } from '../notifications/notification.gateway';
 export class RolesController {
   constructor(
     private readonly rolesService: RolesService,
-    private readonly requestContext: RequestContextService,
+    private readonly accessControl: AccessControlService,
     private readonly notificationGateway: NotificationGateway,
   ) {}
 
   @Post()
-  @ApiOperation({ summary: 'Create a new role in a tenant' })
+  @ApiOperation({ summary: 'Create a new role in a tenant (admin)' })
   async create(@Param('tenantId') tenantId: string, @Body() dto: CreateRoleDto) {
-    this.requestContext.verifyTenantAccess(tenantId);
+    await this.accessControl.requireAdmin(tenantId, 'create roles');
     return this.rolesService.create(tenantId, dto);
   }
 
   @Get()
-  @ApiOperation({ summary: 'List all roles in a tenant' })
+  @ApiOperation({ summary: 'List roles in a tenant (any member — feeds user-assignment dropdowns)' })
   async findAll(@Param('tenantId') tenantId: string, @Query() query: RoleListQueryDto) {
-    this.requestContext.verifyTenantAccess(tenantId);
+    // Deliberately not admin-only: role *names* are needed by the user list and
+    // user-create screens. The permission detail behind each role stays admin-only
+    // via `findById`, and only admins can create, edit or assign them.
+    await this.accessControl.resolveActor(tenantId);
     return this.rolesService.findByTenant(tenantId, query);
   }
 
   @Get(':roleId')
-  @ApiOperation({ summary: 'Get role by ID' })
+  @ApiOperation({ summary: 'Get role by ID (admin)' })
   async findById(@Param('tenantId') tenantId: string, @Param('roleId') roleId: string) {
-    this.requestContext.verifyTenantAccess(tenantId);
-    return this.rolesService.findById(roleId);
+    await this.accessControl.requireAdmin(tenantId, 'view roles');
+    // Scoped by tenant: a raw id lookup would expose other tenants' roles.
+    return this.rolesService.findByIdForTenant(tenantId, roleId);
   }
 
   @Put(':roleId')
-  @ApiOperation({ summary: 'Update role' })
+  @ApiOperation({ summary: 'Update role (admin)' })
   async update(
     @Param('tenantId') tenantId: string,
     @Param('roleId') roleId: string,
     @Body() dto: UpdateRoleDto
   ) {
-    this.requestContext.verifyTenantAccess(tenantId);
-    const updated = await this.rolesService.update(tenantId, roleId, dto);
+    const actor = await this.accessControl.requireAdmin(tenantId, 'update roles');
+    const updated = await this.rolesService.update(tenantId, roleId, dto, actor.roleId);
 
     // Broadcast to every connected user in this tenant.
     // The frontend will check if the updated roleId matches the user's own role
@@ -61,9 +71,9 @@ export class RolesController {
   }
 
   @Delete(':roleId')
-  @ApiOperation({ summary: 'Delete role' })
+  @ApiOperation({ summary: 'Delete role (admin)' })
   async delete(@Param('tenantId') tenantId: string, @Param('roleId') roleId: string) {
-    this.requestContext.verifyTenantAccess(tenantId);
+    await this.accessControl.requireAdmin(tenantId, 'delete roles');
     await this.rolesService.delete(tenantId, roleId);
     return null;
   }

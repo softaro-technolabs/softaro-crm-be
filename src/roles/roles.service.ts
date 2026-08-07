@@ -1,10 +1,10 @@
-import { BadRequestException, Inject, Injectable } from '@nestjs/common';
-import { and, eq, inArray, sql, type SQL } from 'drizzle-orm';
+import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { and, eq, inArray, ne, sql, type SQL } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 
 import { DRIZZLE } from '../database/database.constants';
 import type { DrizzleDatabase } from '../database/database.types';
-import { roles, rolePermissions, permissions } from '../database/schema';
+import { roles, rolePermissions, permissions, modules, userTenants } from '../database/schema';
 import { CreateRoleDto, UpdateRoleDto, RoleListQueryDto } from './roles.dto';
 import { PaginationUtil } from '../common/utils/pagination.util';
 
@@ -35,15 +35,8 @@ export class RolesService {
     return this.findById(id);
   }
 
-  async update(tenantId: string, roleId: string, dto: UpdateRoleDto) {
-    const role = await this.findById(roleId);
-    if (!role) {
-      throw new BadRequestException('Role not found');
-    }
-
-    if (role.tenantId !== tenantId) {
-      throw new BadRequestException('Role does not belong to this tenant');
-    }
+  async update(tenantId: string, roleId: string, dto: UpdateRoleDto, actorRoleId?: string | null) {
+    const role = await this.findByIdForTenant(tenantId, roleId);
 
     const updateData: Partial<typeof roles.$inferInsert> = {};
     if (dto.name !== undefined) {
@@ -54,7 +47,20 @@ export class RolesService {
       }
       updateData.name = dto.name;
     }
-    if (dto.isAdmin !== undefined) updateData.isAdmin = dto.isAdmin;
+
+    if (dto.isAdmin !== undefined) {
+      // Demoting the last admin role would leave the tenant with nobody able to
+      // manage roles, users or settings — an unrecoverable state from the UI.
+      if (role.isAdmin && !dto.isAdmin) {
+        await this.assertNotLastAdminRole(tenantId, roleId);
+        if (actorRoleId && actorRoleId === roleId) {
+          throw new BadRequestException(
+            'You cannot remove admin access from your own role. Ask another admin to do it.',
+          );
+        }
+      }
+      updateData.isAdmin = dto.isAdmin;
+    }
 
     await this.db.update(roles).set(updateData).where(eq(roles.id, roleId));
 
@@ -79,30 +85,82 @@ export class RolesService {
     roleId: string,
     assignments: { permissionId: string; moduleSlug: string }[]
   ) {
+    if (assignments.length === 0) return;
+
+    // De-duplicate: the UI can submit the same pair twice, and the table has a
+    // unique index on (tenant, role, permission, module).
+    const unique = new Map<string, { permissionId: string; moduleSlug: string }>();
+    for (const assignment of assignments) {
+      unique.set(`${assignment.permissionId}|${assignment.moduleSlug}`, assignment);
+    }
+    const deduped = [...unique.values()];
+
     // Validate that all permission IDs exist
-    if (assignments.length > 0) {
-      const permissionIds = assignments.map((a) => a.permissionId);
-      const uniquePermissionIds = [...new Set(permissionIds)];
+    const uniquePermissionIds = [...new Set(deduped.map((a) => a.permissionId))];
+    const existingPermissions = await this.db
+      .select({ id: permissions.id })
+      .from(permissions)
+      .where(inArray(permissions.id, uniquePermissionIds));
 
-      const existingPermissions = await this.db
-        .select()
-        .from(permissions)
-        .where(inArray(permissions.id, uniquePermissionIds));
+    if (existingPermissions.length !== uniquePermissionIds.length) {
+      throw new BadRequestException('One or more permission IDs are invalid');
+    }
 
-      if (existingPermissions.length !== uniquePermissionIds.length) {
-        throw new BadRequestException('One or more permission IDs are invalid');
-      }
+    // Validate module slugs too — an unrecognised slug silently produces a
+    // permission that can never match any endpoint or menu entry.
+    const uniqueSlugs = [...new Set(deduped.map((a) => a.moduleSlug))];
+    const existingModules = await this.db
+      .select({ slug: modules.slug })
+      .from(modules)
+      .where(inArray(modules.slug, uniqueSlugs));
 
-      const values = assignments.map((assignment) => ({
+    if (existingModules.length !== uniqueSlugs.length) {
+      const known = new Set(existingModules.map((m) => m.slug));
+      const unknown = uniqueSlugs.filter((slug) => !known.has(slug));
+      throw new BadRequestException(`Unknown module slug(s): ${unknown.join(', ')}`);
+    }
+
+    await this.db.insert(rolePermissions).values(
+      deduped.map((assignment) => ({
         id: randomUUID(),
         tenantId,
         roleId,
         permissionId: assignment.permissionId,
         moduleSlug: assignment.moduleSlug
-      }));
+      }))
+    );
+  }
 
-      await this.db.insert(rolePermissions).values(values);
+  /** Tenant-scoped lookup — use this anywhere a role id arrives from a request. */
+  async findByIdForTenant(tenantId: string, roleId: string) {
+    const role = await this.findById(roleId);
+    if (!role || role.tenantId !== tenantId) {
+      throw new NotFoundException('Role not found');
     }
+    return role;
+  }
+
+  /** Throws when `roleId` is the only admin role left in the tenant. */
+  private async assertNotLastAdminRole(tenantId: string, roleId: string) {
+    const [{ count } = { count: 0 }] = await this.db
+      .select({ count: sql<number>`count(*)` })
+      .from(roles)
+      .where(and(eq(roles.tenantId, tenantId), eq(roles.isAdmin, true), ne(roles.id, roleId)));
+
+    if (Number(count) === 0) {
+      throw new BadRequestException(
+        'This is the only admin role in the tenant. Create another admin role first.',
+      );
+    }
+  }
+
+  /** How many tenant members currently hold this role. */
+  private async countUsersWithRole(tenantId: string, roleId: string): Promise<number> {
+    const [{ count } = { count: 0 }] = await this.db
+      .select({ count: sql<number>`count(*)` })
+      .from(userTenants)
+      .where(and(eq(userTenants.tenantId, tenantId), eq(userTenants.roleId, roleId)));
+    return Number(count);
   }
 
   async findById(id: string) {
@@ -187,13 +245,20 @@ export class RolesService {
   }
 
   async delete(tenantId: string, roleId: string) {
-    const role = await this.findById(roleId);
-    if (!role) {
-      throw new BadRequestException('Role not found');
+    const role = await this.findByIdForTenant(tenantId, roleId);
+
+    // Users left pointing at a deleted role resolve to zero permissions and an
+    // empty sidebar, with nothing explaining why — so refuse and let the admin
+    // reassign them first.
+    const assignedUsers = await this.countUsersWithRole(tenantId, roleId);
+    if (assignedUsers > 0) {
+      throw new ConflictException(
+        `${assignedUsers} user(s) are still assigned to this role. Move them to another role first.`,
+      );
     }
 
-    if (role.tenantId !== tenantId) {
-      throw new BadRequestException('Role does not belong to this tenant');
+    if (role.isAdmin) {
+      await this.assertNotLastAdminRole(tenantId, roleId);
     }
 
     // Delete role permissions first

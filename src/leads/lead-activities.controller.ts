@@ -2,13 +2,15 @@ import { Body, Controller, ForbiddenException, Get, Param, Post, Query, UseGuard
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { Permissions, perms, ACTIONS } from '../rbac/permissions.decorator';
+import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequestContextService } from '../common/utils/request-context.service';
 import { CreateLeadActivityDto, LeadActivityListQueryDto } from './lead-activities.dto';
 import { LeadActivitiesService } from './lead-activities.service';
 
 @ApiTags('Lead Activities')
 @Controller('tenants/:tenantId/leads/:leadId/activities')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiBearerAuth()
 export class LeadActivitiesController {
   constructor(
@@ -16,6 +18,7 @@ export class LeadActivitiesController {
     private readonly requestContext: RequestContextService
   ) {}
 
+  @Permissions(...perms('leads', ACTIONS.READ))
   @Get()
   @ApiOperation({ summary: 'List lead activities (timeline)' })
   async list(
@@ -27,6 +30,7 @@ export class LeadActivitiesController {
     return this.leadActivitiesService.listLeadActivities(tenantId, leadId, query);
   }
 
+  @Permissions(...perms('leads', ACTIONS.WRITE))
   @Post()
   @ApiOperation({ summary: 'Create a lead activity (optionally schedule next follow-up)' })
   async create(

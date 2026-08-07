@@ -62,7 +62,7 @@ const MODULE_CATALOG: ModuleSeed[] = [
   // ── Attendance children ────────────────────────────────────────────────
   { slug: 'attendance-records',  name: 'Records',  defaultRoute: '/attendance/records',  sequence: 1, parentSlug: 'attendance' },
   { slug: 'attendance-leaves',   name: 'Leaves',   defaultRoute: '/attendance/leaves',   sequence: 2, parentSlug: 'attendance' },
-  { slug: 'attendance-reports',  name: 'Reports',  defaultRoute: '/attendance/reports',  sequence: 3, parentSlug: 'attendance' },
+  { slug: 'attendance-reports',  name: 'Attendance Reports', defaultRoute: '/attendance/reports', sequence: 3, parentSlug: 'attendance' },
   { slug: 'attendance-settings', name: 'Settings', defaultRoute: '/attendance/settings', sequence: 4, parentSlug: 'attendance' },
 
   // ── Users children ─────────────────────────────────────────────────────

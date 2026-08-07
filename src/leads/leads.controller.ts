@@ -20,6 +20,8 @@ import type { Express } from 'express';
 import 'multer';
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { Permissions, perms, ACTIONS } from '../rbac/permissions.decorator';
+import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequestContextService } from '../common/utils/request-context.service';
 import { LeadsService } from './leads.service';
 import {
@@ -34,7 +36,7 @@ import {
 
 @ApiTags('Leads')
 @Controller('tenants/:tenantId/leads')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiBearerAuth()
 export class LeadsController {
   constructor(
@@ -42,6 +44,7 @@ export class LeadsController {
     private readonly requestContext: RequestContextService
   ) {}
 
+  @Permissions(...perms('leads', ACTIONS.READ))
   @Get()
   @ApiOperation({ summary: 'List leads with filters and pagination' })
   async list(@Param('tenantId') tenantId: string, @Query() query: LeadListQueryDto) {
@@ -51,6 +54,7 @@ export class LeadsController {
 
   // ── Static routes MUST come before :leadId wildcard ──────────────────────
 
+  @Permissions(...perms('leads', ACTIONS.READ))
   @Get('export')
   @ApiOperation({ summary: 'Export all leads to Excel (.xlsx)' })
   async exportLeads(
@@ -66,6 +70,7 @@ export class LeadsController {
     res.send(buffer);
   }
 
+  @Permissions(...perms('leads', ACTIONS.READ))
   @Get('ai-insights')
   @ApiOperation({ summary: 'AI analytics insights for the tenant pipeline (mixtral-8x7b-32768)' })
   async aiInsights(@Param('tenantId') tenantId: string) {
@@ -73,6 +78,7 @@ export class LeadsController {
     return this.leadsService.getAiInsights(tenantId);
   }
 
+  @Permissions(...perms('leads', ACTIONS.READ))
   @Get('pipeline/statuses')
   @ApiOperation({ summary: 'Fetch pipeline/kanban statuses with counts' })
   async pipeline(@Param('tenantId') tenantId: string) {
@@ -80,6 +86,7 @@ export class LeadsController {
     return this.leadsService.getPipeline(tenantId);
   }
 
+  @Permissions(...perms('leads', ACTIONS.WRITE))
   @Post('pipeline/statuses')
   @ApiOperation({ summary: 'Create a new pipeline status column' })
   async createStatus(@Param('tenantId') tenantId: string, @Body() dto: CreateLeadStatusDto) {
@@ -87,6 +94,7 @@ export class LeadsController {
     return this.leadsService.createPipelineStatus(tenantId, dto);
   }
 
+  @Permissions(...perms('leads', ACTIONS.UPDATE))
   @Patch('pipeline/reorder')
   @ApiOperation({ summary: 'Reorder pipeline columns (drag & drop order)' })
   async reorderStatuses(@Param('tenantId') tenantId: string, @Body() dto: ReorderLeadStatusesDto) {
@@ -96,6 +104,7 @@ export class LeadsController {
 
   // ── Dynamic :leadId routes ────────────────────────────────────────────────
 
+  @Permissions(...perms('leads', ACTIONS.READ))
   @Get(':leadId')
   @ApiOperation({ summary: 'Get lead details' })
   async detail(@Param('tenantId') tenantId: string, @Param('leadId') leadId: string) {
@@ -103,6 +112,7 @@ export class LeadsController {
     return this.leadsService.getLead(tenantId, leadId);
   }
 
+  @Permissions(...perms('leads', ACTIONS.WRITE))
   @Post()
   @ApiOperation({ summary: 'Create a new lead' })
   async create(@Param('tenantId') tenantId: string, @Body() dto: CreateLeadDto) {
@@ -111,6 +121,7 @@ export class LeadsController {
     return this.leadsService.createLead(tenantId, dto, { createdByUserId: createdBy });
   }
 
+  @Permissions(...perms('leads', ACTIONS.UPDATE))
   @Put(':leadId')
   @ApiOperation({ summary: 'Update an existing lead' })
   async update(
@@ -122,6 +133,7 @@ export class LeadsController {
     return this.leadsService.updateLead(tenantId, leadId, dto);
   }
 
+  @Permissions(...perms('leads', ACTIONS.UPDATE))
   @Patch(':leadId/status')
   @ApiOperation({ summary: 'Move lead across pipeline / update Kanban position' })
   async updateStatus(
@@ -133,6 +145,7 @@ export class LeadsController {
     return this.leadsService.updateLeadStatus(tenantId, leadId, dto);
   }
 
+  @Permissions(...perms('leads', ACTIONS.WRITE))
   @Post(':leadId/transfer')
   @ApiOperation({ summary: 'Manually transfer a lead to another agent' })
   async transfer(
@@ -144,6 +157,7 @@ export class LeadsController {
     return this.leadsService.transferLead(tenantId, leadId, dto);
   }
 
+  @Permissions(...perms('leads', ACTIONS.WRITE))
   @Post(':leadId/ai-qualify')
   @ApiOperation({ summary: 'Trigger AI qualification for a lead using Groq llama-3.3-70b-versatile' })
   async aiQualify(@Param('tenantId') tenantId: string, @Param('leadId') leadId: string) {
@@ -151,6 +165,7 @@ export class LeadsController {
     return this.leadsService.qualifyLeadWithAi(tenantId, leadId);
   }
 
+  @Permissions(...perms('leads', ACTIONS.WRITE))
   @Post(':leadId/ai-draft-email')
   @ApiOperation({ summary: 'AI-draft a personalised follow-up email for a lead (llama-3.3-70b-versatile)' })
   async aiDraftEmail(@Param('tenantId') tenantId: string, @Param('leadId') leadId: string) {
@@ -158,6 +173,7 @@ export class LeadsController {
     return this.leadsService.draftEmailForLead(tenantId, leadId);
   }
 
+  @Permissions(...perms('leads', ACTIONS.WRITE))
   @Post('import')
   @UseInterceptors(FileInterceptor('file'))
   @ApiConsumes('multipart/form-data')

@@ -2,13 +2,15 @@ import { Body, Controller, ForbiddenException, Get, Param, Patch, Post, Query, U
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { Permissions, perms, ACTIONS } from '../rbac/permissions.decorator';
+import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequestContextService } from '../common/utils/request-context.service';
 import { CreateLeadTaskDto, TenantTaskListQueryDto, UpdateLeadTaskDto } from './lead-tasks.dto';
 import { LeadTasksService } from './lead-tasks.service';
 
 @ApiTags('Tasks')
 @Controller('tenants/:tenantId/tasks')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiBearerAuth()
 export class TenantTasksController {
   constructor(
@@ -16,6 +18,7 @@ export class TenantTasksController {
     private readonly requestContext: RequestContextService
   ) {}
 
+  @Permissions(...perms('lead-task', ACTIONS.READ))
   @Get()
   @ApiOperation({ summary: 'List tasks across tenant (filters: assigned user, due, overdue, status)' })
   async list(@Param('tenantId') tenantId: string, @Query() query: TenantTaskListQueryDto) {
@@ -23,6 +26,7 @@ export class TenantTasksController {
     return this.leadTasksService.listTenantTasks(tenantId, query);
   }
 
+  @Permissions(...perms('lead-task', ACTIONS.READ))
   @Get('my')
   @ApiOperation({ summary: 'List my tasks (assignedToUserId = current user)' })
   async my(@Param('tenantId') tenantId: string, @Query() query: TenantTaskListQueryDto) {
@@ -31,6 +35,7 @@ export class TenantTasksController {
     return this.leadTasksService.listTenantTasks(tenantId, { ...query, assignedToUserId: userId ?? undefined });
   }
 
+  @Permissions(...perms('lead-task', ACTIONS.WRITE))
   @Post()
   @ApiOperation({ summary: 'Create a task (leadId is optional in body)' })
   async create(@Param('tenantId') tenantId: string, @Body() dto: CreateLeadTaskDto) {
@@ -40,6 +45,7 @@ export class TenantTasksController {
     return this.leadTasksService.createLeadTask(tenantId, dto.leadId ?? null, dto, userId ?? null);
   }
 
+  @Permissions(...perms('lead-task', ACTIONS.READ))
   @Get(':taskId')
   @ApiOperation({ summary: 'Get a task by id' })
   async get(@Param('tenantId') tenantId: string, @Param('taskId') taskId: string) {
@@ -48,6 +54,7 @@ export class TenantTasksController {
     return this.leadTasksService.getTask(tenantId, null, taskId);
   }
 
+  @Permissions(...perms('lead-task', ACTIONS.UPDATE))
   @Patch(':taskId')
   @ApiOperation({ summary: 'Update a task' })
   async update(
@@ -61,6 +68,7 @@ export class TenantTasksController {
     return this.leadTasksService.updateLeadTask(tenantId, dto.leadId ?? null, taskId, dto, userId ?? null);
   }
 
+  @Permissions(...perms('lead-task', ACTIONS.UPDATE))
   @Patch(':taskId/archive')
   @ApiOperation({ summary: 'Archive a task' })
   async archive(@Param('tenantId') tenantId: string, @Param('taskId') taskId: string) {

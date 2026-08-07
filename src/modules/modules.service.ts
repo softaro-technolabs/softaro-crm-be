@@ -4,7 +4,7 @@ import { randomUUID } from 'crypto';
 
 import { DRIZZLE } from '../database/database.constants';
 import type { DrizzleDatabase } from '../database/database.types';
-import { modules, tenantModules, permissions, rolePermissions } from '../database/schema';
+import { modules, tenantModules, permissions, rolePermissions, roles } from '../database/schema';
 import { CreateModuleDto, UpdateModuleDto } from './modules.dto';
 
 @Injectable()
@@ -131,6 +131,22 @@ export class ModulesService {
       return []; // No role, no permissions
     }
 
+    // Admin roles mean "full access" and are not required to carry explicit
+    // permission rows — the default tenant Admin role is created with none, so
+    // filtering it by permissions would hand the owner an empty sidebar.
+    const [role] = await this.db
+      .select({ isAdmin: roles.isAdmin })
+      .from(roles)
+      .where(and(eq(roles.id, roleId), eq(roles.tenantId, tenantId)))
+      .limit(1);
+
+    if (role?.isAdmin) {
+      return enabledModules.map(({ module }) => ({
+        ...module,
+        permissions: allActions
+      }));
+    }
+
     // Fetch assigned permissions for this role from DB to get ID + Action + Module
     const assignedPerms = await this.db
       .select({
@@ -157,13 +173,30 @@ export class ModulesService {
     }
 
     // Filter enabled modules where user has at least one permission
-    const accessibleModules = enabledModules
-      .filter(({ module }) => permsByModule.has(module.slug))
+    const grantedIds = new Set(
+      enabledModules.filter(({ module }) => permsByModule.has(module.slug)).map(({ module }) => module.id)
+    );
+
+    // Pull in the parents of any granted child. The sidebar only renders children
+    // underneath a rendered parent, so a granted child whose parent was filtered
+    // out would become unreachable despite the permission existing.
+    const visibleIds = new Set(grantedIds);
+    for (const { module } of enabledModules) {
+      if (!grantedIds.has(module.id)) continue;
+      let parentId = module.parentId;
+      while (parentId && !visibleIds.has(parentId)) {
+        visibleIds.add(parentId);
+        parentId = enabledModules.find(({ module: m }) => m.id === parentId)?.module.parentId ?? null;
+      }
+    }
+
+    return enabledModules
+      .filter(({ module }) => visibleIds.has(module.id))
       .map(({ module }) => ({
         ...module,
-        permissions: permsByModule.get(module.slug) || []
+        // A parent included only to host its children carries no permissions of
+        // its own — the frontend must not treat that as access to the parent page.
+        permissions: permsByModule.get(module.slug) ?? []
       }));
-
-    return accessibleModules;
   }
 }

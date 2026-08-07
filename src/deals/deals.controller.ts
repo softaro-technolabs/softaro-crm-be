@@ -12,6 +12,8 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { Permissions, perms, ACTIONS } from '../rbac/permissions.decorator';
+import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequestContextService } from '../common/utils/request-context.service';
 import {
   ConvertLeadToDealDto,
@@ -23,7 +25,7 @@ import { DealsService } from './deals.service';
 
 @ApiTags('Deals')
 @Controller('tenants/:tenantId/deals')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiBearerAuth()
 export class DealsController {
   constructor(
@@ -31,6 +33,7 @@ export class DealsController {
     private readonly requestContext: RequestContextService
   ) {}
 
+  @Permissions(...perms('deals', ACTIONS.READ))
   @Get()
   @ApiOperation({ summary: 'List deals with pagination and filters' })
   async list(@Param('tenantId') tenantId: string, @Query() query: DealListQueryDto) {
@@ -38,6 +41,7 @@ export class DealsController {
     return this.dealsService.listDeals(tenantId, query);
   }
 
+  @Permissions(...perms('deals', ACTIONS.READ))
   @Get(':dealId')
   @ApiOperation({ summary: 'Get deal details' })
   async detail(@Param('tenantId') tenantId: string, @Param('dealId') dealId: string) {
@@ -45,6 +49,7 @@ export class DealsController {
     return this.dealsService.getDeal(tenantId, dealId);
   }
 
+  @Permissions(...perms('deals', ACTIONS.WRITE))
   @Post()
   @ApiOperation({ summary: 'Create a deal from a lead/opportunity' })
   async create(@Param('tenantId') tenantId: string, @Body() dto: CreateDealDto) {
@@ -52,6 +57,7 @@ export class DealsController {
     return this.dealsService.createDeal(tenantId, dto, this.requestContext.getUserId());
   }
 
+  @Permissions(...perms('deals', ACTIONS.WRITE))
   @Post('convert/:leadId')
   @ApiOperation({ summary: 'Convert a lead into a deal' })
   async convertLead(
@@ -63,6 +69,7 @@ export class DealsController {
     return this.dealsService.convertLeadToDeal(tenantId, leadId, dto, this.requestContext.getUserId());
   }
 
+  @Permissions(...perms('deals', ACTIONS.UPDATE))
   @Patch(':dealId')
   @ApiOperation({ summary: 'Update deal status, amount, assignee, and closing details' })
   async update(
