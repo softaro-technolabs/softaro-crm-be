@@ -10,9 +10,10 @@ import type { SQL } from 'drizzle-orm';
 import { DRIZZLE } from '../database/database.constants';
 import { DrizzleDatabase } from '../database/database.types';
 import {
+  bookings,
   channelPartnerUsers,
   channelPartners,
-  cpIncentives,
+  commissions,
   cpLeadAttributions,
   leadStatuses,
   leads,
@@ -171,20 +172,38 @@ export class CpPortalService {
     return { leadId, attributed: true };
   }
 
+  /**
+   * Reads from `commissions`, the same ledger the back office approves and pays
+   * from.
+   *
+   * This used to read a separate `cp_incentives` table, so approving a payout
+   * in the back office left the partner's portal still showing "accrued" — the
+   * partner would call asking where their money was. One table, one status.
+   */
   async listMyIncentives(ctx: CpContext) {
     return this.db
       .select({
-        id: cpIncentives.id,
-        dealId: cpIncentives.dealId,
-        bookingAmount: cpIncentives.bookingAmount,
-        incentivePercentage: cpIncentives.incentivePercentage,
-        incentiveAmount: cpIncentives.incentiveAmount,
-        status: cpIncentives.status,
-        createdAt: cpIncentives.createdAt
+        id: commissions.id,
+        dealId: commissions.dealId,
+        bookingId: commissions.bookingId,
+        bookingNumber: bookings.bookingNumber,
+        bookingAmount: commissions.baseAmount,
+        incentivePercentage: commissions.percentageRate,
+        incentiveAmount: commissions.totalAmount,
+        status: commissions.status,
+        approvedAt: commissions.approvedAt,
+        paidAt: commissions.paidAt,
+        createdAt: commissions.createdAt
       })
-      .from(cpIncentives)
-      .where(and(eq(cpIncentives.tenantId, ctx.tenantId), eq(cpIncentives.channelPartnerId, ctx.channelPartnerId)))
-      .orderBy(desc(cpIncentives.createdAt));
+      .from(commissions)
+      .leftJoin(bookings, eq(commissions.bookingId, bookings.id))
+      .where(
+        and(
+          eq(commissions.tenantId, ctx.tenantId),
+          eq(commissions.channelPartnerId, ctx.channelPartnerId)
+        )
+      )
+      .orderBy(desc(commissions.createdAt));
   }
 
   private async resolveDefaultStatusId(tenantId: string) {

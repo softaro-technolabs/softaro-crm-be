@@ -84,6 +84,7 @@ export default defineConfig({
     'chat_members',
     'chat_message_reads',
     'chat_messages',
+    'commission_settings',
     'commissions',
     'contacts',
     'cp_incentives',

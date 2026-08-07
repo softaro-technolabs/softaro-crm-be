@@ -12,11 +12,13 @@ import { CollectionsService } from './collections.service';
 import { BookingCommissionsService } from './booking-commissions.service';
 import { PaymentPlansService } from './payment-plans.service';
 import { PaymentPlansController } from './payment-plans.controller';
+import { AccountsService } from './accounts.service';
+import { AccountsController } from './accounts.controller';
 
 @Module({
   imports: [DatabaseModule, CommonModule, AutomationModule, LeadsModule, DealsModule],
-  controllers: [BookingsController, PaymentPlansController],
-  providers: [BookingsService, CostSheetService, CollectionsService, BookingCommissionsService, PaymentPlansService],
-  exports: [BookingsService, CostSheetService, CollectionsService]
+  controllers: [BookingsController, PaymentPlansController, AccountsController],
+  providers: [BookingsService, CostSheetService, CollectionsService, BookingCommissionsService, PaymentPlansService, AccountsService],
+  exports: [BookingsService, CostSheetService, CollectionsService, AccountsService]
 })
 export class BookingsModule {}

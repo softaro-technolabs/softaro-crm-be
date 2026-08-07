@@ -10,12 +10,11 @@ import { DrizzleDatabase } from '../database/database.types';
 import {
   channelPartnerUsers,
   channelPartners,
-  cpIncentives,
+  commissions,
   cpLeadAttributions,
   leads
 } from '../database/schema';
 import { PaginationUtil } from '../common/utils/pagination.util';
-import { roundMoney } from '../common/utils/cost-sheet.util';
 
 import type {
   ChannelPartnerListQueryDto,
@@ -101,9 +100,9 @@ export class ChannelPartnersService {
   async deletePartner(tenantId: string, partnerId: string) {
     await this.ensurePartnerExists(tenantId, partnerId);
     const [incentive] = await this.db
-      .select({ id: cpIncentives.id })
-      .from(cpIncentives)
-      .where(and(eq(cpIncentives.tenantId, tenantId), eq(cpIncentives.channelPartnerId, partnerId)))
+      .select({ id: commissions.id })
+      .from(commissions)
+      .where(and(eq(commissions.tenantId, tenantId), eq(commissions.channelPartnerId, partnerId)))
       .limit(1);
     if (incentive) throw new BadRequestException('Cannot delete a partner with recorded incentives');
 
@@ -143,29 +142,39 @@ export class ChannelPartnersService {
   }
 
   // ─── Incentives ────────────────────────────────────────────────────────────────
+  // Backed by `commissions`, the same ledger the Commissions screen and the
+  // partner portal read. `cp_incentives` is retired: keeping a second copy of
+  // partner money meant the back office and the partner could see different
+  // statuses for the same payout.
   async listIncentives(tenantId: string, query: IncentiveListQueryDto) {
     const limit = query.limit ?? 50;
     const page = query.page ?? 1;
     const offset = PaginationUtil.getOffset(page, limit);
 
-    const filters: SQL[] = [eq(cpIncentives.tenantId, tenantId)];
-    if (query.channelPartnerId) filters.push(eq(cpIncentives.channelPartnerId, query.channelPartnerId));
-    if (query.status) filters.push(eq(cpIncentives.status, query.status));
+    const filters: SQL[] = [
+      eq(commissions.tenantId, tenantId),
+      eq(commissions.type, 'channel_partner')
+    ];
+    if (query.channelPartnerId) filters.push(eq(commissions.channelPartnerId, query.channelPartnerId));
+    // The ledger uses pending/approved/paid; 'accrued' was the old wording.
+    if (query.status) {
+      filters.push(eq(commissions.status, query.status === 'accrued' ? 'pending' : query.status));
+    }
     const whereClause = PaginationUtil.buildFilters(filters);
 
     const [rows, totalRows] = await Promise.all([
       this.db
         .select({
-          incentive: cpIncentives,
+          incentive: commissions,
           partner: { id: channelPartners.id, name: channelPartners.name, firmName: channelPartners.firmName }
         })
-        .from(cpIncentives)
-        .innerJoin(channelPartners, and(eq(channelPartners.id, cpIncentives.channelPartnerId), eq(channelPartners.tenantId, tenantId)))
+        .from(commissions)
+        .innerJoin(channelPartners, and(eq(channelPartners.id, commissions.channelPartnerId), eq(channelPartners.tenantId, tenantId)))
         .where(whereClause || undefined)
-        .orderBy(desc(cpIncentives.createdAt))
+        .orderBy(desc(commissions.createdAt))
         .limit(limit)
         .offset(offset),
-      this.db.select({ count: sql<number>`count(*)` }).from(cpIncentives).where(whereClause || undefined)
+      this.db.select({ count: sql<number>`count(*)` }).from(commissions).where(whereClause || undefined)
     ]);
     const total = totalRows.length ? Number(totalRows[0].count) : 0;
     return PaginationUtil.buildPaginatedResult(rows, total, page, limit);
@@ -175,23 +184,33 @@ export class ChannelPartnersService {
   async setIncentiveStatus(tenantId: string, incentiveId: string, next: 'approved' | 'paid') {
     const [row] = await this.db
       .select()
-      .from(cpIncentives)
-      .where(and(eq(cpIncentives.tenantId, tenantId), eq(cpIncentives.id, incentiveId)))
+      .from(commissions)
+      .where(and(eq(commissions.tenantId, tenantId), eq(commissions.id, incentiveId)))
       .limit(1);
     if (!row) throw new NotFoundException('Incentive not found');
 
-    if (next === 'approved' && row.status !== 'accrued') {
-      throw new BadRequestException('Only accrued incentives can be approved');
+    if (next === 'approved' && row.status !== 'pending') {
+      throw new BadRequestException('Only pending incentives can be approved');
     }
     if (next === 'paid' && row.status !== 'approved') {
       throw new BadRequestException('Only approved incentives can be marked paid');
     }
 
+    const now = new Date();
     await this.db
-      .update(cpIncentives)
-      .set({ status: next, updatedAt: new Date() })
-      .where(and(eq(cpIncentives.tenantId, tenantId), eq(cpIncentives.id, incentiveId)));
-    const [updated] = await this.db.select().from(cpIncentives).where(eq(cpIncentives.id, incentiveId)).limit(1);
+      .update(commissions)
+      .set({
+        status: next,
+        ...(next === 'approved' ? { approvedAt: now } : { paidAt: now }),
+        updatedAt: now
+      })
+      .where(and(eq(commissions.tenantId, tenantId), eq(commissions.id, incentiveId)));
+
+    const [updated] = await this.db
+      .select()
+      .from(commissions)
+      .where(eq(commissions.id, incentiveId))
+      .limit(1);
     return updated;
   }
 
@@ -206,53 +225,6 @@ export class ChannelPartnersService {
       .innerJoin(leads, and(eq(leads.id, cpLeadAttributions.leadId), eq(leads.tenantId, tenantId)))
       .where(and(eq(cpLeadAttributions.tenantId, tenantId), eq(cpLeadAttributions.channelPartnerId, partnerId)))
       .orderBy(desc(cpLeadAttributions.attributedAt));
-  }
-
-  /**
-   * Called from quotations.convertToDeal (inside its transaction). If the deal's lead was
-   * registered by a CP, accrue a commission incentive. Money is computed server-side and rounded.
-   * `tx` is the surrounding transaction so this participates in the same commit/rollback.
-   */
-  async accrueIncentiveForDeal(
-    tx: DrizzleDatabase,
-    tenantId: string,
-    params: { leadId: string; dealId: string; dealTotal: number }
-  ): Promise<{ id: string; incentiveAmount: number } | null> {
-    if (!params.leadId) return null;
-
-    const [attribution] = await tx
-      .select({ channelPartnerId: cpLeadAttributions.channelPartnerId })
-      .from(cpLeadAttributions)
-      .where(and(eq(cpLeadAttributions.tenantId, tenantId), eq(cpLeadAttributions.leadId, params.leadId)))
-      .limit(1);
-    if (!attribution) return null;
-
-    const [partner] = await tx
-      .select({ commissionPercentage: channelPartners.commissionPercentage })
-      .from(channelPartners)
-      .where(and(eq(channelPartners.tenantId, tenantId), eq(channelPartners.id, attribution.channelPartnerId)))
-      .limit(1);
-    if (!partner) return null;
-
-    const pct = Number(partner.commissionPercentage || 0);
-    const bookingAmount = roundMoney(Number(params.dealTotal || 0));
-    const incentiveAmount = roundMoney((bookingAmount * pct) / 100);
-
-    const id = randomUUID();
-    const now = new Date();
-    await tx.insert(cpIncentives).values({
-      id,
-      tenantId,
-      channelPartnerId: attribution.channelPartnerId,
-      dealId: params.dealId,
-      bookingAmount: bookingAmount.toString(),
-      incentivePercentage: pct.toString(),
-      incentiveAmount: incentiveAmount.toString(),
-      status: 'accrued',
-      createdAt: now,
-      updatedAt: now
-    });
-    return { id, incentiveAmount };
   }
 
   private async ensurePartnerExists(tenantId: string, partnerId: string) {

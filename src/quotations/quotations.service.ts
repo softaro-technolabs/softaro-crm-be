@@ -7,7 +7,6 @@ import { CreateQuotationDto, UpdateQuotationDto, QuotationListQueryDto, ConvertT
 import { DRIZZLE } from '../database/database.constants';
 import { MailService } from '../common/services/mail.service';
 import { computeCostSheet, roundMoney } from '../common/utils/cost-sheet.util';
-import { ChannelPartnersService } from '../channel-partners/channel-partners.service';
 import { LeadPipelineService, PIPELINE_STAGE } from '../leads/lead-pipeline.service';
 import { DOCUMENT_SEQUENCE, DocumentNumberService } from '../common/services/document-number.service';
 import { PdfGeneratorService } from './pdf-generator.service';
@@ -19,7 +18,6 @@ export class QuotationsService {
     @Inject(DRIZZLE) private readonly db: DrizzleDatabase,
     private readonly pdfGenerator: PdfGeneratorService,
     private readonly mailService: MailService,
-    private readonly channelPartnersService: ChannelPartnersService,
     private readonly leadPipeline: LeadPipelineService,
     private readonly documentNumbers: DocumentNumberService,
   ) {}
@@ -638,14 +636,10 @@ export class QuotationsService {
         { quotationId: id, dealId, dealNumber }
       );
 
-      // 6. If the lead was registered by a channel partner, accrue their commission incentive.
-      const incentive = await this.channelPartnersService.accrueIncentiveForDeal(tx, tenantId, {
-        leadId: lead.id,
-        dealId,
-        dealTotal: Number(quotation.grandTotal || 0)
-      });
-
-      return { success: true, dealId, dealNumber, contactId, incentiveId: incentive?.id ?? null };
+      // Commission is NOT accrued here. A quotation being converted is not a
+      // sale — the partner earns when the booking goes live, which is where
+      // BookingCommissionsService.accrueForBooking runs.
+      return { success: true, dealId, dealNumber, contactId };
     });
   }
 }

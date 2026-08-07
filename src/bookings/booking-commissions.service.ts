@@ -7,22 +7,23 @@ import type { DrizzleDatabase, DrizzleTransaction } from '../database/database.t
 import {
   bookings,
   channelPartners,
+  commissionSettings,
   commissions,
-  cpIncentives,
-  cpLeadAttributions,
-  deals,
-  leads
+  cpLeadAttributions
 } from '../database/schema';
 import { roundMoney } from '../common/utils/cost-sheet.util';
 
 /**
- * Turns a confirmed booking into money owed to the people who sold it.
+ * Accrues channel-partner commission when a booking goes live.
  *
- * Previously a channel-partner incentive was only ever created as a side
- * effect of converting a quotation, and internal agent commissions were never
- * created at all — the `commissions` table only ever filled up if somebody
- * added rows by hand. Both now follow the booking, which is the event that
- * actually earns them.
+ * Commission exists for channel partners only. Internal staff are paid through
+ * payroll, not through this ledger, so there is deliberately no brokerage
+ * accrual for an agent who owns a lead.
+ *
+ * `commissions` is the ONLY table involved. It is what both the back-office
+ * Commissions screen and the partner portal read, so a partner can never see a
+ * different status from the one your finance team set — the drift that a
+ * separate `cp_incentives` table used to cause.
  */
 @Injectable()
 export class BookingCommissionsService {
@@ -30,12 +31,55 @@ export class BookingCommissionsService {
 
   constructor(@Inject(DRIZZLE) private readonly db: DrizzleDatabase) {}
 
+  /** Tenant rates, created on first use so the table is never empty. */
+  async getSettings(tenantId: string) {
+    const [existing] = await this.db
+      .select()
+      .from(commissionSettings)
+      .where(eq(commissionSettings.tenantId, tenantId))
+      .limit(1);
+
+    if (existing) return existing;
+
+    const row = {
+      tenantId,
+      defaultPartnerPercentage: '0',
+      earnOnCollection: true,
+      updatedAt: new Date()
+    };
+    try {
+      await this.db.insert(commissionSettings).values(row);
+    } catch {
+      // Concurrent first call — the primary key makes this safe to ignore.
+    }
+    return row as typeof commissionSettings.$inferSelect;
+  }
+
+  async updateSettings(
+    tenantId: string,
+    dto: { defaultPartnerPercentage?: number; earnOnCollection?: boolean }
+  ) {
+    await this.getSettings(tenantId);
+    await this.db
+      .update(commissionSettings)
+      .set({
+        ...(dto.defaultPartnerPercentage !== undefined && {
+          defaultPartnerPercentage: String(dto.defaultPartnerPercentage)
+        }),
+        ...(dto.earnOnCollection !== undefined && { earnOnCollection: dto.earnOnCollection }),
+        updatedAt: new Date()
+      })
+      .where(eq(commissionSettings.tenantId, tenantId));
+
+    return this.getSettings(tenantId);
+  }
+
   /**
-   * Accrues the channel-partner incentive and the selling agent's commission
-   * for a booking.
+   * Accrues the partner's commission for a booking.
    *
-   * Idempotent by design: it is called on every confirm, and a booking that
-   * flips confirmed → cancelled → confirmed must not pay anyone twice.
+   * Idempotent: called on every confirm, and a booking that flips
+   * confirmed → cancelled → confirmed must not pay anyone twice. Does nothing
+   * when the lead was not sourced by a partner.
    */
   async accrueForBooking(
     tx: DrizzleTransaction,
@@ -49,111 +93,41 @@ export class BookingCommissionsService {
       .where(and(eq(bookings.tenantId, tenantId), eq(bookings.id, bookingId)))
       .limit(1);
 
-    if (!booking || !booking.dealId || !booking.leadId) return;
+    if (!booking?.leadId) return;
 
     const bookingValue = roundMoney(Number(booking.bookingAmount ?? 0));
     if (bookingValue <= 0) return;
 
-    await this.accrueChannelPartnerIncentive(tx, tenantId, booking.leadId, booking.dealId, bookingValue);
-    await this.accrueAgentCommission(tx, tenantId, booking, bookingValue, actorUserId);
-  }
-
-  private async accrueChannelPartnerIncentive(
-    tx: DrizzleTransaction,
-    tenantId: string,
-    leadId: string,
-    dealId: string,
-    bookingValue: number
-  ) {
     const [attribution] = await tx
       .select({ channelPartnerId: cpLeadAttributions.channelPartnerId })
       .from(cpLeadAttributions)
-      .where(and(eq(cpLeadAttributions.tenantId, tenantId), eq(cpLeadAttributions.leadId, leadId)))
+      .where(
+        and(eq(cpLeadAttributions.tenantId, tenantId), eq(cpLeadAttributions.leadId, booking.leadId))
+      )
       .limit(1);
 
+    // No partner sourced this lead — nothing is owed to anyone.
     if (!attribution) return;
-
-    // One incentive per deal. Re-confirming must not duplicate it.
-    const [existing] = await tx
-      .select({ id: cpIncentives.id })
-      .from(cpIncentives)
-      .where(and(eq(cpIncentives.tenantId, tenantId), eq(cpIncentives.dealId, dealId)))
-      .limit(1);
 
     const [partner] = await tx
       .select({ commissionPercentage: channelPartners.commissionPercentage })
       .from(channelPartners)
       .where(
-        and(eq(channelPartners.tenantId, tenantId), eq(channelPartners.id, attribution.channelPartnerId))
+        and(
+          eq(channelPartners.tenantId, tenantId),
+          eq(channelPartners.id, attribution.channelPartnerId)
+        )
       )
       .limit(1);
 
     if (!partner) return;
 
-    const pct = Number(partner.commissionPercentage || 0);
-    const incentiveAmount = roundMoney((bookingValue * pct) / 100);
-    const now = new Date();
-
-    if (existing) {
-      // Refresh the value — the booking amount may have changed since the
-      // quotation created it — but never touch an incentive already paid out.
-      await tx
-        .update(cpIncentives)
-        .set({
-          bookingAmount: bookingValue.toFixed(2),
-          incentivePercentage: pct.toString(),
-          incentiveAmount: incentiveAmount.toFixed(2),
-          updatedAt: now
-        })
-        .where(
-          and(
-            eq(cpIncentives.tenantId, tenantId),
-            eq(cpIncentives.id, existing.id),
-            eq(cpIncentives.status, 'accrued')
-          )
-        );
-      return;
-    }
-
-    await tx.insert(cpIncentives).values({
-      id: randomUUID(),
-      tenantId,
-      channelPartnerId: attribution.channelPartnerId,
-      dealId,
-      bookingAmount: bookingValue.toFixed(2),
-      incentivePercentage: pct.toString(),
-      incentiveAmount: incentiveAmount.toFixed(2),
-      status: 'accrued',
-      createdAt: now,
-      updatedAt: now
-    });
-  }
-
-  private async accrueAgentCommission(
-    tx: DrizzleTransaction,
-    tenantId: string,
-    booking: typeof bookings.$inferSelect,
-    bookingValue: number,
-    actorUserId?: string | null
-  ) {
-    const [deal] = await tx
-      .select({ assignedToUserId: deals.assignedToUserId })
-      .from(deals)
-      .where(and(eq(deals.tenantId, tenantId), eq(deals.id, booking.dealId!)))
-      .limit(1);
-
-    // Fall back to whoever owns the lead when the deal has no owner.
-    let agentUserId = deal?.assignedToUserId ?? null;
-    if (!agentUserId && booking.leadId) {
-      const [lead] = await tx
-        .select({ assignedToUserId: leads.assignedToUserId })
-        .from(leads)
-        .where(and(eq(leads.tenantId, tenantId), eq(leads.id, booking.leadId)))
-        .limit(1);
-      agentUserId = lead?.assignedToUserId ?? null;
-    }
-
-    if (!agentUserId) return;
+    const settings = await this.getSettings(tenantId);
+    // The partner's own rate wins; the tenant default is the fallback so a
+    // partner added without a rate still produces a payable rather than ₹0.
+    const pct =
+      Number(partner.commissionPercentage || 0) || Number(settings.defaultPartnerPercentage || 0);
+    const amount = roundMoney((bookingValue * pct) / 100);
 
     const [existing] = await tx
       .select({ id: commissions.id, status: commissions.status })
@@ -161,9 +135,8 @@ export class BookingCommissionsService {
       .where(
         and(
           eq(commissions.tenantId, tenantId),
-          eq(commissions.dealId, booking.dealId!),
-          eq(commissions.agentUserId, agentUserId),
-          eq(commissions.type, 'brokerage')
+          eq(commissions.bookingId, bookingId),
+          eq(commissions.channelPartnerId, attribution.channelPartnerId)
         )
       )
       .limit(1);
@@ -171,29 +144,36 @@ export class BookingCommissionsService {
     const now = new Date();
 
     if (existing) {
-      // Leave approved/paid rows alone — money already committed.
+      // Approved and paid rows are never rewritten — money already committed
+      // is a finance decision, not something a booking edit should change.
       if (existing.status !== 'pending') return;
       await tx
         .update(commissions)
-        .set({ totalAmount: bookingValue.toFixed(2), updatedAt: now })
+        .set({
+          percentageRate: pct.toString(),
+          baseAmount: bookingValue.toFixed(2),
+          totalAmount: amount.toFixed(2),
+          updatedAt: now
+        })
         .where(and(eq(commissions.tenantId, tenantId), eq(commissions.id, existing.id)));
       return;
     }
 
-    // The rate is a business decision per tenant; recorded at zero so the row
-    // exists to be approved and priced rather than silently inventing a rate.
     await tx.insert(commissions).values({
       id: randomUUID(),
       tenantId,
+      bookingId,
       dealId: booking.dealId,
       leadId: booking.leadId,
-      agentUserId,
-      type: 'brokerage',
-      percentageRate: null,
+      agentUserId: null,
+      channelPartnerId: attribution.channelPartnerId,
+      type: 'channel_partner',
+      percentageRate: pct.toString(),
       fixedAmount: null,
-      totalAmount: '0',
+      baseAmount: bookingValue.toFixed(2),
+      totalAmount: amount.toFixed(2),
       status: 'pending',
-      notes: `Auto-accrued on booking ${booking.bookingNumber} (booking value ₹${bookingValue.toFixed(2)}).`,
+      notes: `Auto-accrued on booking ${booking.bookingNumber}.`,
       createdByUserId: actorUserId ?? null,
       createdAt: now,
       updatedAt: now
@@ -201,31 +181,16 @@ export class BookingCommissionsService {
   }
 
   /**
-   * Reverses accruals when a booking is cancelled.
-   *
-   * Only untouched rows are removed: anything already approved or paid stays,
-   * because reversing real money is a finance decision, not a side effect of
-   * someone clicking cancel.
+   * Withdraws an accrual nobody has acted on when a booking is cancelled.
+   * Approved and paid rows survive.
    */
-  async reverseForBooking(tx: DrizzleTransaction, tenantId: string, dealId: string | null) {
-    if (!dealId) return;
-
-    await tx
-      .delete(cpIncentives)
-      .where(
-        and(
-          eq(cpIncentives.tenantId, tenantId),
-          eq(cpIncentives.dealId, dealId),
-          eq(cpIncentives.status, 'accrued')
-        )
-      );
-
+  async reverseForBooking(tx: DrizzleTransaction, tenantId: string, bookingId: string) {
     await tx
       .delete(commissions)
       .where(
         and(
           eq(commissions.tenantId, tenantId),
-          eq(commissions.dealId, dealId),
+          eq(commissions.bookingId, bookingId),
           eq(commissions.status, 'pending')
         )
       );

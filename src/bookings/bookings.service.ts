@@ -564,7 +564,7 @@ export class BookingsService {
 
       // Withdraw accruals nobody has acted on. Approved and paid rows survive:
       // reversing committed money is a finance decision, not a side effect.
-      await this.bookingCommissions.reverseForBooking(tx, tenantId, existing.booking.dealId);
+      await this.bookingCommissions.reverseForBooking(tx, tenantId, bookingId);
     });
 
     return { success: true };
