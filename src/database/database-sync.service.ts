@@ -60,10 +60,12 @@ const MODULE_CATALOG: ModuleSeed[] = [
   // "Deals" is deliberately absent: a deal is the internal commercial record
   // behind a booking, provisioned automatically, not a screen anyone visits.
   // See RETIRED_MODULE_SLUGS below.
-  { slug: 'bookings',       name: 'Bookings',       defaultRoute: '/bookings',    sequence: 1, parentSlug: 'quotations' },
-  { slug: 'payments',       name: 'Payments',       defaultRoute: '/payments',    sequence: 2, parentSlug: 'quotations' },
-  { slug: 'commissions',    name: 'Commissions',    defaultRoute: '/commissions', sequence: 3, parentSlug: 'quotations' },
-  { slug: 'document-vault', name: 'Document Vault', defaultRoute: '/documents',   sequence: 4, parentSlug: 'quotations' },
+  { slug: 'bookings',       name: 'Bookings',       defaultRoute: '/bookings',      sequence: 1, parentSlug: 'quotations' },
+  { slug: 'collections',    name: 'Collections',    defaultRoute: '/collections',   sequence: 2, parentSlug: 'quotations' },
+  { slug: 'payments',       name: 'Payments',       defaultRoute: '/payments',      sequence: 3, parentSlug: 'quotations' },
+  { slug: 'payment-plans',  name: 'Payment Plans',  defaultRoute: '/payment-plans', sequence: 4, parentSlug: 'quotations' },
+  { slug: 'commissions',    name: 'Commissions',    defaultRoute: '/commissions',   sequence: 5, parentSlug: 'quotations' },
+  { slug: 'document-vault', name: 'Document Vault', defaultRoute: '/documents',     sequence: 6, parentSlug: 'quotations' },
 
   // ── Attendance children ────────────────────────────────────────────────
   { slug: 'attendance-records',  name: 'Records',  defaultRoute: '/attendance/records',  sequence: 1, parentSlug: 'attendance' },

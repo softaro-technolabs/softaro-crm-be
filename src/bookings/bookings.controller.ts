@@ -2,7 +2,6 @@ import {
   Body,
   Controller,
   Delete,
-  ForbiddenException,
   Get,
   Param,
   Post,
@@ -27,6 +26,7 @@ import {
   ReversePaymentDto
 } from './bookings.dto';
 import { BookingsService } from './bookings.service';
+import { CollectionsService, type AgingBucket } from './collections.service';
 
 @ApiTags('Bookings')
 @Controller('tenants/:tenantId/bookings')
@@ -35,6 +35,7 @@ import { BookingsService } from './bookings.service';
 export class BookingsController {
   constructor(
     private readonly bookingsService: BookingsService,
+    private readonly collectionsService: CollectionsService,
     private readonly requestContext: RequestContextService
   ) {}
 
@@ -44,6 +45,18 @@ export class BookingsController {
   async list(@Param('tenantId') tenantId: string, @Query() query: BookingListQueryDto) {
     this.requestContext.verifyTenantAccess(tenantId);
     return this.bookingsService.listBookings(tenantId, query);
+  }
+
+  // NOTE: every literal single-segment route MUST be declared above
+  // `@Get(':bookingId')` — Nest matches in declaration order, so the wildcard
+  // would otherwise capture them (this route was previously unreachable, with
+  // bookingId bound to the string "payments").
+  @Permissions(...perms('bookings', ACTIONS.READ))
+  @Get('payments')
+  @ApiOperation({ summary: 'List all booking payments' })
+  async listPayments(@Param('tenantId') tenantId: string, @Query() query: BookingPaymentQueryDto) {
+    this.requestContext.verifyTenantAccess(tenantId);
+    return this.bookingsService.listPayments(tenantId, query);
   }
 
   @Permissions(...perms('bookings', ACTIONS.READ))
@@ -90,6 +103,53 @@ export class BookingsController {
     return this.bookingsService.cancelBooking(tenantId, bookingId, reason, this.requestContext.getUserId());
   }
 
+  // ── Collections ────────────────────────────────────────────────────────────
+
+  @Permissions(...perms('bookings', ACTIONS.READ))
+  @Get('collections/summary')
+  @ApiOperation({ summary: 'Collections headline: booked, received, outstanding and aging buckets' })
+  async collectionsSummary(@Param('tenantId') tenantId: string) {
+    this.requestContext.verifyTenantAccess(tenantId);
+    return this.collectionsService.getCollectionsSummary(tenantId);
+  }
+
+  @Permissions(...perms('bookings', ACTIONS.READ))
+  @Get('collections/outstanding')
+  @ApiOperation({
+    summary: 'Who owes money and how late they are',
+    description: 'Sorted worst-first by days overdue. Filter by aging bucket or overdue-only.'
+  })
+  async outstanding(
+    @Param('tenantId') tenantId: string,
+    @Query('bucket') bucket?: AgingBucket,
+    @Query('onlyOverdue') onlyOverdue?: string
+  ) {
+    this.requestContext.verifyTenantAccess(tenantId);
+    return this.collectionsService.listOutstanding(tenantId, {
+      bucket,
+      onlyOverdue: onlyOverdue === 'true'
+    });
+  }
+
+  @Permissions(...perms('bookings', ACTIONS.READ))
+  @Get(':bookingId/ledger')
+  @ApiOperation({
+    summary: 'Full money picture for a booking',
+    description: 'Payment schedule with per-instalment balances, the payment ledger, and totals.'
+  })
+  async ledger(@Param('tenantId') tenantId: string, @Param('bookingId') bookingId: string) {
+    this.requestContext.verifyTenantAccess(tenantId);
+    return this.collectionsService.getBookingLedger(tenantId, bookingId);
+  }
+
+  @Permissions(...perms('bookings', ACTIONS.READ))
+  @Get(':bookingId/cost-sheet')
+  @ApiOperation({ summary: 'Itemised cost sheet with computed agreement value, GST and grand total' })
+  async costSheet(@Param('tenantId') tenantId: string, @Param('bookingId') bookingId: string) {
+    this.requestContext.verifyTenantAccess(tenantId);
+    return this.bookingsService.getCostSheet(tenantId, bookingId);
+  }
+
   @Permissions(...perms('bookings', ACTIONS.READ))
   @Get(':bookingId/milestones')
   @ApiOperation({ summary: 'List payment milestones for a booking' })
@@ -131,14 +191,6 @@ export class BookingsController {
       dto.reason,
       this.requestContext.getUserId()
     );
-  }
-
-  @Permissions(...perms('bookings', ACTIONS.READ))
-  @Get('payments')
-  @ApiOperation({ summary: 'List all booking payments' })
-  async listPayments(@Param('tenantId') tenantId: string, @Query() query: BookingPaymentQueryDto) {
-    this.requestContext.verifyTenantAccess(tenantId);
-    return this.bookingsService.listPayments(tenantId, query);
   }
 
   @Permissions(...perms('bookings', ACTIONS.READ))

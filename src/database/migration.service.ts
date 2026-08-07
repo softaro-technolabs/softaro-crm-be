@@ -187,6 +187,61 @@ export class MigrationService {
 
       child.on('error', (error) => reject(error));
     });
+
+    // MUST run after push, never before — see the method comment.
+    await this.ensureDatabaseInvariants();
+  }
+
+  /**
+   * Re-asserts database constraints that drizzle-kit cannot represent.
+   *
+   * drizzle-kit 0.20 has no syntax for a partial index (`CREATE INDEX … WHERE`).
+   * It therefore cannot find these in the schema files, concludes they are
+   * stale, and emits `DROP INDEX` for each one on every push. Recreating them
+   * immediately afterwards makes that harmless.
+   *
+   * This runs AFTER push for exactly that reason — `runCustomMigrations` runs
+   * before it, so anything created there would simply be dropped again.
+   *
+   * `bookings_live_unit_uq` is the important one: it is what makes it
+   * impossible to sell the same unit to two buyers. Losing it is silent — the
+   * system keeps working and only misbehaves the day two agents race.
+   */
+  private async ensureDatabaseInvariants() {
+    const statements = [
+      // One live booking per unit. 'draft' is excluded on purpose: two agents
+      // may legitimately be drafting before one is confirmed.
+      `CREATE UNIQUE INDEX IF NOT EXISTS bookings_live_unit_uq
+         ON bookings (tenant_id, property_unit_id)
+         WHERE status IN ('confirmed', 'completed') AND property_unit_id IS NOT NULL`,
+
+      // A receipt number, once printed, identifies exactly one payment.
+      `CREATE UNIQUE INDEX IF NOT EXISTS booking_payments_tenant_receipt_uq
+         ON booking_payments (tenant_id, receipt_number)
+         WHERE receipt_number IS NOT NULL`,
+
+      // Revenue reporting reads the ledger by payment date.
+      `CREATE INDEX IF NOT EXISTS booking_payments_tenant_date_idx
+         ON booking_payments (tenant_id, payment_date)`
+    ];
+
+    const client = await this.pool.connect();
+    try {
+      for (const statement of statements) {
+        try {
+          await client.query(statement);
+        } catch (error) {
+          // A failure here means a constraint the application relies on is
+          // missing — loud, but not worth refusing to boot over.
+          this.logger.error(
+            `Failed to assert database invariant: ${(error as Error).message}`
+          );
+        }
+      }
+      this.logger.log('✓ Database invariants asserted');
+    } finally {
+      client.release();
+    }
   }
 
   /**

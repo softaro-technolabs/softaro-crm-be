@@ -40,6 +40,8 @@ import {
 import { AutomationService } from '../automation/automation.service';
 import { LeadPipelineService, PIPELINE_STAGE } from '../leads/lead-pipeline.service';
 import { DealsService } from '../deals/deals.service';
+import { CostSheetService } from './cost-sheet.service';
+import { BookingCommissionsService } from './booking-commissions.service';
 import { generateDemandLetterPdf } from '../common/pdf-templates/demand-letter.template';
 import { generateAllotmentLetterPdf } from '../common/pdf-templates/allotment-letter.template';
 
@@ -50,7 +52,9 @@ export class BookingsService {
     private readonly automationService: AutomationService,
     private readonly leadPipeline: LeadPipelineService,
     private readonly documentNumbers: DocumentNumberService,
-    private readonly dealsService: DealsService
+    private readonly dealsService: DealsService,
+    private readonly costSheetService: CostSheetService,
+    private readonly bookingCommissions: BookingCommissionsService
   ) {}
 
   /** Statuses in which a booking holds its unit against all other buyers. */
@@ -215,7 +219,9 @@ export class BookingsService {
   async createBooking(tenantId: string, dto: CreateBookingDto, createdByUserId?: string | null) {
     const resolved = await this.resolveBookingRelations(tenantId, dto);
 
-    const bookingAmount = Number(dto.bookingAmount ?? resolved.deal?.pendingAmount ?? 0);
+    // Reassigned below once the cost sheet is built — the itemisation is the
+    // authority on what a booking is worth.
+    let bookingAmount = Number(dto.bookingAmount ?? resolved.deal?.pendingAmount ?? 0);
     const paidAmount = Number(dto.paidAmount ?? 0);
     if (paidAmount > bookingAmount) {
       throw new BadRequestException('Paid amount cannot be greater than booking amount');
@@ -262,7 +268,61 @@ export class BookingsService {
         updatedAt: now
       });
 
-      if (dto.milestones?.length) {
+      // ── Cost sheet ─────────────────────────────────────────────────────────
+      // Explicit lines win; otherwise derive them from the unit's price list so
+      // "book this flat at list price" needs no data entry.
+      const costSheetLines = dto.costSheetItems?.length
+        ? dto.costSheetItems.map((item, idx) => ({
+            head: item.head,
+            label: item.label,
+            taxTreatment: item.taxTreatment,
+            amount: Number(item.amount ?? 0).toFixed(2),
+            discount: Number(item.discount ?? 0).toFixed(2),
+            percentage: item.percentage != null ? String(item.percentage) : null,
+            sortOrder: item.sortOrder ?? idx
+          }))
+        : await this.costSheetService.buildDefaultLinesForUnit(
+            tx,
+            tenantId,
+            resolved.propertyUnitId,
+            dto.bookingAmount
+          );
+
+      await this.costSheetService.replaceLines(tx, tenantId, bookingId, costSheetLines as any);
+
+      const costSheet = await this.costSheetService.getCostSheet(tx, tenantId, bookingId);
+
+      // The cost sheet, once present, IS the booking value — a single typed
+      // number can no longer disagree with the itemisation behind it.
+      if (costSheet.lines.length && costSheet.grandTotal > 0) {
+        bookingAmount = costSheet.grandTotal;
+        await tx
+          .update(bookings)
+          .set({ bookingAmount: bookingAmount.toFixed(2), updatedAt: now })
+          .where(and(eq(bookings.tenantId, tenantId), eq(bookings.id, bookingId)));
+      }
+
+      if (costSheet.discount > 0) {
+        await this.costSheetService.logDiscountChange(tx, tenantId, bookingId, {
+          previousDiscount: 0,
+          newDiscount: costSheet.discount,
+          grossAgreementValue: costSheet.basePrice + costSheet.additionalCharges,
+          reason: dto.discountReason ?? 'Discount applied at booking.',
+          changedByUserId: createdByUserId
+        });
+      }
+
+      // ── Payment schedule ───────────────────────────────────────────────────
+      if (dto.paymentPlanTemplateId) {
+        await this.costSheetService.applyPaymentPlan(
+          tx,
+          tenantId,
+          bookingId,
+          dto.paymentPlanTemplateId,
+          bookingAmount,
+          new Date(dto.bookingDate)
+        );
+      } else if (dto.milestones?.length) {
         const milestoneValues = dto.milestones.map((m, idx) => ({
           id: randomUUID(),
           tenantId,
@@ -346,6 +406,10 @@ export class BookingsService {
       // marking the lead "Booking Done" for one made the pipeline report sales
       // that had not happened.
       if (BookingsService.LIVE_STATUSES.includes(status)) {
+        await this.db.transaction((tx) =>
+          this.bookingCommissions.accrueForBooking(tx, tenantId, bookingId, createdByUserId)
+        );
+
         await this.leadPipeline.advanceTo(tenantId, resolved.leadId, PIPELINE_STAGE.BOOKING_DONE, {
           actorUserId: createdByUserId,
           reason: `Booking ${bookingNumber} created.`
@@ -404,6 +468,13 @@ export class BookingsService {
     // A confirmed booking is the booking stage; a completed one means the sale
     // has been executed, which is the registration stage of the journey.
     if (status !== existing.booking.status) {
+      // Commissions follow the booking becoming (or ceasing to be) real.
+      if (BookingsService.LIVE_STATUSES.includes(status)) {
+        await this.db.transaction((tx) =>
+          this.bookingCommissions.accrueForBooking(tx, tenantId, bookingId, updatedByUserId)
+        );
+      }
+
       if (status === 'confirmed') {
         await this.leadPipeline.advanceTo(tenantId, existing.booking.leadId, PIPELINE_STAGE.BOOKING_DONE, {
           actorUserId: updatedByUserId,
@@ -490,9 +561,20 @@ export class BookingsService {
 
       // Cancelling removes the booking from the deal rollup.
       await this.recalcBookingFinancials(tx, tenantId, bookingId);
+
+      // Withdraw accruals nobody has acted on. Approved and paid rows survive:
+      // reversing committed money is a finance decision, not a side effect.
+      await this.bookingCommissions.reverseForBooking(tx, tenantId, existing.booking.dealId);
     });
 
     return { success: true };
+  }
+
+  /** Itemised cost sheet for a booking, with every total recomputed. */
+  async getCostSheet(tenantId: string, bookingId: string) {
+    // Throws if the booking is not this tenant's.
+    await this.getBooking(tenantId, bookingId);
+    return this.costSheetService.getCostSheet(this.db, tenantId, bookingId);
   }
 
   async getMilestones(tenantId: string, bookingId: string) {
@@ -724,8 +806,30 @@ export class BookingsService {
     const fmtDate = (d: Date | string | null | undefined): string =>
       d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' }) : '';
 
-    const totalAmount = Number(bookingRow.booking.bookingAmount ?? 0);
-    const amountDue = milestone ? Number(milestone.amount) : totalAmount;
+    // Prefer the cost sheet: it is the itemised figure the customer agreed to.
+    // Falls back to the stored booking amount for bookings made before cost
+    // sheets existed.
+    const costSheet = await this.costSheetService.getCostSheet(this.db, tenantId, bookingId);
+    const totalAmount = costSheet.lines.length
+      ? costSheet.grandTotal
+      : Number(bookingRow.booking.bookingAmount ?? 0);
+
+    // Demand only the unpaid balance of the instalment — re-billing money the
+    // customer has already sent is the fastest way to lose their trust.
+    let amountDue = milestone ? Number(milestone.amount) : totalAmount;
+    if (milestone) {
+      const [paidRow] = await this.db
+        .select({ total: sql<string>`COALESCE(SUM(${bookingPayments.amount}), 0)` })
+        .from(bookingPayments)
+        .where(
+          and(
+            eq(bookingPayments.tenantId, tenantId),
+            eq(bookingPayments.milestoneId, milestone.id),
+            eq(bookingPayments.status, 'cleared')
+          )
+        );
+      amountDue = Math.max(amountDue - Number(paidRow?.total ?? 0), 0);
+    }
     const dueDate = milestone?.dueDate ? fmtDate(milestone.dueDate) : fmtDate(new Date());
     const milestoneLabel = milestone?.label ?? 'As per Agreement';
 
@@ -791,7 +895,10 @@ export class BookingsService {
 
     const entity = entityDetails[0] ?? null;
 
-    const totalConsideration = Number(bookingRow.booking.bookingAmount ?? 0);
+    const allotmentCostSheet = await this.costSheetService.getCostSheet(this.db, tenantId, bookingId);
+    const totalConsideration = allotmentCostSheet.lines.length
+      ? allotmentCostSheet.grandTotal
+      : Number(bookingRow.booking.bookingAmount ?? 0);
     const bookingAmount = Number(bookingRow.booking.paidAmount ?? 0);
     const letterNumber = `AL-${bookingRow.booking.bookingNumber}`;
 
