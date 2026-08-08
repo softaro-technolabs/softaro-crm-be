@@ -10,8 +10,10 @@ import {
   bookingMilestones,
   paymentPlanTemplateItems,
   paymentPlanTemplates,
+  propertyEntities,
   propertyPricingBreakups,
-  propertyUnits
+  propertyUnits,
+  quotations
 } from '../database/schema';
 import { computeCostSheet, roundMoney } from '../common/utils/cost-sheet.util';
 
@@ -86,6 +88,22 @@ export class CostSheetService {
         )
       );
 
+    // Statutory rates live on the project, so a booking inherits the same GST
+    // and stamp duty a quotation for that project would have used.
+    const [entity] = unit.entityId
+      ? await runner
+          .select({
+            gst: propertyEntities.defaultGstPercentage,
+            stampDuty: propertyEntities.defaultStampDutyPercentage,
+            registration: propertyEntities.defaultRegistrationCharges
+          })
+          .from(propertyEntities)
+          .where(
+            and(eq(propertyEntities.tenantId, tenantId), eq(propertyEntities.id, unit.entityId))
+          )
+          .limit(1)
+      : [];
+
     const lines: Array<Omit<typeof bookingCostSheetItems.$inferInsert, 'id' | 'tenantId' | 'bookingId'>> = [];
     let sortOrder = 0;
 
@@ -109,6 +127,133 @@ export class CostSheetService {
         discount: '0',
         sortOrder: sortOrder++
       });
+    }
+
+    // Statutory lines carry a PERCENTAGE, not a frozen amount, so the tax
+    // follows the price when a line above is edited. `amount` is only a display
+    // seed — getCostSheet recomputes it from the rate.
+    const gstPct = Number(entity?.gst ?? 0);
+    if (gstPct > 0) {
+      lines.push({
+        head: 'gst',
+        label: `GST @ ${gstPct}%`,
+        taxTreatment: 'statutory',
+        amount: '0',
+        discount: '0',
+        percentage: String(gstPct),
+        sortOrder: sortOrder++
+      });
+    }
+
+    const stampPct = Number(entity?.stampDuty ?? 0);
+    if (stampPct > 0) {
+      lines.push({
+        head: 'stamp_duty',
+        label: `Stamp duty @ ${stampPct}%`,
+        taxTreatment: 'statutory',
+        amount: '0',
+        discount: '0',
+        percentage: String(stampPct),
+        sortOrder: sortOrder++
+      });
+    }
+
+    const registration = Number(entity?.registration ?? 0);
+    if (registration > 0) {
+      lines.push({
+        head: 'registration',
+        label: 'Registration charges',
+        taxTreatment: 'statutory',
+        amount: roundMoney(registration).toFixed(2),
+        discount: '0',
+        sortOrder: sortOrder++
+      });
+    }
+
+    return lines as Array<typeof bookingCostSheetItems.$inferInsert>;
+  }
+
+  /**
+   * Rebuilds a cost sheet from an accepted quotation.
+   *
+   * This is what carries a negotiated price through to the booking. Without it
+   * the booking rebuilt itself from the unit's list price, silently discarding
+   * any discount the customer had actually been quoted.
+   */
+  async buildLinesFromQuotation(
+    executor: DrizzleExecutor,
+    tenantId: string,
+    quotationId: string
+  ): Promise<Array<typeof bookingCostSheetItems.$inferInsert> | null> {
+    const runner = executor as DrizzleDatabase;
+
+    const [quotation] = await runner
+      .select()
+      .from(quotations)
+      .where(and(eq(quotations.tenantId, tenantId), eq(quotations.id, quotationId)))
+      .limit(1);
+
+    // Quotations created before the cost-sheet fields existed carry no base
+    // price; fall back to the unit so the caller still gets a usable sheet.
+    if (!quotation || quotation.basePrice == null) return null;
+
+    const num = (v: unknown) => {
+      const n = typeof v === 'string' ? parseFloat(v) : Number(v);
+      return Number.isFinite(n) ? n : 0;
+    };
+
+    const lines: Array<Omit<typeof bookingCostSheetItems.$inferInsert, 'id' | 'tenantId' | 'bookingId'>> = [];
+    let sortOrder = 0;
+
+    const push = (
+      head: typeof bookingCostSheetItems.$inferSelect['head'],
+      label: string,
+      amount: number,
+      extra: Partial<typeof bookingCostSheetItems.$inferInsert> = {}
+    ) => {
+      if (amount <= 0 && !extra.percentage) return;
+      lines.push({
+        head,
+        label,
+        taxTreatment: 'agreement_value',
+        amount: roundMoney(amount).toFixed(2),
+        discount: '0',
+        sortOrder: sortOrder++,
+        ...extra
+      });
+    };
+
+    // The whole quotation discount sits on the base line, matching how
+    // computeCostSheet applies it (before tax, against the agreement value).
+    push('base_price', 'Base price', num(quotation.basePrice), {
+      discount: roundMoney(num(quotation.discount)).toFixed(2)
+    });
+    push('plc', 'PLC', num(quotation.plc));
+    push('parking', 'Parking', num(quotation.parking));
+    push('club_membership', 'Club membership', num(quotation.clubMembership));
+
+    const otherCharges = Array.isArray(quotation.otherCharges) ? quotation.otherCharges : [];
+    for (const charge of otherCharges as Array<{ label?: string; amount?: number }>) {
+      push('other', charge?.label || 'Other charge', num(charge?.amount));
+    }
+
+    const gstRate = num(quotation.gstRate);
+    if (gstRate > 0) {
+      push('gst', `GST @ ${gstRate}%`, 0, {
+        taxTreatment: 'statutory',
+        percentage: String(gstRate)
+      });
+    }
+
+    // Quotations store stamp duty as an absolute amount, not a rate.
+    const stampDuty = num(quotation.stampDuty);
+    if (stampDuty > 0) {
+      push('stamp_duty', 'Stamp duty', stampDuty, { taxTreatment: 'statutory' });
+    }
+
+    const registration = num(quotation.registrationCharges);
+    if (registration > 0) {
+      push('registration', 'Registration charges', registration, { taxTreatment: 'statutory' });
     }
 
     return lines as Array<typeof bookingCostSheetItems.$inferInsert>;

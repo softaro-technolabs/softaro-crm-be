@@ -31,7 +31,7 @@ const MODULE_CATALOG: ModuleSeed[] = [
   { slug: 'dashboard',  name: 'Dashboard',  defaultRoute: '/dashboard',  sequence: 1 },
   { slug: 'leads',      name: 'Leads',      defaultRoute: '/leads',      sequence: 2 },
   { slug: 'properties', name: 'Properties', defaultRoute: '/properties', sequence: 3 },
-  { slug: 'quotations', name: 'Quotations', defaultRoute: '/quotations', sequence: 4 },
+  { slug: 'quotations', name: 'Sales',      defaultRoute: '/quotations', sequence: 4 },
   { slug: 'contacts',   name: 'Contacts',   defaultRoute: '/contacts',   sequence: 5 },
   { slug: 'chat',       name: 'Chat',       defaultRoute: '/chat',       sequence: 6 },
   { slug: 'attendance', name: 'Attendance', defaultRoute: '/attendance', sequence: 7 },
@@ -55,17 +55,18 @@ const MODULE_CATALOG: ModuleSeed[] = [
   { slug: 'inventory-grid',        name: 'Inventory Grid', defaultRoute: '/properties/inventory-grid', sequence: 2, parentSlug: 'properties' },
   { slug: 'properties-attributes', name: 'Attributes',     defaultRoute: '/properties/attributes',     sequence: 3, parentSlug: 'properties' },
 
-  // ── Quotations children ────────────────────────────────────────────────
-  // The customer journey users actually work is Lead → Quotation → Booking.
+  // ── Sales children ─────────────────────────────────────────────────────
+  // The journey users actually work is Lead → Cost Sheet → Booking → money.
   // "Deals" is deliberately absent: a deal is the internal commercial record
   // behind a booking, provisioned automatically, not a screen anyone visits.
   // See RETIRED_MODULE_SLUGS below.
-  { slug: 'bookings',       name: 'Bookings',       defaultRoute: '/bookings',      sequence: 1, parentSlug: 'quotations' },
-  { slug: 'collections',    name: 'Collections',    defaultRoute: '/collections',   sequence: 2, parentSlug: 'quotations' },
-  { slug: 'payments',       name: 'Payments',       defaultRoute: '/payments',      sequence: 3, parentSlug: 'quotations' },
-  { slug: 'payment-plans',  name: 'Payment Plans',  defaultRoute: '/payment-plans', sequence: 4, parentSlug: 'quotations' },
-  { slug: 'commissions',    name: 'Commissions',    defaultRoute: '/commissions',   sequence: 5, parentSlug: 'quotations' },
-  { slug: 'document-vault', name: 'Document Vault', defaultRoute: '/documents',     sequence: 6, parentSlug: 'quotations' },
+  { slug: 'cost-sheets',    name: 'Cost Sheets',    defaultRoute: '/quotations',    sequence: 1, parentSlug: 'quotations' },
+  { slug: 'bookings',       name: 'Bookings',       defaultRoute: '/bookings',      sequence: 2, parentSlug: 'quotations' },
+  { slug: 'collections',    name: 'Collections',    defaultRoute: '/collections',   sequence: 3, parentSlug: 'quotations' },
+  { slug: 'payments',       name: 'Payments',       defaultRoute: '/payments',      sequence: 4, parentSlug: 'quotations' },
+  { slug: 'payment-plans',  name: 'Payment Plans',  defaultRoute: '/payment-plans', sequence: 5, parentSlug: 'quotations' },
+  { slug: 'commissions',    name: 'Commissions',    defaultRoute: '/commissions',   sequence: 6, parentSlug: 'quotations' },
+  { slug: 'document-vault', name: 'Document Vault', defaultRoute: '/documents',     sequence: 7, parentSlug: 'quotations' },
 
   // ── Attendance children ────────────────────────────────────────────────
   { slug: 'attendance-records',  name: 'Records',  defaultRoute: '/attendance/records',  sequence: 1, parentSlug: 'attendance' },
@@ -87,6 +88,20 @@ const MODULE_CATALOG: ModuleSeed[] = [
 ];
 
 /**
+ * Modules whose display name changed after they were first seeded.
+ *
+ * `upsertModule` deliberately preserves existing names so a tenant's own
+ * wording survives a redeploy — which also means a rename we DO want never
+ * lands. These are applied explicitly, once, and only when the row still holds
+ * the old name.
+ */
+const MODULE_RENAMES: Array<{ slug: string; from: string; to: string }> = [
+  // "Quotation" is not what Indian builders call this document.
+  { slug: 'quotations', from: 'Quotations & Deals', to: 'Sales' },
+  { slug: 'quotations', from: 'Quotations', to: 'Sales' }
+];
+
+/**
  * Modules removed from the product. Their rows (and every tenant's link to
  * them) are deleted on boot.
  *
@@ -96,7 +111,7 @@ const MODULE_CATALOG: ModuleSeed[] = [
  */
 const RETIRED_MODULE_SLUGS = [
   // A deal is now provisioned automatically behind a booking. Agents work
-  // Lead → Quotation → Booking; there is nothing for them to do on a Deals
+  // Lead → Cost Sheet → Booking; there is nothing for them to do on a Deals
   // screen. The table and its API remain for reporting and commissions.
   'deals'
 ];
@@ -119,6 +134,7 @@ export class DatabaseSyncService implements OnApplicationBootstrap {
     try {
       await this.migrationService.push();
       await this.retireModules();
+      await this.renameModules();
       await this.ensureModuleCatalog();
       this.hasSynced = true;
     } catch (error) {
@@ -144,6 +160,28 @@ export class DatabaseSyncService implements OnApplicationBootstrap {
       await this.db.delete(tenantModules).where(eq(tenantModules.moduleId, existing.id));
       await this.db.delete(modules).where(eq(modules.id, existing.id));
       this.logger.log(`Retired module: ${slug}`);
+    }
+  }
+
+  /**
+   * Applies known renames, matching on the OLD name so a tenant that has
+   * already customised the label is left alone.
+   */
+  private async renameModules() {
+    for (const rename of MODULE_RENAMES) {
+      const [existing] = await this.db
+        .select({ id: modules.id, name: modules.name })
+        .from(modules)
+        .where(eq(modules.slug, rename.slug))
+        .limit(1);
+
+      if (!existing || existing.name !== rename.from) continue;
+
+      await this.db
+        .update(modules)
+        .set({ name: rename.to })
+        .where(eq(modules.id, existing.id));
+      this.logger.log(`Renamed module ${rename.slug}: "${rename.from}" → "${rename.to}"`);
     }
   }
 

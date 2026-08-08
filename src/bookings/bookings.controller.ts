@@ -23,7 +23,8 @@ import {
   UpdateBookingDto,
   CreateBookingPaymentDto,
   BookingPaymentQueryDto,
-  ReversePaymentDto
+  ReversePaymentDto,
+  UpdateCostSheetDto
 } from './bookings.dto';
 import { BookingsService } from './bookings.service';
 import { CollectionsService, type AgingBucket } from './collections.service';
@@ -148,6 +149,25 @@ export class BookingsController {
   async costSheet(@Param('tenantId') tenantId: string, @Param('bookingId') bookingId: string) {
     this.requestContext.verifyTenantAccess(tenantId);
     return this.bookingsService.getCostSheet(tenantId, bookingId);
+  }
+
+  @Permissions(...perms('bookings', ACTIONS.UPDATE))
+  @Put(':bookingId/cost-sheet')
+  @ApiOperation({
+    summary: 'Replace a booking cost sheet',
+    description:
+      'Rewrites every line, re-derives the booking amount from the new grand total, logs any discount change and recomputes the deal rollup. Rejected if the new total falls below money already received.'
+  })
+  async updateCostSheet(
+    @Param('tenantId') tenantId: string,
+    @Param('bookingId') bookingId: string,
+    @Body() dto: UpdateCostSheetDto
+  ) {
+    this.requestContext.verifyTenantAccess(tenantId);
+    return this.bookingsService.updateCostSheet(tenantId, bookingId, dto.items, {
+      discountReason: dto.discountReason,
+      actorUserId: this.requestContext.getUserId()
+    });
   }
 
   @Permissions(...perms('bookings', ACTIONS.READ))

@@ -237,6 +237,19 @@ export class CreateBookingDto {
 
 export class UpdateBookingDto extends PartialType(CreateBookingDto) {}
 
+export class UpdateCostSheetDto {
+  @ApiProperty({ type: [CostSheetItemDto] })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CostSheetItemDto)
+  items!: CostSheetItemDto[];
+
+  @ApiPropertyOptional({ description: 'Recorded in the discount audit log when the discount changes' })
+  @IsOptional()
+  @IsString()
+  discountReason?: string;
+}
+
 export class ReversePaymentDto {
   @ApiProperty({ description: 'Why the payment is being reversed (bounced cheque, refund…)' })
   @IsString()

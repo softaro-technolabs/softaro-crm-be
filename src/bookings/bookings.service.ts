@@ -271,7 +271,12 @@ export class BookingsService {
       // ── Cost sheet ─────────────────────────────────────────────────────────
       // Explicit lines win; otherwise derive them from the unit's price list so
       // "book this flat at list price" needs no data entry.
-      const costSheetLines = dto.costSheetItems?.length
+      // Priority: explicit lines → the accepted quotation → the unit's list
+      // price. The quotation step is what carries a negotiated discount through
+      // to the booking instead of quietly reverting to list.
+      const quotationId = dto.quotationId ?? resolved.deal?.quotationId ?? null;
+
+      let costSheetLines: Array<Record<string, unknown>> | null = dto.costSheetItems?.length
         ? dto.costSheetItems.map((item, idx) => ({
             head: item.head,
             label: item.label,
@@ -281,12 +286,24 @@ export class BookingsService {
             percentage: item.percentage != null ? String(item.percentage) : null,
             sortOrder: item.sortOrder ?? idx
           }))
-        : await this.costSheetService.buildDefaultLinesForUnit(
-            tx,
-            tenantId,
-            resolved.propertyUnitId,
-            dto.bookingAmount
-          );
+        : null;
+
+      if (!costSheetLines && quotationId) {
+        costSheetLines = await this.costSheetService.buildLinesFromQuotation(
+          tx,
+          tenantId,
+          quotationId
+        );
+      }
+
+      if (!costSheetLines) {
+        costSheetLines = await this.costSheetService.buildDefaultLinesForUnit(
+          tx,
+          tenantId,
+          resolved.propertyUnitId,
+          dto.bookingAmount
+        );
+      }
 
       await this.costSheetService.replaceLines(tx, tenantId, bookingId, costSheetLines as any);
 
@@ -422,7 +439,27 @@ export class BookingsService {
 
   async updateBooking(tenantId: string, bookingId: string, dto: UpdateBookingDto, updatedByUserId?: string | null) {
     const existing = await this.getBooking(tenantId, bookingId);
-    const bookingAmount = dto.bookingAmount !== undefined ? Number(dto.bookingAmount) : Number(existing.booking.bookingAmount ?? 0);
+    // When a cost sheet exists it is the authority on value. Accepting a typed
+    // bookingAmount here would let the single number drift away from the sum of
+    // the lines behind it — the same class of bug as a hand-edited paidAmount.
+    const currentSheet = await this.costSheetService.getCostSheet(this.db, tenantId, bookingId);
+    const hasCostSheet = currentSheet.lines.length > 0;
+
+    if (
+      hasCostSheet &&
+      dto.bookingAmount !== undefined &&
+      Number(dto.bookingAmount) !== Number(existing.booking.bookingAmount ?? 0)
+    ) {
+      throw new BadRequestException(
+        'Booking amount is derived from the cost sheet. Edit the cost sheet instead (PUT /bookings/:id/cost-sheet).'
+      );
+    }
+
+    const bookingAmount = hasCostSheet
+      ? currentSheet.grandTotal
+      : dto.bookingAmount !== undefined
+        ? Number(dto.bookingAmount)
+        : Number(existing.booking.bookingAmount ?? 0);
 
     // `paidAmount` is derived from the payment ledger and is not writable here.
     // Accepting it silently would let the booking total drift away from the sum
@@ -568,6 +605,84 @@ export class BookingsService {
     });
 
     return { success: true };
+  }
+
+  /**
+   * Replaces a booking's cost sheet and re-derives everything that depends on it.
+   *
+   * The cost sheet is the authority on what a booking is worth: `bookingAmount`
+   * is rewritten from the grand total here, never typed in. That is what stops
+   * the single number and the itemisation behind it from disagreeing.
+   */
+  async updateCostSheet(
+    tenantId: string,
+    bookingId: string,
+    lines: Array<{
+      head: string;
+      label: string;
+      taxTreatment: string;
+      amount: number;
+      discount?: number;
+      percentage?: number;
+      sortOrder?: number;
+    }>,
+    options: { discountReason?: string; actorUserId?: string | null } = {}
+  ) {
+    const existing = await this.getBooking(tenantId, bookingId);
+
+    if (existing.booking.status === 'cancelled') {
+      throw new BadRequestException('Cannot edit the cost sheet of a cancelled booking');
+    }
+
+    const previous = await this.costSheetService.getCostSheet(this.db, tenantId, bookingId);
+    const alreadyPaid = Number(existing.booking.paidAmount ?? 0);
+
+    await this.db.transaction(async (tx) => {
+      await this.costSheetService.replaceLines(
+        tx,
+        tenantId,
+        bookingId,
+        lines.map((line, idx) => ({
+          head: line.head as any,
+          label: line.label,
+          taxTreatment: line.taxTreatment as any,
+          amount: Number(line.amount ?? 0).toFixed(2),
+          discount: Number(line.discount ?? 0).toFixed(2),
+          percentage: line.percentage != null ? String(line.percentage) : null,
+          sortOrder: line.sortOrder ?? idx
+        }))
+      );
+
+      const next = await this.costSheetService.getCostSheet(tx, tenantId, bookingId);
+
+      // Never let the sheet fall below money already banked — that would leave
+      // the booking permanently over-collected with no way back.
+      if (next.grandTotal > 0 && alreadyPaid > next.grandTotal + 0.005) {
+        throw new BadRequestException(
+          `Cost sheet total of ${next.grandTotal.toFixed(2)} is below the ${alreadyPaid.toFixed(
+            2
+          )} already received. Reverse a payment first.`
+        );
+      }
+
+      await tx
+        .update(bookings)
+        .set({ bookingAmount: next.grandTotal.toFixed(2), updatedAt: new Date() })
+        .where(and(eq(bookings.tenantId, tenantId), eq(bookings.id, bookingId)));
+
+      await this.costSheetService.logDiscountChange(tx, tenantId, bookingId, {
+        previousDiscount: previous.discount,
+        newDiscount: next.discount,
+        grossAgreementValue: next.basePrice + next.additionalCharges,
+        reason: options.discountReason ?? null,
+        changedByUserId: options.actorUserId
+      });
+
+      // The deal rollup and milestone statuses both key off the new total.
+      await this.recalcBookingFinancials(tx, tenantId, bookingId);
+    });
+
+    return this.costSheetService.getCostSheet(this.db, tenantId, bookingId);
   }
 
   /** Itemised cost sheet for a booking, with every total recomputed. */
